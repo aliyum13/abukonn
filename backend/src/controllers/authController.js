@@ -1,0 +1,89 @@
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+
+function generateToken(user) {
+  return jwt.sign(
+    { id: user.id, matric_number: user.matric_number },
+    process.env.JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+}
+
+async function register(req, res) {
+  try {
+    const { matric_number, full_name, email, department, level, password } = req.body;
+
+    if (!matric_number || !full_name || !email || !department || !level || !password) {
+      return res.status(400).json({ message: 'All fields are required' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    }
+
+    const existingMatric = await User.findByMatricNumber(matric_number);
+    if (existingMatric) {
+      return res.status(409).json({ message: 'Matric number already registered' });
+    }
+
+    const existingEmail = await User.findByEmail(email);
+    if (existingEmail) {
+      return res.status(409).json({ message: 'Email already registered' });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = await User.createUser({
+      matricNumber: matric_number,
+      fullName: full_name,
+      email,
+      department,
+      level,
+      passwordHash,
+    });
+
+    const token = generateToken(user);
+
+    res.status(201).json({
+      message: 'Registration successful',
+      token,
+      user: User.toPublicUser(user),
+    });
+  } catch (err) {
+    console.error('Register error:', err.message);
+    res.status(500).json({ message: 'Server error during registration' });
+  }
+}
+
+async function login(req, res) {
+  try {
+    const { matric_number, password } = req.body;
+
+    if (!matric_number || !password) {
+      return res.status(400).json({ message: 'Matric number and password are required' });
+    }
+
+    const user = await User.findByMatricNumber(matric_number);
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid matric number or password' });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password_hash);
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Invalid matric number or password' });
+    }
+
+    const token = generateToken(user);
+
+    res.json({
+      message: 'Login successful',
+      token,
+      user: User.toPublicUser(user),
+    });
+  } catch (err) {
+    console.error('Login error:', err.message);
+    res.status(500).json({ message: 'Server error during login' });
+  }
+}
+
+module.exports = { register, login };

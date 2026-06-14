@@ -1,0 +1,105 @@
+const Post = require('../models/Post');
+const Comment = require('../models/Comment');
+
+async function createPost(req, res) {
+  try {
+    const { content, image_url } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ message: 'Post content is required' });
+    }
+
+    const post = await Post.createPost({
+      userId: req.user.id,
+      content: content.trim(),
+      imageUrl: image_url || null,
+    });
+
+    const fullPost = await Post.getPostById(post.id);
+
+    res.status(201).json({ message: 'Post created', post: fullPost });
+  } catch (err) {
+    console.error('Create post error:', err.message);
+    res.status(500).json({ message: 'Server error creating post' });
+  }
+}
+
+async function getFeed(req, res) {
+  try {
+    const posts = await Post.getAllPosts();
+    res.json({ posts });
+  } catch (err) {
+    console.error('Get feed error:', err.message);
+    res.status(500).json({ message: 'Server error fetching feed' });
+  }
+}
+
+async function likePost(req, res) {
+  try {
+    const postId = parseInt(req.params.id, 10);
+    const existing = await Post.getPostById(postId);
+
+    if (!existing) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
+    const post = await Post.likePost(postId);
+    res.json({ message: 'Post liked', post });
+  } catch (err) {
+    console.error('Like post error:', err.message);
+    res.status(500).json({ message: 'Server error liking post' });
+  }
+}
+
+async function addComment(req, res) {
+  try {
+    const postId = parseInt(req.params.id, 10);
+    const { content } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ message: 'Comment content is required' });
+    }
+
+    const existing = await Post.getPostById(postId);
+    if (!existing) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
+    const comment = await Comment.createComment({
+      postId,
+      userId: req.user.id,
+      content: content.trim(),
+    });
+
+    await Post.incrementCommentsCount(postId);
+    const post = await Post.getPostById(postId);
+
+    res.status(201).json({ message: 'Comment added', comment, post });
+  } catch (err) {
+    console.error('Add comment error:', err.message);
+    res.status(500).json({ message: 'Server error adding comment' });
+  }
+}
+
+async function deletePost(req, res) {
+  try {
+    const postId = parseInt(req.params.id, 10);
+    const existing = await Post.getPostById(postId);
+
+    if (!existing) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
+    if (existing.user_id !== req.user.id) {
+      return res.status(403).json({ message: 'You can only delete your own posts' });
+    }
+
+    await Post.deletePost(postId);
+    res.json({ message: 'Post deleted' });
+  } catch (err) {
+    console.error('Delete post error:', err.message);
+    res.status(500).json({ message: 'Server error deleting post' });
+  }
+}
+
+module.exports = { createPost, getFeed, likePost, addComment, deletePost };
