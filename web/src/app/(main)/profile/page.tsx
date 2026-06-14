@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, FormEvent } from 'react';
+import { useEffect, useState, FormEvent, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 
@@ -49,6 +49,8 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState({ bio: '', department: '', level: '' });
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!authLoading && !token) router.push('/login');
@@ -101,6 +103,40 @@ export default function ProfilePage() {
     }
   };
 
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !token) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Photo must be under 5MB');
+      return;
+    }
+
+    setUploading(true);
+    setError('');
+
+    try {
+      const formData = new FormData();
+      formData.append('photo', file);
+
+      const res = await fetch(`${API_URL}/api/users/me/photo`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Upload failed');
+
+      updateUser(data.user);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to upload photo');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   if (authLoading || !user) {
     return <div className="flex items-center justify-center min-h-[60vh] text-gray-400">Loading...</div>;
   }
@@ -113,8 +149,44 @@ export default function ProfilePage() {
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
         <div className="flex items-start gap-4">
-          <div className="w-20 h-20 rounded-full bg-[#16a34a] text-white flex items-center justify-center text-2xl font-bold shrink-0">
-            {getInitials(user.full_name)}
+          <div className="relative shrink-0">
+            {user.profile_photo_url ? (
+              <img
+                src={user.profile_photo_url}
+                alt={user.full_name}
+                className="w-20 h-20 rounded-full object-cover"
+              />
+            ) : (
+              <div className="w-20 h-20 rounded-full bg-[#16a34a] text-white flex items-center justify-center text-2xl font-bold">
+                {getInitials(user.full_name)}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="absolute bottom-0 right-0 w-7 h-7 bg-[#16a34a] hover:bg-green-700 text-white rounded-full flex items-center justify-center shadow-md transition disabled:opacity-50"
+              title="Change photo"
+            >
+              {uploading ? (
+                <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              ) : (
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 18.63a4 4 0 010-5.656l8.486-8.486a4 4 0 015.656 5.656l-8.486 8.486a4 4 0 01-5.656 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 6l3 3" />
+                </svg>
+              )}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handlePhotoSelect}
+              className="hidden"
+            />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2">

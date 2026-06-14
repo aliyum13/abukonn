@@ -60,6 +60,16 @@ async function updateProfile(id, { bio, department, level }) {
   return result.rows[0] || null;
 }
 
+async function updateProfilePhoto(id, photoUrl) {
+  const result = await pool.query(
+    `UPDATE abukonn.users SET profile_photo_url = $2
+     WHERE id = $1
+     RETURNING id, matric_number, full_name, email, department, level, profile_photo_url, bio, created_at`,
+    [id, photoUrl]
+  );
+  return result.rows[0] || null;
+}
+
 async function createUser({ matricNumber, fullName, email, department, level, passwordHash }) {
   const result = await pool.query(
     `INSERT INTO abukonn.users (matric_number, full_name, email, department, level, password_hash)
@@ -91,6 +101,7 @@ module.exports = {
   findByEmail,
   findById,
   updateProfile,
+  updateProfilePhoto,
   createUser,
   toPublicUser,
 };
