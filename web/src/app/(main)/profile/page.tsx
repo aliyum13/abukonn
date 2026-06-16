@@ -92,6 +92,7 @@ export default function ProfilePage() {
   const [modalType, setModalType] = useState<ModalType>('none');
   const [modalList, setModalList] = useState<FollowUser[]>([]);
   const [modalLoading, setModalLoading] = useState(false);
+  const [modalError, setModalError] = useState('');
 
   useEffect(() => {
     if (!authLoading && !token) router.push('/login');
@@ -133,21 +134,34 @@ export default function ProfilePage() {
   }, [token, user?.id]);
 
   const openModal = async (type: 'followers' | 'following') => {
-    if (!token) return;
+    if (!token || !user) return;
     setModalType(type);
     setModalLoading(true);
     setModalList([]);
+    setModalError('');
     try {
+      // Use explicit userId endpoints to avoid any static-route ambiguity
       const endpoint =
-        type === 'followers' ? '/api/follows/followers' : '/api/follows/following';
+        type === 'followers'
+          ? `/api/follows/${user.id}/followers`
+          : `/api/follows/${user.id}/following`;
       const res = await fetch(`${API_URL}${endpoint}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
+      if (!res.ok) {
+        console.error('[openModal] API error:', data);
+        setModalError(data.message || 'Failed to load list');
+        setModalList([]);
+        return;
+      }
       // followers endpoint → { followers: [] }, following endpoint → { following: [] }
-      setModalList(data[type] ?? []);
-    } catch {
+      const list: FollowUser[] = data[type] ?? [];
+      console.log(`[openModal] ${type}:`, list);
+      setModalList(list);
+    } catch (err) {
+      console.error('[openModal] fetch error:', err);
+      setModalError('Network error — could not load list');
       setModalList([]);
     } finally {
       setModalLoading(false);
@@ -360,7 +374,7 @@ export default function ProfilePage() {
       {modalType !== 'none' && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onClick={() => setModalType('none')}
+          onClick={() => { setModalType('none'); setModalError(''); }}
         >
           <div
             className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-xl"
@@ -372,7 +386,7 @@ export default function ProfilePage() {
               </h2>
               <button
                 type="button"
-                onClick={() => setModalType('none')}
+                onClick={() => { setModalType('none'); setModalError(''); }}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted transition hover:bg-surface-subtle hover:text-ink"
               >
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -392,6 +406,11 @@ export default function ProfilePage() {
                       </div>
                     </div>
                   ))}
+                </div>
+              ) : modalError ? (
+                <div className="px-5 py-8 text-center">
+                  <p className="text-body-sm font-medium text-red-600">{modalError}</p>
+                  <p className="mt-1 text-caption text-ink-muted">Check the browser console for details.</p>
                 </div>
               ) : modalList.length === 0 ? (
                 <div className="px-5 py-10 text-center">
