@@ -1,10 +1,43 @@
 'use client';
 
 import { useEffect, useState, FormEvent } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { timeAgo } from '@/lib/format';
+import { cn } from '@/lib/utils';
+import {
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  EmptyState,
+  Input,
+  Skeleton,
+} from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+
+const NAV_ITEMS = [
+  { href: '/feed', label: 'Feed', icon: 'M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 01.778-.332 48.294 48.294 0 005.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z' },
+  { href: '/profile', label: 'Profile', icon: 'M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z' },
+  { href: '/messages', label: 'Messages', icon: 'M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z' },
+  { href: '/news', label: 'News', icon: 'M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 01-2.25 2.25M16.5 7.5V18a2.25 2.25 0 002.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 002.25 2.25h13.5M6 7.5h3v3H6v-3z' },
+];
+
+const SUGGESTIONS = [
+  { name: 'Amina Hassan', department: 'Computer Science', matric: 'UG21/CS/1042' },
+  { name: 'Ibrahim Musa', department: 'Electrical Engineering', matric: 'UG22/EE/2011' },
+  { name: 'Fatima Bello', department: 'Medicine & Surgery', matric: 'UG20/MB/3088' },
+];
+
+const TRENDING = [
+  { tag: '#ABUFreshers', posts: '128 posts' },
+  { tag: '#ExamSeason', posts: '94 posts' },
+  { tag: '#ZariaLife', posts: '76 posts' },
+  { tag: '#ABUSports', posts: '52 posts' },
+];
 
 interface Post {
   id: number;
@@ -20,25 +53,68 @@ interface Post {
   author_matric: string;
 }
 
-function timeAgo(dateString: string) {
-  const seconds = Math.floor((Date.now() - new Date(dateString).getTime()) / 1000);
-  if (seconds < 60) return 'just now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(dateString).toLocaleDateString();
+function PostSkeleton() {
+  return (
+    <Card>
+      <CardContent className="p-5">
+        <div className="flex gap-3">
+          <Skeleton className="h-10 w-10 shrink-0" rounded="full" />
+          <div className="flex-1 space-y-3">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-16 w-full" />
+            <div className="flex gap-4 pt-2">
+              <Skeleton className="h-4 w-12" />
+              <Skeleton className="h-4 w-12" />
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
-function getInitials(name: string) {
-  return name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
+function SidebarProfile({ user, postCount }: { user: NonNullable<ReturnType<typeof useAuth>['user']>; postCount: number }) {
+  return (
+    <Card>
+      <CardContent className="p-5">
+        <div className="flex flex-col items-center text-center">
+          <Avatar src={user.profile_photo_url} name={user.full_name} size="xl" />
+          <h3 className="mt-3 font-semibold text-ink">{user.full_name}</h3>
+          <p className="text-caption text-ink-muted">{user.matric_number}</p>
+          <Badge variant="brand" className="mt-2">{user.department}</Badge>
+        </div>
+        <div className="mt-5 grid grid-cols-3 divide-x divide-border rounded-xl border border-border bg-surface-muted py-3">
+          <div className="text-center">
+            <p className="font-semibold text-ink">{postCount}</p>
+            <p className="text-caption text-ink-muted">Posts</p>
+          </div>
+          <div className="text-center">
+            <p className="font-semibold text-ink">—</p>
+            <p className="text-caption text-ink-muted">Followers</p>
+          </div>
+          <div className="text-center">
+            <p className="font-semibold text-ink">—</p>
+            <p className="text-caption text-ink-muted">Following</p>
+          </div>
+        </div>
+        <nav className="mt-5 space-y-1">
+          {NAV_ITEMS.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-body-sm font-medium text-ink-secondary transition hover:bg-brand-50 hover:text-brand-700"
+            >
+              <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
+              </svg>
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function FeedPage() {
@@ -53,9 +129,7 @@ export default function FeedPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!authLoading && !token) {
-      router.push('/login');
-    }
+    if (!authLoading && !token) router.push('/login');
   }, [authLoading, token, router]);
 
   const fetchPosts = async () => {
@@ -82,14 +156,10 @@ export default function FeedPage() {
     if (!newPost.trim() || !token) return;
     setPosting(true);
     setError('');
-
     try {
       const res = await fetch(`${API_URL}/api/posts`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ content: newPost }),
       });
       if (!res.ok) throw new Error('Failed to create post');
@@ -125,10 +195,7 @@ export default function FeedPage() {
     try {
       const res = await fetch(`${API_URL}/api/posts/${postId}/comments`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ content: commentText }),
       });
       if (res.ok) {
@@ -153,147 +220,223 @@ export default function FeedPage() {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.ok) {
-        setPosts((prev) => prev.filter((p) => p.id !== postId));
-      }
+      if (res.ok) setPosts((prev) => prev.filter((p) => p.id !== postId));
     } catch {
       setError('Failed to delete post');
     }
   };
 
+  const userPostCount = posts.filter((p) => p.user_id === user?.id).length;
+
   if (authLoading || !user) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-gray-400">Loading...</div>
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <div className="grid gap-6 lg:grid-cols-12">
+          <div className="hidden lg:col-span-3 lg:block"><PostSkeleton /></div>
+          <div className="lg:col-span-6 space-y-4">
+            <PostSkeleton />
+            <PostSkeleton />
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
-      {error && (
-        <div className="p-3 bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg">
-          {error}
-        </div>
-      )}
-
-      {/* Create Post */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-        <div className="flex gap-3">
-          <div className="w-10 h-10 rounded-full bg-[#16a34a] text-white flex items-center justify-center text-sm font-semibold shrink-0">
-            {getInitials(user.full_name)}
+    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+        {/* Left sidebar */}
+        <aside className="hidden lg:col-span-3 lg:block">
+          <div className="sticky top-20">
+            <SidebarProfile user={user} postCount={userPostCount} />
           </div>
-          <form onSubmit={handleCreatePost} className="flex-1">
-            <textarea
-              value={newPost}
-              onChange={(e) => setNewPost(e.target.value)}
-              placeholder="What's on your mind?"
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg resize-none focus:ring-2 focus:ring-[#16a34a] focus:border-transparent outline-none text-gray-800 placeholder:text-gray-400"
-            />
-            <div className="flex justify-end mt-2">
-              <button
-                type="submit"
-                disabled={posting || !newPost.trim()}
-                className="px-5 py-1.5 bg-[#16a34a] hover:bg-green-700 text-white text-sm font-medium rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {posting ? 'Posting...' : 'Post'}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
+        </aside>
 
-      {/* Feed */}
-      {loading ? (
-        <div className="text-center py-12 text-gray-400">Loading feed...</div>
-      ) : posts.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-gray-500 text-lg">No posts yet</p>
-          <p className="text-gray-400 text-sm mt-1">Be the first to share something!</p>
-        </div>
-      ) : (
-        posts.map((post) => (
-          <article
-            key={post.id}
-            className="bg-white rounded-xl border border-gray-200 shadow-sm p-4"
-          >
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-full bg-green-100 text-[#16a34a] flex items-center justify-center text-sm font-semibold shrink-0">
-                {getInitials(post.author_name)}
+        {/* Center feed */}
+        <div className="lg:col-span-6 space-y-4">
+          {/* Mobile profile strip */}
+          <Card className="lg:hidden">
+            <CardContent className="flex items-center gap-3 p-4">
+              <Avatar src={user.profile_photo_url} name={user.full_name} size="md" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-semibold text-ink">{user.full_name}</p>
+                <p className="text-caption text-ink-muted">{user.matric_number}</p>
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-semibold text-gray-900 text-sm">{post.author_name}</p>
-                    <p className="text-xs text-gray-500">
-                      {post.author_department} · {timeAgo(post.created_at)}
-                    </p>
-                  </div>
-                  {post.user_id === user.id && (
-                    <button
-                      onClick={() => handleDelete(post.id)}
-                      className="text-xs text-gray-400 hover:text-red-500 transition"
-                    >
-                      Delete
-                    </button>
-                  )}
-                </div>
+              <Badge variant="brand">{user.department}</Badge>
+            </CardContent>
+          </Card>
 
-                <p className="mt-3 text-gray-800 whitespace-pre-wrap">{post.content}</p>
+          {error && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-body-sm text-red-600">
+              {error}
+            </div>
+          )}
 
-                {post.image_url && (
-                  <img
-                    src={post.image_url}
-                    alt="Post image"
-                    className="mt-3 rounded-lg max-h-80 w-full object-cover"
-                  />
-                )}
-
-                <div className="flex items-center gap-6 mt-4 pt-3 border-t border-gray-100">
-                  <button
-                    onClick={() => handleLike(post.id)}
-                    className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#16a34a] transition"
-                  >
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
-                    </svg>
-                    {post.likes_count}
-                  </button>
-                  <button
-                    onClick={() => setCommentingId(commentingId === post.id ? null : post.id)}
-                    className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#16a34a] transition"
-                  >
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.74 1.676v2.954a.75.75 0 01-1.088.67L6.19 21.1a.75.75 0 01-.365-.633v-1.44C3.512 17.962 3 15.075 3 12z" />
-                    </svg>
-                    {post.comments_count}
-                  </button>
-                </div>
-
-                {commentingId === post.id && (
-                  <div className="mt-3 flex gap-2">
-                    <input
-                      type="text"
-                      value={commentText}
-                      onChange={(e) => setCommentText(e.target.value)}
-                      placeholder="Write a comment..."
-                      className="flex-1 px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#16a34a] focus:border-transparent outline-none"
-                      onKeyDown={(e) => e.key === 'Enter' && handleComment(post.id)}
+          {/* Composer */}
+          <Card>
+            <CardContent className="p-5">
+              <form onSubmit={handleCreatePost}>
+                <div className="flex gap-3">
+                  <Avatar src={user.profile_photo_url} name={user.full_name} size="md" className="mt-1" />
+                  <div className="flex-1">
+                    <textarea
+                      value={newPost}
+                      onChange={(e) => setNewPost(e.target.value)}
+                      placeholder="What's happening on campus?"
+                      rows={3}
+                      className={cn(
+                        'w-full resize-none rounded-xl border border-border bg-white px-4 py-3',
+                        'text-body-sm text-ink placeholder:text-ink-muted',
+                        'focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20'
+                      )}
                     />
-                    <button
-                      onClick={() => handleComment(post.id)}
-                      className="px-3 py-1.5 bg-[#16a34a] text-white text-sm rounded-lg hover:bg-green-700 transition"
-                    >
-                      Reply
-                    </button>
+                    <div className="mt-3 flex justify-end">
+                      <Button type="submit" disabled={posting || !newPost.trim()} loading={posting}>
+                        Post
+                      </Button>
+                    </div>
                   </div>
-                )}
-              </div>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+
+          {/* Posts */}
+          {loading ? (
+            <div className="space-y-4">
+              <PostSkeleton />
+              <PostSkeleton />
+              <PostSkeleton />
             </div>
-          </article>
-        ))
-      )}
+          ) : posts.length === 0 ? (
+            <Card>
+              <EmptyState
+                title="No posts yet"
+                description="Be the first to share something with the ABU community!"
+                icon={
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 01.778-.332 48.294 48.294 0 005.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+                  </svg>
+                }
+              />
+            </Card>
+          ) : (
+            posts.map((post) => (
+              <Card key={post.id} className="overflow-hidden">
+                <CardContent className="p-5">
+                  <div className="flex gap-3">
+                    <Avatar src={post.author_photo} name={post.author_name} size="md" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-semibold text-ink">{post.author_name}</p>
+                          <p className="text-caption text-ink-muted">
+                            {post.author_department} · {timeAgo(post.created_at)}
+                          </p>
+                        </div>
+                        {post.user_id === user.id && (
+                          <Button variant="ghost" size="sm" onClick={() => handleDelete(post.id)} className="text-ink-muted hover:text-red-600">
+                            Delete
+                          </Button>
+                        )}
+                      </div>
+
+                      <p className="mt-3 whitespace-pre-wrap text-body-sm text-ink leading-relaxed">
+                        {post.content}
+                      </p>
+
+                      {post.image_url && (
+                        <img
+                          src={post.image_url}
+                          alt="Post"
+                          className="mt-3 max-h-80 w-full rounded-xl object-cover"
+                        />
+                      )}
+
+                      <div className="mt-4 flex items-center gap-6 border-t border-border pt-3">
+                        <button
+                          type="button"
+                          onClick={() => handleLike(post.id)}
+                          className="flex items-center gap-1.5 text-body-sm text-ink-secondary transition hover:text-brand-600"
+                        >
+                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
+                          </svg>
+                          {post.likes_count}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCommentingId(commentingId === post.id ? null : post.id)}
+                          className="flex items-center gap-1.5 text-body-sm text-ink-secondary transition hover:text-brand-600"
+                        >
+                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.74 1.676v2.954a.75.75 0 01-1.088.67L6.19 21.1a.75.75 0 01-.365-.633v-1.44C3.512 17.962 3 15.075 3 12z" />
+                          </svg>
+                          {post.comments_count}
+                        </button>
+                      </div>
+
+                      {commentingId === post.id && (
+                        <div className="mt-3 flex gap-2">
+                          <Input
+                            value={commentText}
+                            onChange={(e) => setCommentText(e.target.value)}
+                            placeholder="Write a comment..."
+                            onKeyDown={(e) => e.key === 'Enter' && handleComment(post.id)}
+                            className="flex-1"
+                          />
+                          <Button onClick={() => handleComment(post.id)} size="md">
+                            Reply
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+
+        {/* Right sidebar */}
+        <aside className="hidden xl:col-span-3 xl:block">
+          <div className="sticky top-20 space-y-4">
+            <Card>
+              <CardContent className="p-5">
+                <h3 className="font-semibold text-ink">Who to follow</h3>
+                <div className="mt-4 space-y-4">
+                  {SUGGESTIONS.map((person) => (
+                    <div key={person.matric} className="flex items-center gap-3">
+                      <Avatar name={person.name} size="md" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-body-sm font-medium text-ink">{person.name}</p>
+                        <p className="truncate text-caption text-ink-muted">{person.department}</p>
+                      </div>
+                      <Button variant="outline" size="sm">Follow</Button>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-5">
+                <h3 className="font-semibold text-ink">Trending on campus</h3>
+                <div className="mt-4 space-y-3">
+                  {TRENDING.map((topic) => (
+                    <div key={topic.tag} className="group cursor-pointer rounded-xl px-2 py-1.5 transition hover:bg-surface-muted">
+                      <p className="text-body-sm font-medium text-brand-600 group-hover:text-brand-700">
+                        {topic.tag}
+                      </p>
+                      <p className="text-caption text-ink-muted">{topic.posts}</p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }
