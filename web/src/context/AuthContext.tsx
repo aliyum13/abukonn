@@ -48,10 +48,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const storedUser = localStorage.getItem('abukonn_user');
 
     if (storedToken && storedUser) {
+      // Set cached data immediately so the UI isn't blank
       setToken(storedToken);
       setUser(JSON.parse(storedUser));
+
+      // Refresh from API to pick up any server-side changes (e.g. is_admin)
+      fetch(`${API_URL}/api/users/me`, {
+        headers: { Authorization: `Bearer ${storedToken}` },
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (data?.user) {
+            localStorage.setItem('abukonn_user', JSON.stringify(data.user));
+            setUser(data.user);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setLoading(false));
+    } else {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
   const persistAuth = (newToken: string, newUser: User) => {

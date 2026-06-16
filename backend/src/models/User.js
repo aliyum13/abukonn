@@ -67,7 +67,7 @@ async function updateProfile(id, { bio, department, level }) {
          department = COALESCE($3, department),
          level = COALESCE($4, level)
      WHERE id = $1
-     RETURNING id, matric_number, full_name, email, department, level, profile_photo_url, bio, created_at`,
+     RETURNING id, matric_number, full_name, email, department, level, profile_photo_url, bio, is_admin, created_at`,
     [id, bio ?? null, department ?? null, level ?? null]
   );
   return result.rows[0] || null;
@@ -77,7 +77,7 @@ async function updateProfilePhoto(id, photoUrl) {
   const result = await pool.query(
     `UPDATE abukonn.users SET profile_photo_url = $2
      WHERE id = $1
-     RETURNING id, matric_number, full_name, email, department, level, profile_photo_url, bio, created_at`,
+     RETURNING id, matric_number, full_name, email, department, level, profile_photo_url, bio, is_admin, created_at`,
     [id, photoUrl]
   );
   return result.rows[0] || null;
@@ -87,7 +87,7 @@ async function createUser({ matricNumber, fullName, email, department, level, pa
   const result = await pool.query(
     `INSERT INTO abukonn.users (matric_number, full_name, email, department, level, password_hash)
      VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id, matric_number, full_name, email, department, level, profile_photo_url, bio, created_at`,
+     RETURNING id, matric_number, full_name, email, department, level, profile_photo_url, bio, is_admin, created_at`,
     [matricNumber, fullName, email, department, level, passwordHash]
   );
   return result.rows[0];
