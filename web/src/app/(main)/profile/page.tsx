@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useState, FormEvent, useRef } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { timeAgo } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { useFollow } from '@/hooks/useFollow';
 import {
   Avatar,
   Badge,
@@ -37,6 +39,17 @@ interface ProfilePost {
   comments_count: number;
   created_at: string;
 }
+
+interface FollowUser {
+  id: number;
+  full_name: string;
+  matric_number: string;
+  department: string;
+  level: string;
+  profile_photo_url: string | null;
+}
+
+type ModalType = 'none' | 'followers' | 'following';
 
 function ProfileSkeleton() {
   return (
@@ -71,6 +84,15 @@ export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState<'posts'>('posts');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Follow stats
+  const [followersCount, setFollowersCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+
+  // Followers/following modal
+  const [modalType, setModalType] = useState<ModalType>('none');
+  const [modalList, setModalList] = useState<FollowUser[]>([]);
+  const [modalLoading, setModalLoading] = useState(false);
+
   useEffect(() => {
     if (!authLoading && !token) router.push('/login');
   }, [authLoading, token, router]);
@@ -94,6 +116,39 @@ export default function ProfilePage() {
       .catch(() => setError('Failed to load profile'))
       .finally(() => setLoading(false));
   }, [token]);
+
+  // Fetch follow stats separately
+  useEffect(() => {
+    if (!token || !user) return;
+    fetch(`${API_URL}/api/follows/${user.id}/stats`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        setFollowersCount(d.followers_count ?? 0);
+        setFollowingCount(d.following_count ?? 0);
+      })
+      .catch(() => {});
+  }, [token, user]);
+
+  const openModal = async (type: 'followers' | 'following') => {
+    setModalType(type);
+    setModalLoading(true);
+    setModalList([]);
+    try {
+      const endpoint =
+        type === 'followers' ? '/api/follows/followers' : '/api/follows/following';
+      const res = await fetch(`${API_URL}${endpoint}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setModalList(data[type] ?? []);
+    } catch {
+      // silent
+    } finally {
+      setModalLoading(false);
+    }
+  };
 
   const handleSave = async (e: FormEvent) => {
     e.preventDefault();
@@ -237,14 +292,22 @@ export default function ProfilePage() {
               <p className="text-lg font-bold text-ink">{posts.length}</p>
               <p className="text-caption text-ink-muted">Posts</p>
             </div>
-            <div className="py-4 text-center">
-              <p className="text-lg font-bold text-ink">—</p>
+            <button
+              type="button"
+              onClick={() => openModal('followers')}
+              className="py-4 text-center transition hover:bg-surface-subtle"
+            >
+              <p className="text-lg font-bold text-ink">{followersCount}</p>
               <p className="text-caption text-ink-muted">Followers</p>
-            </div>
-            <div className="py-4 text-center">
-              <p className="text-lg font-bold text-ink">—</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => openModal('following')}
+              className="py-4 text-center transition hover:bg-surface-subtle"
+            >
+              <p className="text-lg font-bold text-ink">{followingCount}</p>
               <p className="text-caption text-ink-muted">Following</p>
-            </div>
+            </button>
           </div>
 
           {editing && (
@@ -288,6 +351,66 @@ export default function ProfilePage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Followers / Following modal */}
+      {modalType !== 'none' && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setModalType('none')}
+        >
+          <div
+            className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <h2 className="font-semibold text-ink capitalize">
+                {modalType} ({modalType === 'followers' ? followersCount : followingCount})
+              </h2>
+              <button
+                type="button"
+                onClick={() => setModalType('none')}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted transition hover:bg-surface-subtle hover:text-ink"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="max-h-80 overflow-y-auto">
+              {modalLoading ? (
+                <div className="space-y-0">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="flex items-center gap-3 px-5 py-3">
+                      <Skeleton className="h-10 w-10 shrink-0" rounded="full" />
+                      <div className="flex-1 space-y-1.5">
+                        <Skeleton className="h-4 w-32" />
+                        <Skeleton className="h-3 w-24" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : modalList.length === 0 ? (
+                <div className="px-5 py-10 text-center">
+                  <p className="text-body-sm text-ink-muted">
+                    {modalType === 'followers'
+                      ? 'No followers yet'
+                      : "You're not following anyone yet"}
+                  </p>
+                </div>
+              ) : (
+                modalList.map((u) => (
+                  <ModalUserRow
+                    key={u.id}
+                    user={u}
+                    token={token}
+                    onNavigate={() => setModalType('none')}
+                  />
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Posts tab */}
       <div className="mt-6">
@@ -349,6 +472,45 @@ export default function ProfilePage() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function ModalUserRow({
+  user,
+  token,
+  onNavigate,
+}: {
+  user: FollowUser;
+  token: string | null;
+  onNavigate: () => void;
+}) {
+  const { isFollowing, loading, toggle } = useFollow(user.id, false, 0, token);
+
+  return (
+    <div className="flex items-center gap-3 px-5 py-3 hover:bg-surface-muted transition">
+      <Link href={`/profile/${user.id}`} onClick={onNavigate}>
+        <Avatar src={user.profile_photo_url} name={user.full_name} size="md" />
+      </Link>
+      <div className="min-w-0 flex-1">
+        <Link
+          href={`/profile/${user.id}`}
+          onClick={onNavigate}
+          className="block truncate font-medium text-ink hover:text-brand-600"
+        >
+          {user.full_name}
+        </Link>
+        <p className="truncate text-caption text-ink-muted">{user.department}</p>
+      </div>
+      <Button
+        variant={isFollowing ? 'outline' : 'primary'}
+        size="sm"
+        onClick={toggle}
+        loading={loading}
+        className={`shrink-0 min-w-[76px] ${isFollowing ? 'hover:border-red-300 hover:text-red-600' : ''}`}
+      >
+        {isFollowing ? 'Following' : 'Follow'}
+      </Button>
     </div>
   );
 }

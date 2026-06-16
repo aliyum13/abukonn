@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { timeAgo, excerpt } from '@/lib/format';
+import { timeAgo } from '@/lib/format';
+import { useFollow } from '@/hooks/useFollow';
 import {
   Avatar,
   Badge,
@@ -26,6 +27,7 @@ interface SearchUser {
   department: string;
   level: string;
   profile_photo_url: string | null;
+  is_following: boolean;
 }
 
 interface SearchPost {
@@ -85,16 +87,19 @@ function PostCardSkeleton() {
   );
 }
 
-function UserCard({ user }: { user: SearchUser }) {
+function UserCard({ user, token }: { user: SearchUser; token: string | null }) {
+  const { isFollowing, loading, toggle } = useFollow(
+    user.id,
+    user.is_following,
+    0,
+    token
+  );
+
   return (
     <Card className="transition hover:shadow-md">
       <CardContent className="flex items-center gap-4 p-5">
         <Link href={`/profile/${user.id}`}>
-          <Avatar
-            src={user.profile_photo_url}
-            name={user.full_name}
-            size="lg"
-          />
+          <Avatar src={user.profile_photo_url} name={user.full_name} size="lg" />
         </Link>
         <div className="min-w-0 flex-1">
           <Link
@@ -109,8 +114,14 @@ function UserCard({ user }: { user: SearchUser }) {
             <Badge variant="default">{user.level}</Badge>
           </div>
         </div>
-        <Button variant="outline" size="sm" className="shrink-0">
-          Follow
+        <Button
+          variant={isFollowing ? 'outline' : 'primary'}
+          size="sm"
+          className={`shrink-0 min-w-[80px] ${isFollowing ? 'hover:border-red-300 hover:text-red-600' : ''}`}
+          onClick={toggle}
+          loading={loading}
+        >
+          {isFollowing ? 'Following' : 'Follow'}
         </Button>
       </CardContent>
     </Card>
@@ -314,7 +325,7 @@ function SearchResults() {
                   )}
                   <div className="space-y-3">
                     {filteredUsers.map((u) => (
-                      <UserCard key={u.id} user={u} />
+                      <UserCard key={u.id} user={u} token={token} />
                     ))}
                   </div>
                 </section>

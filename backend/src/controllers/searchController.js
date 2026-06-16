@@ -16,12 +16,16 @@ async function search(req, res) {
 
     if (type === 'users' || type === 'all') {
       const result = await pool.query(
-        `SELECT id, full_name, matric_number, department, level, profile_photo_url
-         FROM abukonn.users
-         WHERE full_name ILIKE $1 OR matric_number ILIKE $1 OR department ILIKE $1
-         ORDER BY full_name
+        `SELECT u.id, u.full_name, u.matric_number, u.department, u.level, u.profile_photo_url,
+                EXISTS(
+                  SELECT 1 FROM abukonn.follows f
+                  WHERE f.follower_id = $2 AND f.following_id = u.id
+                ) AS is_following
+         FROM abukonn.users u
+         WHERE u.full_name ILIKE $1 OR u.matric_number ILIKE $1 OR u.department ILIKE $1
+         ORDER BY u.full_name
          LIMIT 10`,
-        [term]
+        [term, req.user.id]
       );
       users = result.rows;
     }

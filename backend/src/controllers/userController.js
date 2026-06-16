@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const Post = require('../models/Post');
+const Follow = require('../models/Follow');
 const cloudinary = require('../config/cloudinary');
 
 function uploadBufferToCloudinary(buffer, mimetype) {
@@ -38,10 +39,19 @@ async function getUserById(req, res) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    const posts = await Post.getPostsByUserId(userId);
+    const [posts, stats, following] = await Promise.all([
+      Post.getPostsByUserId(userId),
+      Follow.getStats(userId),
+      Follow.isFollowing(req.user.id, userId),
+    ]);
 
     res.json({
-      user: User.toPublicUser(user),
+      user: {
+        ...User.toPublicUser(user),
+        followers_count: stats.followers_count,
+        following_count: stats.following_count,
+        is_following: following,
+      },
       posts,
     });
   } catch (err) {

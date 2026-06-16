@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { timeAgo } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { useFollow } from '@/hooks/useFollow';
 import {
   Avatar,
   Badge,
@@ -26,11 +27,14 @@ const NAV_ITEMS = [
   { href: '/news', label: 'News', icon: 'M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 01-2.25 2.25M16.5 7.5V18a2.25 2.25 0 002.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 002.25 2.25h13.5M6 7.5h3v3H6v-3z' },
 ];
 
-const SUGGESTIONS = [
-  { name: 'Amina Hassan', department: 'Computer Science', matric: 'UG21/CS/1042' },
-  { name: 'Ibrahim Musa', department: 'Electrical Engineering', matric: 'UG22/EE/2011' },
-  { name: 'Fatima Bello', department: 'Medicine & Surgery', matric: 'UG20/MB/3088' },
-];
+interface SuggestedUser {
+  id: number;
+  full_name: string;
+  matric_number: string;
+  department: string;
+  level: string;
+  profile_photo_url: string | null;
+}
 
 const TRENDING = [
   { tag: '#ABUFreshers', posts: '128 posts' },
@@ -228,6 +232,21 @@ export default function FeedPage() {
 
   const userPostCount = posts.filter((p) => p.user_id === user?.id).length;
 
+  const [suggestions, setSuggestions] = useState<SuggestedUser[]>([]);
+
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${API_URL}/api/follows/suggestions`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((d) => setSuggestions(d.suggestions ?? []))
+      .catch(() => {});
+  }, [token]);
+
+  const removeSuggestion = (userId: number) =>
+    setSuggestions((prev) => prev.filter((s) => s.id !== userId));
+
   if (authLoading || !user) {
     return (
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -401,23 +420,23 @@ export default function FeedPage() {
         {/* Right sidebar */}
         <aside className="hidden xl:col-span-3 xl:block">
           <div className="sticky top-20 space-y-4">
-            <Card>
-              <CardContent className="p-5">
-                <h3 className="font-semibold text-ink">Who to follow</h3>
-                <div className="mt-4 space-y-4">
-                  {SUGGESTIONS.map((person) => (
-                    <div key={person.matric} className="flex items-center gap-3">
-                      <Avatar name={person.name} size="md" />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-body-sm font-medium text-ink">{person.name}</p>
-                        <p className="truncate text-caption text-ink-muted">{person.department}</p>
-                      </div>
-                      <Button variant="outline" size="sm">Follow</Button>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+            {suggestions.length > 0 && (
+              <Card>
+                <CardContent className="p-5">
+                  <h3 className="font-semibold text-ink">Who to follow</h3>
+                  <div className="mt-4 space-y-4">
+                    {suggestions.map((person) => (
+                      <SuggestionRow
+                        key={person.id}
+                        user={person}
+                        token={token}
+                        onFollowed={removeSuggestion}
+                      />
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             <Card>
               <CardContent className="p-5">
@@ -437,6 +456,49 @@ export default function FeedPage() {
           </div>
         </aside>
       </div>
+    </div>
+  );
+}
+
+function SuggestionRow({
+  user,
+  token,
+  onFollowed,
+}: {
+  user: SuggestedUser;
+  token: string | null;
+  onFollowed: (userId: number) => void;
+}) {
+  const { isFollowing, loading, toggle } = useFollow(user.id, false, 0, token);
+
+  const handleClick = async () => {
+    await toggle();
+    // Remove from suggestions after a short delay so the button state is visible
+    setTimeout(() => onFollowed(user.id), 600);
+  };
+
+  return (
+    <div className="flex items-center gap-3">
+      <Link href={`/profile/${user.id}`}>
+        <Avatar src={user.profile_photo_url} name={user.full_name} size="md" />
+      </Link>
+      <div className="min-w-0 flex-1">
+        <Link
+          href={`/profile/${user.id}`}
+          className="block truncate text-body-sm font-medium text-ink hover:text-brand-600"
+        >
+          {user.full_name}
+        </Link>
+        <p className="truncate text-caption text-ink-muted">{user.department}</p>
+      </div>
+      <Button
+        variant={isFollowing ? 'secondary' : 'outline'}
+        size="sm"
+        onClick={handleClick}
+        loading={loading}
+      >
+        {isFollowing ? 'Following' : 'Follow'}
+      </Button>
     </div>
   );
 }
