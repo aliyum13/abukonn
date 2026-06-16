@@ -10,7 +10,7 @@ import { Button, Input } from '@/components/ui';
 export default function LoginPage() {
   const { login } = useAuth();
   const router = useRouter();
-  const [matricNumber, setMatricNumber] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -21,7 +21,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      await login(matricNumber, password);
+      await login(email, password);
       router.push('/feed');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
@@ -33,7 +33,7 @@ export default function LoginPage() {
   return (
     <AuthSplitLayout
       title="Welcome back"
-      subtitle="Sign in with your ABU matric number to continue."
+      subtitle="Sign in with your email address to continue."
     >
       {error && (
         <div
@@ -46,14 +46,14 @@ export default function LoginPage() {
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <Input
-          id="matric"
-          label="Matric Number"
-          type="text"
-          value={matricNumber}
-          onChange={(e) => setMatricNumber(e.target.value)}
-          placeholder="e.g. UG20/CS/1001"
+          id="email"
+          label="Email address"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="you@abu.edu.ng"
           required
-          autoComplete="username"
+          autoComplete="email"
         />
 
         <Input

@@ -11,6 +11,7 @@ export interface User {
   level: string;
   profile_photo_url: string | null;
   bio: string | null;
+  is_admin: boolean;
   created_at: string;
 }
 
@@ -18,7 +19,7 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   loading: boolean;
-  login: (matricNumber: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => void;
   updateUser: (user: User) => void;
@@ -60,11 +61,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(newUser);
   };
 
-  const login = async (matricNumber: string, password: string) => {
+  const login = async (email: string, password: string) => {
     const res = await fetch(`${API_URL}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ matric_number: matricNumber, password }),
+      body: JSON.stringify({ email, password }),
     });
 
     const data = await res.json();

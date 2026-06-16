@@ -90,13 +90,15 @@ export default function RegisterPage() {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input
-          id="matric"
-          label="Matric Number"
-          type="text"
-          value={form.matric_number}
-          onChange={(e) => handleChange('matric_number', e.target.value)}
-          placeholder="e.g. UG20/CS/1001"
+          id="email"
+          label="Email address"
+          type="email"
+          value={form.email}
+          onChange={(e) => handleChange('email', e.target.value)}
+          placeholder="you@abu.edu.ng"
           required
+          autoComplete="email"
+          hint="This will be your login email"
         />
 
         <Input
@@ -110,14 +112,14 @@ export default function RegisterPage() {
         />
 
         <Input
-          id="email"
-          label="Email"
-          type="email"
-          value={form.email}
-          onChange={(e) => handleChange('email', e.target.value)}
-          placeholder="you@abu.edu.ng"
+          id="matric"
+          label="Matric Number"
+          type="text"
+          value={form.matric_number}
+          onChange={(e) => handleChange('matric_number', e.target.value)}
+          placeholder="e.g. UG20/CS/1001"
           required
-          autoComplete="email"
+          hint="Used for your student profile, not for login"
         />
 
         <Select
