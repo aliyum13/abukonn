@@ -117,9 +117,9 @@ export default function ProfilePage() {
       .finally(() => setLoading(false));
   }, [token]);
 
-  // Fetch follow stats separately
+  // Fetch follow stats — depend on user.id (primitive) not the object
   useEffect(() => {
-    if (!token || !user) return;
+    if (!token || !user?.id) return;
     fetch(`${API_URL}/api/follows/${user.id}/stats`, {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -129,9 +129,11 @@ export default function ProfilePage() {
         setFollowingCount(d.following_count ?? 0);
       })
       .catch(() => {});
-  }, [token, user]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, user?.id]);
 
   const openModal = async (type: 'followers' | 'following') => {
+    if (!token) return;
     setModalType(type);
     setModalLoading(true);
     setModalList([]);
@@ -141,10 +143,12 @@ export default function ProfilePage() {
       const res = await fetch(`${API_URL}${endpoint}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
+      // followers endpoint → { followers: [] }, following endpoint → { following: [] }
       setModalList(data[type] ?? []);
     } catch {
-      // silent
+      setModalList([]);
     } finally {
       setModalLoading(false);
     }

@@ -78,7 +78,17 @@ function PostSkeleton() {
   );
 }
 
-function SidebarProfile({ user, postCount }: { user: NonNullable<ReturnType<typeof useAuth>['user']>; postCount: number }) {
+function SidebarProfile({
+  user,
+  postCount,
+  followersCount,
+  followingCount,
+}: {
+  user: NonNullable<ReturnType<typeof useAuth>['user']>;
+  postCount: number;
+  followersCount: number;
+  followingCount: number;
+}) {
   return (
     <Card>
       <CardContent className="p-5">
@@ -94,11 +104,11 @@ function SidebarProfile({ user, postCount }: { user: NonNullable<ReturnType<type
             <p className="text-caption text-ink-muted">Posts</p>
           </div>
           <div className="text-center">
-            <p className="font-semibold text-ink">—</p>
+            <p className="font-semibold text-ink">{followersCount}</p>
             <p className="text-caption text-ink-muted">Followers</p>
           </div>
           <div className="text-center">
-            <p className="font-semibold text-ink">—</p>
+            <p className="font-semibold text-ink">{followingCount}</p>
             <p className="text-caption text-ink-muted">Following</p>
           </div>
         </div>
@@ -233,6 +243,8 @@ export default function FeedPage() {
   const userPostCount = posts.filter((p) => p.user_id === user?.id).length;
 
   const [suggestions, setSuggestions] = useState<SuggestedUser[]>([]);
+  const [myFollowersCount, setMyFollowersCount] = useState(0);
+  const [myFollowingCount, setMyFollowingCount] = useState(0);
 
   useEffect(() => {
     if (!token) return;
@@ -243,6 +255,21 @@ export default function FeedPage() {
       .then((d) => setSuggestions(d.suggestions ?? []))
       .catch(() => {});
   }, [token]);
+
+  // Fetch own follower/following counts for the left sidebar
+  useEffect(() => {
+    if (!token || !user?.id) return;
+    fetch(`${API_URL}/api/follows/${user.id}/stats`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        setMyFollowersCount(d.followers_count ?? 0);
+        setMyFollowingCount(d.following_count ?? 0);
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, user?.id]);
 
   const removeSuggestion = (userId: number) =>
     setSuggestions((prev) => prev.filter((s) => s.id !== userId));
@@ -267,7 +294,12 @@ export default function FeedPage() {
         {/* Left sidebar */}
         <aside className="hidden lg:col-span-3 lg:block">
           <div className="sticky top-20">
-            <SidebarProfile user={user} postCount={userPostCount} />
+            <SidebarProfile
+              user={user}
+              postCount={userPostCount}
+              followersCount={myFollowersCount}
+              followingCount={myFollowingCount}
+            />
           </div>
         </aside>
 
