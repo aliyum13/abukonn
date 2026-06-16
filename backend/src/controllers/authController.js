@@ -4,7 +4,7 @@ const User = require('../models/User');
 
 function generateToken(user) {
   return jwt.sign(
-    { id: user.id, matric_number: user.matric_number },
+    { id: user.id, email: user.email, is_admin: user.is_admin || false },
     process.env.JWT_SECRET,
     { expiresIn: '7d' }
   );
@@ -22,14 +22,15 @@ async function register(req, res) {
       return res.status(400).json({ message: 'Password must be at least 6 characters' });
     }
 
+    // Email is the unique login identifier — check it first
+    const existingEmail = await User.findByEmail(email);
+    if (existingEmail) {
+      return res.status(409).json({ message: 'An account with this email already exists' });
+    }
+
     const existingMatric = await User.findByMatricNumber(matric_number);
     if (existingMatric) {
       return res.status(409).json({ message: 'Matric number already registered' });
-    }
-
-    const existingEmail = await User.findByEmail(email);
-    if (existingEmail) {
-      return res.status(409).json({ message: 'Email already registered' });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -57,20 +58,20 @@ async function register(req, res) {
 
 async function login(req, res) {
   try {
-    const { matric_number, password } = req.body;
+    const { email, password } = req.body;
 
-    if (!matric_number || !password) {
-      return res.status(400).json({ message: 'Matric number and password are required' });
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required' });
     }
 
-    const user = await User.findByMatricNumber(matric_number);
+    const user = await User.findByEmail(email);
     if (!user) {
-      return res.status(401).json({ message: 'Invalid matric number or password' });
+      return res.status(401).json({ message: 'Invalid email or password' });
     }
 
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
-      return res.status(401).json({ message: 'Invalid matric number or password' });
+      return res.status(401).json({ message: 'Invalid email or password' });
     }
 
     const token = generateToken(user);

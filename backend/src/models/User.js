@@ -13,8 +13,21 @@ CREATE TABLE IF NOT EXISTS abukonn.users (
   password_hash VARCHAR(255) NOT NULL,
   profile_photo_url TEXT,
   bio TEXT,
+  is_admin BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'users_email_unique' AND conrelid = 'abukonn.users'::regclass
+  ) THEN
+    ALTER TABLE abukonn.users ADD CONSTRAINT users_email_unique UNIQUE (email);
+  END IF;
+END $$;
 `;
 
 async function createUsersTable() {
@@ -40,7 +53,7 @@ async function findByEmail(email) {
 
 async function findById(id) {
   const result = await pool.query(
-    `SELECT id, matric_number, full_name, email, department, level, profile_photo_url, bio, created_at
+    `SELECT id, matric_number, full_name, email, department, level, profile_photo_url, bio, is_admin, created_at
      FROM abukonn.users WHERE id = $1`,
     [id]
   );
@@ -90,6 +103,7 @@ function toPublicUser(user) {
     level: user.level,
     profile_photo_url: user.profile_photo_url,
     bio: user.bio,
+    is_admin: user.is_admin || false,
     created_at: user.created_at,
   };
 }

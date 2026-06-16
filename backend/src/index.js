@@ -17,6 +17,8 @@ const { createPostsTable } = require('./models/Post');
 const { createCommentsTable } = require('./models/Comment');
 const { createNewsTable } = require('./models/News');
 const { createMessagesTables } = require('./models/Message');
+const { createWhitelistTable } = require('./models/Whitelist');
+const adminRoutes = require('./routes/admin');
 
 const app = express();
 const server = http.createServer(app);
@@ -62,6 +64,7 @@ app.use('/api/posts', postRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/news', newsRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Test route
 app.get('/', (req, res) => {
@@ -75,6 +78,7 @@ createUsersTable()
   .then(() => createCommentsTable())
   .then(() => createNewsTable())
   .then(() => createMessagesTables())
+  .then(() => createWhitelistTable())
   .then(() => {
     server.listen(PORT, () => {
       console.log(`ABUkonn server running on port ${PORT}`);
