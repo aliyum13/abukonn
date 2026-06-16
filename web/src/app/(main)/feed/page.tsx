@@ -36,6 +36,17 @@ interface SuggestedUser {
   profile_photo_url: string | null;
 }
 
+interface FollowUser {
+  id: number;
+  full_name: string;
+  matric_number: string;
+  department: string;
+  level: string;
+  profile_photo_url: string | null;
+}
+
+type FollowModalType = 'none' | 'followers' | 'following';
+
 const TRENDING = [
   { tag: '#ABUFreshers', posts: '128 posts' },
   { tag: '#ExamSeason', posts: '94 posts' },
@@ -83,51 +94,198 @@ function SidebarProfile({
   postCount,
   followersCount,
   followingCount,
+  token,
 }: {
   user: NonNullable<ReturnType<typeof useAuth>['user']>;
   postCount: number;
   followersCount: number;
   followingCount: number;
+  token: string | null;
 }) {
+  const [modalType, setModalType] = useState<FollowModalType>('none');
+  const [modalList, setModalList] = useState<FollowUser[]>([]);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [modalError, setModalError] = useState('');
+
+  const closeModal = () => { setModalType('none'); setModalError(''); };
+
+  const openModal = async (type: 'followers' | 'following') => {
+    if (!token) return;
+    setModalType(type);
+    setModalLoading(true);
+    setModalList([]);
+    setModalError('');
+    try {
+      const endpoint =
+        type === 'followers'
+          ? `/api/follows/${user.id}/followers`
+          : `/api/follows/${user.id}/following`;
+      const res = await fetch(`${API_URL}${endpoint}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setModalError(data.message || 'Failed to load list');
+        return;
+      }
+      setModalList(data[type] ?? []);
+    } catch {
+      setModalError('Network error — could not load list');
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
   return (
-    <Card>
-      <CardContent className="p-5">
-        <div className="flex flex-col items-center text-center">
-          <Avatar src={user.profile_photo_url} name={user.full_name} size="xl" />
-          <h3 className="mt-3 font-semibold text-ink">{user.full_name}</h3>
-          <p className="text-caption text-ink-muted">{user.matric_number}</p>
-          <Badge variant="brand" className="mt-2">{user.department}</Badge>
-        </div>
-        <div className="mt-5 grid grid-cols-3 divide-x divide-border rounded-xl border border-border bg-surface-muted py-3">
-          <div className="text-center">
-            <p className="font-semibold text-ink">{postCount}</p>
-            <p className="text-caption text-ink-muted">Posts</p>
+    <>
+      <Card>
+        <CardContent className="p-5">
+          <div className="flex flex-col items-center text-center">
+            <Avatar src={user.profile_photo_url} name={user.full_name} size="xl" />
+            <h3 className="mt-3 font-semibold text-ink">{user.full_name}</h3>
+            <p className="text-caption text-ink-muted">{user.matric_number}</p>
+            <Badge variant="brand" className="mt-2">{user.department}</Badge>
           </div>
-          <div className="text-center">
-            <p className="font-semibold text-ink">{followersCount}</p>
-            <p className="text-caption text-ink-muted">Followers</p>
-          </div>
-          <div className="text-center">
-            <p className="font-semibold text-ink">{followingCount}</p>
-            <p className="text-caption text-ink-muted">Following</p>
-          </div>
-        </div>
-        <nav className="mt-5 space-y-1">
-          {NAV_ITEMS.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-body-sm font-medium text-ink-secondary transition hover:bg-brand-50 hover:text-brand-700"
+          <div className="mt-5 grid grid-cols-3 divide-x divide-border rounded-xl border border-border bg-surface-muted py-3">
+            <div className="text-center">
+              <p className="font-semibold text-ink">{postCount}</p>
+              <p className="text-caption text-ink-muted">Posts</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => openModal('followers')}
+              className="text-center transition hover:bg-surface-subtle"
             >
-              <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
-              </svg>
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-      </CardContent>
-    </Card>
+              <p className="font-semibold text-ink">{followersCount}</p>
+              <p className="text-caption text-ink-muted">Followers</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => openModal('following')}
+              className="text-center transition hover:bg-surface-subtle"
+            >
+              <p className="font-semibold text-ink">{followingCount}</p>
+              <p className="text-caption text-ink-muted">Following</p>
+            </button>
+          </div>
+          <nav className="mt-5 space-y-1">
+            {NAV_ITEMS.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-body-sm font-medium text-ink-secondary transition hover:bg-brand-50 hover:text-brand-700"
+              >
+                <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
+                </svg>
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+        </CardContent>
+      </Card>
+
+      {/* Followers / Following modal */}
+      {modalType !== 'none' && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={closeModal}
+        >
+          <div
+            className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <h2 className="font-semibold text-ink capitalize">
+                {modalType} ({modalType === 'followers' ? followersCount : followingCount})
+              </h2>
+              <button
+                type="button"
+                onClick={closeModal}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted transition hover:bg-surface-subtle hover:text-ink"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="max-h-80 overflow-y-auto">
+              {modalLoading ? (
+                <div className="space-y-0">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="flex items-center gap-3 px-5 py-3">
+                      <Skeleton className="h-10 w-10 shrink-0" rounded="full" />
+                      <div className="flex-1 space-y-1.5">
+                        <Skeleton className="h-4 w-32" />
+                        <Skeleton className="h-3 w-24" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : modalError ? (
+                <div className="px-5 py-8 text-center">
+                  <p className="text-body-sm font-medium text-red-600">{modalError}</p>
+                </div>
+              ) : modalList.length === 0 ? (
+                <div className="px-5 py-10 text-center">
+                  <p className="text-body-sm text-ink-muted">
+                    {modalType === 'followers' ? 'No followers yet' : "You're not following anyone yet"}
+                  </p>
+                </div>
+              ) : (
+                modalList.map((u) => (
+                  <FeedModalUserRow
+                    key={u.id}
+                    user={u}
+                    token={token}
+                    onNavigate={closeModal}
+                  />
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function FeedModalUserRow({
+  user,
+  token,
+  onNavigate,
+}: {
+  user: FollowUser;
+  token: string | null;
+  onNavigate: () => void;
+}) {
+  const { isFollowing, loading, toggle } = useFollow(user.id, false, 0, token);
+
+  return (
+    <div className="flex items-center gap-3 px-5 py-3 transition hover:bg-surface-muted">
+      <Link href={`/profile/${user.id}`} onClick={onNavigate}>
+        <Avatar src={user.profile_photo_url} name={user.full_name} size="md" />
+      </Link>
+      <div className="min-w-0 flex-1">
+        <Link
+          href={`/profile/${user.id}`}
+          onClick={onNavigate}
+          className="block truncate font-medium text-ink hover:text-brand-600"
+        >
+          {user.full_name}
+        </Link>
+        <p className="truncate text-caption text-ink-muted">{user.department}</p>
+      </div>
+      <Button
+        variant={isFollowing ? 'outline' : 'primary'}
+        size="sm"
+        onClick={toggle}
+        loading={loading}
+        className={`shrink-0 min-w-[76px] ${isFollowing ? 'hover:border-red-300 hover:text-red-600' : ''}`}
+      >
+        {isFollowing ? 'Following' : 'Follow'}
+      </Button>
+    </div>
   );
 }
 
@@ -299,6 +457,7 @@ export default function FeedPage() {
               postCount={userPostCount}
               followersCount={myFollowersCount}
               followingCount={myFollowingCount}
+              token={token}
             />
           </div>
         </aside>
