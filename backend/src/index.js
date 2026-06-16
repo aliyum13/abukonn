@@ -11,6 +11,7 @@ const postRoutes = require('./routes/posts');
 const userRoutes = require('./routes/users');
 const newsRoutes = require('./routes/news');
 const messageRoutes = require('./routes/messages');
+const searchRoutes = require('./routes/search');
 const { saveMessage } = require('./controllers/messageController');
 const { createUsersTable } = require('./models/User');
 const { createPostsTable } = require('./models/Post');
@@ -64,6 +65,7 @@ app.use('/api/posts', postRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/news', newsRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/search', searchRoutes);
 app.use('/api/admin', adminRoutes);
 
 // Test route
