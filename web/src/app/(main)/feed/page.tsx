@@ -330,6 +330,13 @@ export default function FeedPage() {
     return () => document.removeEventListener('keydown', handler);
   }, []);
 
+  // Read ?openComments=<postId> from URL on mount and auto-expand that post
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('openComments');
+    if (id) setCommentingId(parseInt(id, 10));
+  }, []);
+
   // Load comments when a post's section is expanded
   useEffect(() => {
     if (commentingId !== null && comments[commentingId] === undefined) {
@@ -356,6 +363,14 @@ export default function FeedPage() {
   useEffect(() => {
     if (token) fetchPosts();
   }, [token]);
+
+  // Scroll to target post once posts are rendered and commentingId is set from URL
+  useEffect(() => {
+    if (loading || commentingId === null) return;
+    const el = document.getElementById(`post-${commentingId}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -707,7 +722,7 @@ export default function FeedPage() {
             </Card>
           ) : (
             posts.map((post) => (
-              <Card key={post.id} className="overflow-hidden">
+              <Card key={post.id} id={`post-${post.id}`} className="overflow-hidden scroll-mt-20">
                 <CardContent className="p-5">
                   <div className="flex gap-3">
                     <Avatar src={post.author_photo} name={post.author_name} size="md" />

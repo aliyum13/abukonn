@@ -27,7 +27,9 @@ function notifMessage(n: Notification) {
 }
 
 function notifHref(n: Notification) {
-  return n.type === 'follow' ? `/profile/${n.sender_id}` : '/feed';
+  if (n.type === 'follow') return `/profile/${n.sender_id}`;
+  if (n.type === 'comment' && n.post_id) return `/feed?openComments=${n.post_id}`;
+  return '/feed';
 }
 
 function NotifIcon({ type }: { type: Notification['type'] }) {

@@ -169,7 +169,13 @@ export function AppNav() {
       setUnreadCount((c) => Math.max(0, c - 1));
     }
     setNotifOpen(false);
-    router.push(notif.type === 'follow' ? `/profile/${notif.sender_id}` : '/feed');
+    if (notif.type === 'follow') {
+      router.push(`/profile/${notif.sender_id}`);
+    } else if (notif.type === 'comment' && notif.post_id) {
+      router.push(`/feed?openComments=${notif.post_id}`);
+    } else {
+      router.push('/feed');
+    }
   };
 
   const notifMessage = (n: AppNotification) => {
