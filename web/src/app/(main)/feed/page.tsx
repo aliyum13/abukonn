@@ -156,41 +156,44 @@ function StoriesBar({
   const ownGroup = groups.find(g => g.is_own);
   const others = groups.filter(g => !g.is_own);
   return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex gap-4 overflow-x-auto pb-1 scrollbar-hide">
-          {/* My Status */}
-          <button type="button" onClick={() => ownGroup ? onViewGroup(ownGroup) : onAddStory()}
-            className="flex shrink-0 flex-col items-center gap-1.5 group">
-            <div className="relative">
-              <div className={cn('h-14 w-14 rounded-full ring-2 ring-offset-2', ownGroup ? 'ring-brand-500' : 'ring-border')}>
-                <Avatar src={user.profile_photo_url} name={user.full_name} size="xl" className="h-14 w-14" />
-              </div>
-              {!ownGroup && (
-                <span className="absolute bottom-0 right-0 flex h-5 w-5 items-center justify-center rounded-full bg-brand-600 ring-2 ring-white">
-                  <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                  </svg>
-                </span>
-              )}
+    <div className="flex gap-5 overflow-x-auto scrollbar-hide">
+      {/* My Status */}
+      <button type="button" onClick={() => ownGroup ? onViewGroup(ownGroup) : onAddStory()}
+        className="flex shrink-0 flex-col items-center gap-1.5 group">
+        <div className="relative">
+          <div className={cn(
+            'h-14 w-14 rounded-full p-[2px]',
+            ownGroup
+              ? 'bg-gradient-to-tr from-brand-500 to-emerald-400'
+              : 'bg-border'
+          )}>
+            <div className="h-full w-full rounded-full bg-white p-[2px]">
+              <Avatar src={user.profile_photo_url} name={user.full_name} size="xl" className="h-full w-full" />
             </div>
-            <span className="max-w-[52px] truncate text-[11px] text-ink-muted">My Status</span>
-          </button>
-          {/* Others */}
-          {others.map(g => (
-            <button key={g.user_id} type="button" onClick={() => onViewGroup(g)}
-              className="flex shrink-0 flex-col items-center gap-1.5">
-              <div className="h-14 w-14 rounded-full ring-2 ring-brand-500 ring-offset-2">
-                <Avatar src={g.user_photo} name={g.user_name} size="xl" className="h-14 w-14" />
-              </div>
-              <span className="max-w-[52px] truncate text-[11px] text-ink-muted">
-                {g.user_name.split(' ')[0]}
-              </span>
-            </button>
-          ))}
+          </div>
+          <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-brand-600 ring-2 ring-white">
+            <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+          </span>
         </div>
-      </CardContent>
-    </Card>
+        <span className="max-w-[54px] truncate text-[11px] font-medium text-ink-muted">My Status</span>
+      </button>
+      {/* Others */}
+      {others.map(g => (
+        <button key={g.user_id} type="button" onClick={() => onViewGroup(g)}
+          className="flex shrink-0 flex-col items-center gap-1.5">
+          <div className="h-14 w-14 rounded-full bg-gradient-to-tr from-brand-500 to-emerald-400 p-[2px]">
+            <div className="h-full w-full rounded-full bg-white p-[2px]">
+              <Avatar src={g.user_photo} name={g.user_name} size="xl" className="h-full w-full" />
+            </div>
+          </div>
+          <span className="max-w-[54px] truncate text-[11px] font-medium text-ink-muted">
+            {g.user_name.split(' ')[0].slice(0, 8)}
+          </span>
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -245,22 +248,24 @@ function StoryViewer({
 
 function PostSkeleton() {
   return (
-    <Card>
-      <CardContent className="p-5">
-        <div className="flex gap-3">
-          <Skeleton className="h-10 w-10 shrink-0" rounded="full" />
-          <div className="flex-1 space-y-3">
-            <Skeleton className="h-4 w-40" />
-            <Skeleton className="h-3 w-24" />
-            <Skeleton className="h-16 w-full" />
-            <div className="flex gap-4 pt-2">
-              <Skeleton className="h-4 w-12" />
-              <Skeleton className="h-4 w-12" />
-            </div>
+    <div className="border-b border-border px-4 py-4">
+      <div className="flex gap-3">
+        <Skeleton className="h-10 w-10 shrink-0" rounded="full" />
+        <div className="flex-1 space-y-2.5">
+          <Skeleton className="h-4 w-36" />
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-4/5" />
+          <div className="flex justify-between pt-1">
+            <Skeleton className="h-3 w-8" />
+            <Skeleton className="h-3 w-8" />
+            <Skeleton className="h-3 w-8" />
+            <Skeleton className="h-3 w-8" />
+            <Skeleton className="h-3 w-8" />
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
@@ -515,10 +520,14 @@ export default function FeedPage() {
   // Show more/less per post
   const [expandedPosts, setExpandedPosts] = useState<Set<number>>(new Set());
 
+  // ⋮ post context menu
+  const [postMenuId, setPostMenuId] = useState<number | null>(null);
+
   const imageInputRef = useRef<HTMLInputElement>(null);
   const storyInputRef = useRef<HTMLInputElement>(null);
   const viewedPostsRef = useRef<Set<number>>(new Set());
   const storyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const postMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!authLoading && !token) router.push('/login');
@@ -575,6 +584,17 @@ export default function FeedPage() {
     }, 5000);
     return () => { if (storyTimerRef.current) clearTimeout(storyTimerRef.current); };
   }, [viewingGroup, viewingIdx]);
+
+  // Close post context menu on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (postMenuRef.current && !postMenuRef.current.contains(e.target as Node)) {
+        setPostMenuId(null);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   // Read ?openComments=<postId> from URL on mount and auto-expand that post
   useEffect(() => {
@@ -1058,10 +1078,10 @@ export default function FeedPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+    <div className="mx-auto max-w-7xl">
+      <div className="grid grid-cols-1 lg:grid-cols-12">
         {/* Left sidebar */}
-        <aside className="hidden lg:col-span-3 lg:block">
+        <aside className="hidden lg:col-span-3 lg:block lg:py-6 lg:pl-4 lg:pr-6">
           <div className="sticky top-20">
             <SidebarProfile
               user={user}
@@ -1073,147 +1093,109 @@ export default function FeedPage() {
           </div>
         </aside>
 
-        {/* Center feed */}
-        <div className="lg:col-span-6 space-y-4">
-          {/* Mobile profile strip */}
-          <Card className="lg:hidden">
-            <CardContent className="flex items-center gap-3 p-4">
-              <Avatar src={user.profile_photo_url} name={user.full_name} size="md" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-semibold text-ink">{user.full_name}</p>
-                <p className="text-caption text-ink-muted">{user.matric_number}</p>
-              </div>
-              <Badge variant="brand">{user.department}</Badge>
-            </CardContent>
-          </Card>
-
+        {/* Center feed — bordered timeline column */}
+        <div className="lg:col-span-6 lg:border-x lg:border-border min-h-screen">
           {/* Stories bar */}
-          <StoriesBar
-            groups={storyGroups}
-            user={user}
-            onAddStory={() => setShowUploadStory(true)}
-            onViewGroup={(g) => { setViewingGroup(g); setViewingIdx(0); }}
-          />
+          <div className="border-b border-border px-4 py-3">
+            <StoriesBar
+              groups={storyGroups}
+              user={user}
+              onAddStory={() => setShowUploadStory(true)}
+              onViewGroup={(g) => { setViewingGroup(g); setViewingIdx(0); }}
+            />
+          </div>
 
-          {/* Category filter tabs */}
-          <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-hide">
-            {[{ value: 'ALL', label: 'All' }, ...POST_CATEGORIES].map(cat => (
-              <button key={cat.value} type="button"
-                onClick={() => setCategoryFilter(cat.value as PostCategory | 'ALL')}
-                className={cn(
-                  'shrink-0 rounded-full px-3.5 py-1.5 text-body-sm font-medium transition',
-                  categoryFilter === cat.value
-                    ? 'bg-brand-600 text-white shadow-sm'
-                    : 'bg-white border border-border text-ink-secondary hover:border-brand-400 hover:text-brand-600'
-                )}>
-                {cat.label}
-              </button>
-            ))}
+          {/* Sticky category filter tabs */}
+          <div className="sticky top-14 z-20 border-b border-border bg-white/95 backdrop-blur-sm">
+            <div className="flex gap-0 overflow-x-auto scrollbar-hide">
+              {[{ value: 'ALL', label: 'All' }, ...POST_CATEGORIES].map(cat => (
+                <button key={cat.value} type="button"
+                  onClick={() => setCategoryFilter(cat.value as PostCategory | 'ALL')}
+                  className={cn(
+                    'shrink-0 border-b-2 px-4 py-3 text-[13px] font-medium transition whitespace-nowrap',
+                    categoryFilter === cat.value
+                      ? 'border-brand-600 text-brand-600'
+                      : 'border-transparent text-ink-muted hover:text-ink hover:border-border'
+                  )}>
+                  {cat.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {error && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-body-sm text-red-600">
+            <div className="border-b border-border px-4 py-3 text-sm text-red-600 bg-red-50">
               {error}
             </div>
           )}
 
           {/* Composer */}
-          <Card>
-            <CardContent className="p-5">
-              <form onSubmit={handleCreatePost}>
-                <div className="flex gap-3">
-                  <Avatar src={user.profile_photo_url} name={user.full_name} size="md" className="mt-1" />
-                  <div className="flex-1">
-                    <textarea
-                      value={newPost}
-                      onChange={(e) => setNewPost(e.target.value)}
-                      placeholder="What's happening on campus?"
-                      rows={3}
-                      className={cn(
-                        'w-full resize-none rounded-xl border border-border bg-white px-4 py-3',
-                        'text-body-sm text-ink placeholder:text-ink-muted',
-                        'focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20'
-                      )}
-                    />
+          <div className="border-b border-border px-4 py-4">
+            <form onSubmit={handleCreatePost}>
+              <div className="flex gap-3">
+                <Avatar src={user.profile_photo_url} name={user.full_name} size="md" className="mt-0.5 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <textarea
+                    value={newPost}
+                    onChange={(e) => { setNewPost(e.target.value); const t = e.target; t.style.height = 'auto'; t.style.height = `${t.scrollHeight}px`; }}
+                    placeholder="What's happening on campus?"
+                    rows={1}
+                    className="w-full resize-none bg-transparent text-[15px] text-ink placeholder:text-ink-muted focus:outline-none leading-relaxed"
+                    style={{ minHeight: '28px', maxHeight: '200px', overflow: 'hidden' }}
+                  />
 
-                    {/* Image preview */}
-                    {imagePreview && (
-                      <div className="relative mt-3 inline-block">
-                        <img
-                          src={imagePreview}
-                          alt="Preview"
-                          className="max-h-48 max-w-full rounded-xl object-cover"
-                        />
-                        <button
-                          type="button"
-                          onClick={removeImage}
-                          className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/80"
-                        >
-                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Action row */}
-                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => imageInputRef.current?.click()}
-                          className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-body-sm text-ink-muted transition hover:bg-surface-subtle hover:text-brand-600"
-                        >
-                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
-                          </svg>
-                          Photo
-                        </button>
-                        <select
-                          value={newPostCategory}
-                          onChange={e => setNewPostCategory(e.target.value as PostCategory)}
-                          className="rounded-lg border border-border bg-white px-2.5 py-1.5 text-body-sm text-ink-secondary focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-                        >
-                          {POST_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                        </select>
-                      </div>
-                      <Button type="submit" disabled={posting || !newPost.trim()} loading={posting}>
-                        Post
-                      </Button>
+                  {imagePreview && (
+                    <div className="relative mt-3">
+                      <img src={imagePreview} alt="Preview" className="max-h-56 w-full rounded-2xl object-cover" />
+                      <button type="button" onClick={removeImage}
+                        className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition">
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
                     </div>
+                  )}
 
-                    <input
-                      ref={imageInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageSelect}
-                      className="hidden"
-                    />
+                  <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
+                    <div className="flex items-center gap-1">
+                      <button type="button" onClick={() => imageInputRef.current?.click()}
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-brand-600 transition hover:bg-brand-50" title="Add photo">
+                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                        </svg>
+                      </button>
+                      <select
+                        value={newPostCategory}
+                        onChange={e => setNewPostCategory(e.target.value as PostCategory)}
+                        className="rounded-full border border-border bg-transparent px-3 py-1 text-[13px] text-ink-secondary focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                      >
+                        {POST_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                      </select>
+                    </div>
+                    <Button type="submit" size="sm" disabled={posting || !newPost.trim()} loading={posting}
+                      className="rounded-full px-5">
+                      Post
+                    </Button>
                   </div>
+
+                  <input ref={imageInputRef} type="file" accept="image/*" onChange={handleImageSelect} className="hidden" />
                 </div>
-              </form>
-            </CardContent>
-          </Card>
+              </div>
+            </form>
+          </div>
 
           {/* Posts */}
           {loading ? (
-            <div className="space-y-4">
+            <>
               <PostSkeleton />
               <PostSkeleton />
               <PostSkeleton />
+            </>
+          ) : posts.filter(p => categoryFilter === 'ALL' || p.category === categoryFilter).length === 0 ? (
+            <div className="px-4 py-16 text-center">
+              <p className="font-medium text-ink">No posts yet</p>
+              <p className="mt-1 text-[14px] text-ink-muted">Be the first to share something with the ABU community!</p>
             </div>
-          ) : posts.length === 0 ? (
-            <Card>
-              <EmptyState
-                title="No posts yet"
-                description="Be the first to share something with the ABU community!"
-                icon={
-                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 01.778-.332 48.294 48.294 0 005.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
-                  </svg>
-                }
-              />
-            </Card>
           ) : (
             posts
               .filter(post => categoryFilter === 'ALL' || post.category === categoryFilter)
@@ -1221,146 +1203,166 @@ export default function FeedPage() {
                 const isExpanded = expandedPosts.has(post.id);
                 const longContent = post.content.length > 280;
               return (
-              <Card key={post.id} id={`post-${post.id}`} data-post-id={post.id} className="overflow-hidden scroll-mt-20">
-                <CardContent className="p-5">
-                  {/* Repost label */}
-                  {post.is_repost && (
-                    <div className="mb-3 flex items-center gap-1.5 text-caption text-ink-muted">
-                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" />
-                      </svg>
-                      Reposted from {post.original_author_name}
-                    </div>
-                  )}
-                  <div className="flex gap-3">
-                    <Avatar src={post.author_photo} name={post.author_name} size="md" />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="font-semibold text-ink">{post.author_name}</p>
-                            {/* Category badge */}
-                            {post.category && post.category !== 'GENERAL' && (
-                              <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide', CATEGORY_COLORS[post.category] ?? 'bg-gray-100 text-gray-600')}>
-                                {POST_CATEGORIES.find(c => c.value === post.category)?.label ?? post.category}
-                              </span>
-                            )}
-                            {/* Follow button */}
-                            {post.user_id !== user.id && !post.is_following_author && (
-                              <button type="button" onClick={() => handleFollowFromCard(post.user_id)}
-                                className="rounded-full border border-brand-500 px-2.5 py-0.5 text-[11px] font-semibold text-brand-600 transition hover:bg-brand-50">
-                                Follow
-                              </button>
-                            )}
-                          </div>
-                          <p className="text-caption text-ink-muted">
-                            {post.author_department} · {timeAgo(post.created_at)}
-                          </p>
+              /* ── Post Card (flat, Twitter-style) ── */
+              <article key={post.id} id={`post-${post.id}`} data-post-id={post.id}
+                className="border-b border-border px-4 py-4 scroll-mt-20 hover:bg-gray-50/40 transition-colors">
+
+                {/* Repost label */}
+                {post.is_repost && (
+                  <div className="mb-2 ml-11 flex items-center gap-1.5 text-[12px] text-ink-muted">
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" />
+                    </svg>
+                    {post.author_name} reposted
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  {/* Avatar */}
+                  <Link href={`/profile/${post.user_id}`} className="shrink-0">
+                    <Avatar src={post.author_photo} name={post.author_name} size="md" className="mt-0.5" />
+                  </Link>
+
+                  {/* Post body */}
+                  <div className="min-w-0 flex-1">
+                    {/* Author row */}
+                    <div className="flex items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <Link href={`/profile/${post.user_id}`}
+                            className="font-semibold text-[15px] text-ink hover:underline">
+                            {post.author_name}
+                          </Link>
+                          {post.category && post.category !== 'GENERAL' && (
+                            <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold', CATEGORY_COLORS[post.category] ?? 'bg-gray-100 text-gray-600')}>
+                              {POST_CATEGORIES.find(c => c.value === post.category)?.label}
+                            </span>
+                          )}
                         </div>
-                        {post.user_id === user.id && (
-                          <Button variant="ghost" size="sm" onClick={() => handleDelete(post.id)} className="text-ink-muted hover:text-red-600">
-                            Delete
-                          </Button>
-                        )}
-                      </div>
-
-                      {/* Content with show more/less */}
-                      <div className="mt-3">
-                        <p className={cn('whitespace-pre-wrap text-body-sm text-ink leading-relaxed', !isExpanded && longContent && 'line-clamp-3')}>
-                          {post.content}
+                        <p className="text-[13px] text-ink-muted">
+                          {post.author_department} · {timeAgo(post.created_at)}
                         </p>
-                        {longContent && (
-                          <button type="button"
-                            onClick={() => setExpandedPosts(prev => { const n = new Set(prev); if (isExpanded) n.delete(post.id); else n.add(post.id); return n; })}
-                            className="mt-0.5 text-body-sm font-medium text-brand-600 hover:text-brand-700">
-                            {isExpanded ? 'Show less' : 'Show more'}
-                          </button>
-                        )}
                       </div>
 
-                      {post.image_url && (
-                        <button
-                          type="button"
-                          onClick={() => setLightboxUrl(post.image_url)}
-                          className="mt-3 block w-full overflow-hidden rounded-xl"
-                        >
-                          <img
-                            src={post.image_url}
-                            alt="Post"
-                            className="max-h-80 w-full object-cover transition hover:opacity-95"
-                          />
+                      {/* Follow button */}
+                      {post.user_id !== user.id && !post.is_following_author && (
+                        <button type="button" onClick={() => handleFollowFromCard(post.user_id)}
+                          className="shrink-0 rounded-full border border-brand-500 px-3 py-0.5 text-[12px] font-semibold text-brand-600 transition hover:bg-brand-50">
+                          Follow
                         </button>
                       )}
 
-                      <div className="mt-4 flex items-center gap-5 border-t border-border pt-3">
-                        <button
-                          type="button"
-                          onClick={() => handleLike(post.id)}
-                          className={cn(
-                            'flex items-center gap-1.5 text-body-sm transition',
-                            post.is_liked
-                              ? 'font-medium text-brand-600 hover:text-brand-700'
-                              : 'text-ink-secondary hover:text-brand-600'
-                          )}
-                        >
-                          <svg
-                            className="h-5 w-5"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                            strokeWidth={1.5}
-                            fill={post.is_liked ? 'currentColor' : 'none'}
-                          >
+                      {/* ⋮ menu */}
+                      <div className="relative shrink-0" ref={postMenuId === post.id ? postMenuRef : undefined}>
+                        <button type="button"
+                          onClick={() => setPostMenuId(postMenuId === post.id ? null : post.id)}
+                          className="flex h-7 w-7 items-center justify-center rounded-full text-ink-muted transition hover:bg-surface-muted hover:text-ink">
+                          <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+                            <circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
+                          </svg>
+                        </button>
+                        {postMenuId === post.id && (
+                          <div className="absolute right-0 top-8 z-30 w-40 overflow-hidden rounded-xl border border-border bg-white shadow-lg">
+                            {post.user_id === user.id && (
+                              <button type="button"
+                                onClick={() => { handleDelete(post.id); setPostMenuId(null); }}
+                                className="flex w-full items-center gap-2 px-4 py-2.5 text-[13px] text-red-600 hover:bg-red-50 transition">
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                                Delete post
+                              </button>
+                            )}
+                            <button type="button" onClick={() => setPostMenuId(null)}
+                              className="flex w-full items-center gap-2 px-4 py-2.5 text-[13px] text-ink-secondary hover:bg-surface-muted transition">
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 3l1.664 1.664M21 21l-1.5-1.5m-5.485-1.242L12 17.25 4.5 21V8.742m.164-4.078a2.15 2.15 0 011.743-1.342 48.507 48.507 0 0111.186 0c1.1.128 1.907 1.077 1.907 2.185V19.5M4.664 4.664L19.5 19.5" /></svg>
+                              Report post
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Content with show more/less */}
+                    <div className="mt-2">
+                      <p className={cn('whitespace-pre-wrap text-[15px] text-ink leading-[1.6]', !isExpanded && longContent && 'line-clamp-3')}>
+                        {post.content}
+                      </p>
+                      {longContent && (
+                        <button type="button"
+                          onClick={() => setExpandedPosts(prev => { const n = new Set(prev); if (isExpanded) n.delete(post.id); else n.add(post.id); return n; })}
+                          className="mt-0.5 text-[14px] font-medium text-brand-600 hover:text-brand-700">
+                          {isExpanded ? 'Show less' : 'Show more'}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Post image */}
+                    {post.image_url && (
+                      <button type="button" onClick={() => setLightboxUrl(post.image_url)}
+                        className="mt-3 block w-full overflow-hidden rounded-2xl border border-border/60">
+                        <img src={post.image_url} alt="Post" className="max-h-[400px] w-full object-cover transition hover:opacity-95" />
+                      </button>
+                    )}
+
+                    {/* Action row — icon-only buttons, evenly spaced */}
+                    <div className="mt-3 flex items-center justify-between">
+                      {/* Like */}
+                      <button type="button" onClick={() => handleLike(post.id)}
+                        className={cn('group flex items-center gap-1 text-[13px] transition',
+                          post.is_liked ? 'text-rose-500' : 'text-ink-muted hover:text-rose-500')}>
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full transition group-hover:bg-rose-50">
+                          <svg className="h-[18px] w-[18px]" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}
+                            fill={post.is_liked ? 'currentColor' : 'none'}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
                           </svg>
-                          {post.likes_count}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setCommentingId(commentingId === post.id ? null : post.id)}
-                          className={cn(
-                            'flex items-center gap-1.5 text-body-sm transition',
-                            commentingId === post.id
-                              ? 'font-medium text-brand-600'
-                              : 'text-ink-secondary hover:text-brand-600'
-                          )}
-                        >
-                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        </span>
+                        {post.likes_count > 0 && <span>{post.likes_count}</span>}
+                      </button>
+
+                      {/* Comment */}
+                      <button type="button" onClick={() => setCommentingId(commentingId === post.id ? null : post.id)}
+                        className={cn('group flex items-center gap-1 text-[13px] transition',
+                          commentingId === post.id ? 'text-brand-600' : 'text-ink-muted hover:text-brand-600')}>
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full transition group-hover:bg-brand-50">
+                          <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.74 1.676v2.954a.75.75 0 01-1.088.67L6.19 21.1a.75.75 0 01-.365-.633v-1.44C3.512 17.962 3 15.075 3 12z" />
                           </svg>
-                          {post.comments_count}
-                        </button>
-                        {/* Repost */}
-                        {post.user_id !== user.id && (
-                          <button
-                            type="button"
-                            onClick={() => handleRepost(post.id)}
-                            disabled={repostingId === post.id}
-                            className="flex items-center gap-1.5 text-body-sm text-ink-secondary transition hover:text-brand-600 disabled:opacity-50"
-                          >
-                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        </span>
+                        {post.comments_count > 0 && <span>{post.comments_count}</span>}
+                      </button>
+
+                      {/* Repost */}
+                      {post.user_id !== user.id ? (
+                        <button type="button" onClick={() => handleRepost(post.id)} disabled={repostingId === post.id}
+                          className="group flex items-center gap-1 text-[13px] text-ink-muted transition hover:text-brand-600 disabled:opacity-40">
+                          <span className="flex h-8 w-8 items-center justify-center rounded-full transition group-hover:bg-brand-50">
+                            <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" />
                             </svg>
-                            {post.repost_count > 0 ? post.repost_count : ''}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => openShareModal(post)}
-                          className="flex items-center gap-1.5 text-body-sm text-ink-secondary transition hover:text-brand-600"
-                        >
-                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          </span>
+                          {post.repost_count > 0 && <span>{post.repost_count}</span>}
+                        </button>
+                      ) : <span className="w-9" />}
+
+                      {/* Share */}
+                      <button type="button" onClick={() => openShareModal(post)}
+                        className="group flex items-center gap-1 text-[13px] text-ink-muted transition hover:text-brand-600">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full transition group-hover:bg-brand-50">
+                          <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
                           </svg>
-                          Share
-                        </button>
-                        {/* View count */}
-                        <span className="ml-auto flex items-center gap-1 text-caption text-ink-muted">
-                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        </span>
+                      </button>
+
+                      {/* Views */}
+                      <span className="flex items-center gap-1 text-[13px] text-ink-muted">
+                        <span className="flex h-8 w-8 items-center justify-center">
+                          <svg className="h-[16px] w-[16px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
                           </svg>
-                          {post.view_count > 0 ? post.view_count.toLocaleString() : '0'}
                         </span>
-                      </div>
+                        {post.view_count > 0 ? post.view_count.toLocaleString() : '0'}
+                      </span>
+                    </div>
 
                       {/* Comments section */}
                       {commentingId === post.id && (
@@ -1496,15 +1498,14 @@ export default function FeedPage() {
                       )}
                     </div>
                   </div>
-                </CardContent>
-              </Card>
+              </article>
               );
             })
           )}
         </div>
 
         {/* Right sidebar */}
-        <aside className="hidden xl:col-span-3 xl:block">
+        <aside className="hidden lg:col-span-3 lg:block lg:py-6 lg:pl-6 lg:pr-4">
           <div className="sticky top-20 space-y-4">
             {suggestions.length > 0 && (
               <Card>
