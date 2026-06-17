@@ -36,6 +36,9 @@ const io = new Server(server, {
   },
 });
 
+// Make io accessible from route controllers
+app.set('io', io);
+
 // Track online users: userId -> Set of socketIds
 const onlineUsers = new Map();
 

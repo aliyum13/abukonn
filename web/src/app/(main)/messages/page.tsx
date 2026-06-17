@@ -73,10 +73,13 @@ export default function MessagesPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const activeIdRef = useRef<number | null>(null);
+  const conversationsRef = useRef<Conversation[]>([]);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Keep refs in sync with state so socket closures always see fresh values
   activeIdRef.current = activeId;
+  conversationsRef.current = conversations;
 
   // ── Auth guard ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -119,14 +122,13 @@ export default function MessagesPage() {
         });
         if (!res.ok) return;
         const data = await res.json();
-        const conv: Conversation = data.conversation;
+        const conv: Conversation = { ...data.conversation, unread_count: 0 };
         setConversations((prev) => {
           if (prev.some((c) => c.id === conv.id)) return prev;
           return [conv, ...prev];
         });
         setActiveId(conv.id);
         setMobileShowChat(true);
-        // Remove param from URL without reloading
         window.history.replaceState({}, '', '/messages');
       } catch {
         /* ignore */
@@ -146,11 +148,11 @@ export default function MessagesPage() {
         });
         const data = await res.json();
         setMessages(data.messages || []);
-        // Clear unread badge in conversation list
+        // Clear unread badge
         setConversations((prev) =>
           prev.map((c) => (c.id === conversationId ? { ...c, unread_count: 0 } : c))
         );
-        // Notify sender messages were read via socket
+        // Notify sender their messages were read
         socketRef.current?.emit('mark_read', { conversationId, token });
       } catch {
         setMessages([]);
@@ -173,31 +175,40 @@ export default function MessagesPage() {
   // ── Socket.io ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!token) return;
-    const socket = io(API_URL);
+    const socket = io(API_URL, { autoConnect: true });
     socketRef.current = socket;
+
+    const joinCurrentRoom = () => {
+      if (activeIdRef.current) {
+        socket.emit('join_conversation', activeIdRef.current);
+      }
+    };
 
     socket.on('connect', () => {
       socket.emit('user_online', token);
+      joinCurrentRoom(); // rejoin on reconnect
     });
 
+    // Real-time message from another user (or echo of own message sent via socket path)
     socket.on('receive_message', (msg: ChatMessage) => {
       if (msg.conversation_id === activeIdRef.current) {
         setMessages((prev) => {
+          // Deduplicate — own message already added from REST response
           if (prev.some((m) => m.id === msg.id)) return prev;
           return [...prev, msg];
         });
-        // Mark as read immediately since the user is viewing
+        // Mark as read since we're viewing this conversation
         socket.emit('mark_read', { conversationId: msg.conversation_id, token });
       }
-      // Update conversation preview
+      // Always refresh conversation list for last message preview + unread counts
       fetchConversations();
     });
 
-    socket.on('user_typing', ({ conversationId }: { conversationId: number; userId: number }) => {
+    socket.on('user_typing', ({ conversationId }: { conversationId: number }) => {
       if (conversationId === activeIdRef.current) {
-        const conv = conversations.find((c) => c.id === conversationId);
-        const name = conv?.other_user_name ?? 'Someone';
-        setTypingText(`${name} is typing…`);
+        // Use the ref so we always get the current conversation list
+        const conv = conversationsRef.current.find((c) => c.id === conversationId);
+        setTypingText(`${conv?.other_user_name ?? 'Someone'} is typing…`);
       }
     });
 
@@ -222,6 +233,10 @@ export default function MessagesPage() {
       }
     });
 
+    socket.on('connect_error', (err) => {
+      console.warn('Socket connection error:', err.message);
+    });
+
     return () => {
       socket.disconnect();
       socketRef.current = null;
@@ -229,23 +244,27 @@ export default function MessagesPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, fetchConversations]);
 
-  // Request initial online status for conversation partners
+  // Join room when active conversation changes
   useEffect(() => {
-    if (!conversations.length || !socketRef.current) return;
-    const ids = conversations.map((c) => c.other_user_id);
-    socketRef.current.emit('get_online_status', ids, (statuses: { userId: number; online: boolean }[]) => {
-      const onlineSet = new Set(statuses.filter((s) => s.online).map((s) => s.userId));
-      setOnlineUsers(onlineSet);
-    });
-  }, [conversations]);
-
-  // Join socket room when active conversation changes
-  useEffect(() => {
-    if (socketRef.current && activeId) {
+    if (socketRef.current?.connected && activeId) {
       socketRef.current.emit('join_conversation', activeId);
       setTypingText('');
     }
   }, [activeId]);
+
+  // Request initial online status for all conversation partners
+  useEffect(() => {
+    if (!conversations.length || !socketRef.current?.connected) return;
+    const ids = conversations.map((c) => c.other_user_id);
+    socketRef.current.emit(
+      'get_online_status',
+      ids,
+      (statuses: { userId: number; online: boolean }[]) => {
+        const online = new Set(statuses.filter((s) => s.online).map((s) => s.userId));
+        setOnlineUsers(online);
+      }
+    );
+  }, [conversations]);
 
   // ── Handlers ─────────────────────────────────────────────────────────
   const selectConversation = (id: number) => {
@@ -258,7 +277,7 @@ export default function MessagesPage() {
   const handleTypingChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setNewMessage(e.target.value);
 
-    // Auto-resize
+    // Auto-resize textarea
     const ta = e.target;
     ta.style.height = 'auto';
     ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`;
@@ -271,12 +290,18 @@ export default function MessagesPage() {
     }, 2500);
   };
 
-  const handleSend = (e?: FormEvent) => {
+  /**
+   * Primary send path: REST API (guaranteed delivery).
+   * The backend also emits receive_message via Socket.io to broadcast to others.
+   * We add the message immediately from the REST response so the sender
+   * sees it without waiting for the socket echo.
+   */
+  const handleSend = async (e?: FormEvent) => {
     e?.preventDefault();
     const text = newMessage.trim();
-    if (!text || !token || !activeId) return;
+    if (!text || !token || !activeId || sending) return;
 
-    // Stop typing indicator
+    // Stop typing indicator immediately
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     socketRef.current?.emit('typing_stop', { conversationId: activeId, token });
 
@@ -284,11 +309,47 @@ export default function MessagesPage() {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
-
     setSending(true);
-    socketRef.current?.emit('send_message', { conversationId: activeId, content: text, token });
-    // Reset sending after a tick (socket emit is sync)
-    setTimeout(() => setSending(false), 300);
+
+    try {
+      const res = await fetch(`${API_URL}/api/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ conversation_id: activeId, content: text }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || 'Failed to send message');
+      }
+
+      const data = await res.json();
+      const sentMsg: ChatMessage = data.data;
+
+      // Add immediately from REST response — deduplication handles socket echo
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === sentMsg.id)) return prev;
+        return [...prev, sentMsg];
+      });
+
+      // Optimistically update conversation preview
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === activeId
+            ? { ...c, last_message: text, last_message_at: new Date().toISOString() }
+            : c
+        )
+      );
+    } catch (err) {
+      console.error('Send failed:', err);
+      // Restore input so the user can retry
+      setNewMessage(text);
+    } finally {
+      setSending(false);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -305,7 +366,6 @@ export default function MessagesPage() {
     : false;
   const lastSentMsg = [...messages].reverse().find((m) => m.sender_id === user?.id);
   const showList = !mobileShowChat || !activeId;
-  const showChatPanel = mobileShowChat && activeId;
 
   if (authLoading || !user) {
     return (
@@ -329,7 +389,7 @@ export default function MessagesPage() {
         <div
           className={cn(
             'flex w-full flex-col border-r border-border sm:w-80 sm:shrink-0',
-            showChatPanel ? 'hidden sm:flex' : 'flex'
+            mobileShowChat && activeId ? 'hidden sm:flex' : 'flex'
           )}
         >
           <div className="flex items-center justify-between border-b border-border px-4 py-3.5">
@@ -467,7 +527,7 @@ export default function MessagesPage() {
                       const isSent = msg.sender_id === user.id;
                       const isLastSent = msg.id === lastSentMsg?.id && isSent;
                       const prevMsg = messages[idx - 1];
-                      const showAvatar = !isSent && (idx === 0 || prevMsg.sender_id !== msg.sender_id);
+                      const showAvatar = !isSent && (idx === 0 || prevMsg?.sender_id !== msg.sender_id);
 
                       return (
                         <div key={msg.id} className={cn('flex items-end gap-2', isSent ? 'justify-end' : 'justify-start')}>
@@ -493,7 +553,7 @@ export default function MessagesPage() {
                               </p>
                             </div>
                             {isLastSent && (
-                              <p className="mt-0.5 text-caption text-ink-muted">
+                              <p className="mt-0.5 text-[10px] text-ink-muted">
                                 {msg.is_read ? '✓✓ Read' : '✓ Delivered'}
                               </p>
                             )}
@@ -504,7 +564,7 @@ export default function MessagesPage() {
 
                     {/* Typing indicator */}
                     {typingText && (
-                      <div className="flex items-end gap-2 justify-start">
+                      <div className="flex items-end gap-2">
                         <div className="w-7 shrink-0" />
                         <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md border border-border bg-white px-4 py-2.5">
                           <span className="flex gap-1">
@@ -534,10 +594,11 @@ export default function MessagesPage() {
                   onKeyDown={handleKeyDown}
                   placeholder="Type a message… (Enter to send)"
                   rows={1}
-                  className="flex-1 resize-none rounded-xl border border-border bg-white px-4 py-2.5 text-body-sm text-ink placeholder:text-ink-muted focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                  disabled={sending}
+                  className="flex-1 resize-none rounded-xl border border-border bg-white px-4 py-2.5 text-body-sm text-ink placeholder:text-ink-muted focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-60"
                   style={{ maxHeight: '120px' }}
                 />
-                <Button type="submit" size="sm" disabled={sending || !newMessage.trim()} className="shrink-0">
+                <Button type="submit" size="sm" disabled={sending || !newMessage.trim()} loading={sending} className="shrink-0">
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
                   </svg>

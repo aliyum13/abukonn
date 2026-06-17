@@ -132,6 +132,12 @@ async function sendMessageHandler(req, res) {
 
     const message = await saveMessage(conversationId, req.user.id, content);
 
+    // Broadcast to all clients in the conversation room (real-time delivery)
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`conversation_${conversationId}`).emit('receive_message', message);
+    }
+
     res.status(201).json({ message: 'Message sent', data: message, conversation_id: conversationId });
   } catch (err) {
     console.error('Send message error:', err.message);
