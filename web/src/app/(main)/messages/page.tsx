@@ -531,32 +531,47 @@ export default function MessagesPage() {
 
                       return (
                         <div key={msg.id} className={cn('flex items-end gap-2', isSent ? 'justify-end' : 'justify-start')}>
+                          {/* Avatar placeholder keeps received bubbles aligned */}
                           {!isSent && (
                             <div className="w-7 shrink-0">
                               {showAvatar && (
-                                <Avatar src={activeConversation.other_user_photo} name={activeConversation.other_user_name} size="xs" />
+                                <Avatar
+                                  src={activeConversation.other_user_photo}
+                                  name={activeConversation.other_user_name}
+                                  size="sm"
+                                  className="h-7 w-7"
+                                />
                               )}
                             </div>
                           )}
-                          <div className={cn('flex flex-col', isSent ? 'items-end' : 'items-start')}>
-                            <div
-                              className={cn(
-                                'max-w-[75%] rounded-2xl px-4 py-2.5 text-body-sm',
-                                isSent
-                                  ? 'rounded-br-md bg-brand-600 text-white'
-                                  : 'rounded-bl-md border border-border bg-white text-ink'
-                              )}
-                            >
-                              <p className="whitespace-pre-wrap break-words">{msg.content}</p>
-                              <p className={cn('mt-1 text-caption', isSent ? 'text-brand-200' : 'text-ink-muted')}>
-                                {formatTime(msg.created_at)}
-                              </p>
-                            </div>
-                            {isLastSent && (
-                              <p className="mt-0.5 text-[10px] text-ink-muted">
-                                {msg.is_read ? '✓✓ Read' : '✓ Delivered'}
-                              </p>
+
+                          {/*
+                           * Bubble is a direct flex item of the row.
+                           * max-w-[75%] is therefore 75% of the chat window width — correct.
+                           * Previously this was inside a flex-col wrapper, making the
+                           * percentage resolve against the already-shrunk wrapper width
+                           * (≈ min-content), which crushed text to one character per line.
+                           */}
+                          <div
+                            className={cn(
+                              'max-w-[75%] min-w-0 rounded-2xl px-4 py-2.5 text-body-sm',
+                              isSent
+                                ? 'rounded-br-md bg-brand-600 text-white'
+                                : 'rounded-bl-md border border-border bg-white text-ink'
                             )}
+                          >
+                            <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                            {/* Timestamp + read status in one row at bubble bottom */}
+                            <div className={cn('mt-1 flex items-center gap-2', isSent ? 'justify-end' : 'justify-start')}>
+                              <span className={cn('text-caption', isSent ? 'text-brand-200' : 'text-ink-muted')}>
+                                {formatTime(msg.created_at)}
+                              </span>
+                              {isLastSent && (
+                                <span className={cn('text-caption', isSent ? 'text-brand-200' : 'text-ink-muted')}>
+                                  {msg.is_read ? '✓✓ Read' : '✓ Delivered'}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       );
