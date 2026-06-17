@@ -520,7 +520,7 @@ export function AppNav() {
 
                 {/* Notification dropdown */}
                 {notifOpen && (
-                  <div className="absolute right-0 top-full z-[60] mt-2 w-80 overflow-hidden rounded-2xl border border-border bg-white shadow-xl">
+                  <div className="absolute right-0 top-full z-[60] mt-2 w-[calc(100vw-2rem)] max-w-sm sm:w-72 overflow-hidden rounded-2xl border border-border bg-white shadow-xl">
                     {/* Header */}
                     <div className="flex items-center justify-between border-b border-border px-4 py-3">
                       <h3 className="font-semibold text-ink">Notifications</h3>

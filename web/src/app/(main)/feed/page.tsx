@@ -77,6 +77,24 @@ interface Comment {
   created_at: string;
   author_name: string;
   author_photo: string | null;
+  reply_count: number;
+}
+
+interface Reply {
+  id: number;
+  comment_id: number;
+  user_id: number;
+  content: string;
+  created_at: string;
+  author_name: string;
+  author_photo: string | null;
+}
+
+interface ShareFollower {
+  id: number;
+  full_name: string;
+  profile_photo_url: string | null;
+  department: string;
 }
 
 function PostSkeleton() {
@@ -315,6 +333,23 @@ export default function FeedPage() {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [comments, setComments] = useState<Record<number, Comment[]>>({});
   const [commentsLoading, setCommentsLoading] = useState<Record<number, boolean>>({});
+
+  // Share Post
+  const [sharePost, setSharePost] = useState<Post | null>(null);
+  const [shareFollowers, setShareFollowers] = useState<ShareFollower[]>([]);
+  const [shareSearch, setShareSearch] = useState('');
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareSendingId, setShareSendingId] = useState<number | null>(null);
+  const [shareSentIds, setShareSentIds] = useState<Set<number>>(new Set());
+  const [shareCopied, setShareCopied] = useState(false);
+
+  // Reply to Comments
+  const [replyingTo, setReplyingTo] = useState<{ postId: number; commentId: number } | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const [replies, setReplies] = useState<Record<number, Reply[]>>({});
+  const [repliesLoading, setRepliesLoading] = useState<Record<number, boolean>>({});
+  const [expandedReplies, setExpandedReplies] = useState<Set<number>>(new Set());
+
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -548,6 +583,136 @@ export default function FeedPage() {
     }
   };
 
+  // ── Share Post ──────────────────────────────────────────────────────────────
+
+  const openShareModal = async (post: Post) => {
+    if (!token || !user) return;
+    setSharePost(post);
+    setShareSearch('');
+    setShareSentIds(new Set());
+    setShareLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/follows/${user.id}/following`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setShareFollowers(data.following || []);
+    } catch { setShareFollowers([]); }
+    finally { setShareLoading(false); }
+  };
+
+  const handleShareToUser = async (recipientId: number) => {
+    if (!sharePost || !token || shareSendingId !== null) return;
+    setShareSendingId(recipientId);
+    try {
+      const convRes = await fetch(`${API_URL}/api/messages/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ recipient_id: recipientId }),
+      });
+      if (!convRes.ok) throw new Error('Failed to start conversation');
+      const { conversation } = await convRes.json();
+      const preview = sharePost.content.length > 200
+        ? `${sharePost.content.substring(0, 200)}…`
+        : sharePost.content;
+      const content = `📌 Shared a post by ${sharePost.author_name}:\n\n"${preview}"`;
+      await fetch(`${API_URL}/api/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ conversation_id: conversation.id, content }),
+      });
+      setShareSentIds((prev) => new Set([...prev, recipientId]));
+    } catch { /* silent */ }
+    finally { setShareSendingId(null); }
+  };
+
+  const handleCopyPostLink = (postId: number) => {
+    const url = `${window.location.origin}/feed#post-${postId}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    }).catch(() => {});
+  };
+
+  // ── Reply to Comments ───────────────────────────────────────────────────────
+
+  const fetchReplies = async (postId: number, commentId: number) => {
+    if (!token || repliesLoading[commentId]) return;
+    setRepliesLoading((prev) => ({ ...prev, [commentId]: true }));
+    try {
+      const res = await fetch(`${API_URL}/api/posts/${postId}/comments/${commentId}/replies`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setReplies((prev) => ({ ...prev, [commentId]: data.replies || [] }));
+      setExpandedReplies((prev) => new Set([...prev, commentId]));
+    } catch { /* non-blocking */ }
+    finally { setRepliesLoading((prev) => ({ ...prev, [commentId]: false })); }
+  };
+
+  const toggleReplies = (postId: number, commentId: number) => {
+    if (expandedReplies.has(commentId)) {
+      setExpandedReplies((prev) => { const n = new Set(prev); n.delete(commentId); return n; });
+    } else if (replies[commentId] !== undefined) {
+      setExpandedReplies((prev) => new Set([...prev, commentId]));
+    } else {
+      fetchReplies(postId, commentId);
+    }
+  };
+
+  const handleReply = async (postId: number, commentId: number) => {
+    if (!replyText.trim() || !token || !user) return;
+    const text = replyText.trim();
+    const tempReply: Reply = {
+      id: -Date.now(),
+      comment_id: commentId,
+      user_id: user.id,
+      content: text,
+      created_at: new Date().toISOString(),
+      author_name: user.full_name,
+      author_photo: user.profile_photo_url,
+    };
+    setReplies((prev) => ({ ...prev, [commentId]: [...(prev[commentId] ?? []), tempReply] }));
+    setExpandedReplies((prev) => new Set([...prev, commentId]));
+    setReplyingTo(null);
+    setReplyText('');
+    // Update reply_count optimistically
+    setComments((prev) => ({
+      ...prev,
+      [postId]: (prev[postId] ?? []).map((c) =>
+        c.id === commentId ? { ...c, reply_count: (c.reply_count ?? 0) + 1 } : c
+      ),
+    }));
+    try {
+      const res = await fetch(`${API_URL}/api/posts/${postId}/comments/${commentId}/replies`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ content: text }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setReplies((prev) => ({
+          ...prev,
+          [commentId]: [...(prev[commentId] ?? []).filter((r) => r.id !== tempReply.id), data.reply],
+        }));
+      } else {
+        setReplies((prev) => ({
+          ...prev,
+          [commentId]: (prev[commentId] ?? []).filter((r) => r.id !== tempReply.id),
+        }));
+        setReplyingTo({ postId, commentId });
+        setReplyText(text);
+      }
+    } catch {
+      setReplies((prev) => ({
+        ...prev,
+        [commentId]: (prev[commentId] ?? []).filter((r) => r.id !== tempReply.id),
+      }));
+      setReplyingTo({ postId, commentId });
+      setReplyText(text);
+    }
+  };
+
   const userPostCount = posts.filter((p) => p.user_id === user?.id).length;
 
   const [suggestions, setSuggestions] = useState<SuggestedUser[]>([]);
@@ -759,7 +924,7 @@ export default function FeedPage() {
                         </button>
                       )}
 
-                      <div className="mt-4 flex items-center gap-6 border-t border-border pt-3">
+                      <div className="mt-4 flex items-center gap-5 border-t border-border pt-3">
                         <button
                           type="button"
                           onClick={() => handleLike(post.id)}
@@ -796,6 +961,16 @@ export default function FeedPage() {
                           </svg>
                           {post.comments_count}
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => openShareModal(post)}
+                          className="flex items-center gap-1.5 text-body-sm text-ink-secondary transition hover:text-brand-600"
+                        >
+                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
+                          </svg>
+                          Share
+                        </button>
                       </div>
 
                       {/* Comments section */}
@@ -815,16 +990,86 @@ export default function FeedPage() {
                               ))}
                             </div>
                           ) : (comments[post.id] ?? []).length > 0 ? (
-                            <div className="mb-4 space-y-3">
+                            <div className="mb-4 space-y-4">
                               {(comments[post.id] ?? []).map((c) => (
-                                <div key={c.id} className="flex gap-2.5">
-                                  <Avatar src={c.author_photo} name={c.author_name} size="sm" className="shrink-0" />
-                                  <div className="min-w-0 flex-1 rounded-xl bg-surface-muted px-3 py-2">
-                                    <div className="flex items-baseline gap-2">
-                                      <span className="text-body-sm font-semibold text-ink">{c.author_name}</span>
-                                      <span className="text-caption text-ink-muted">{timeAgo(c.created_at)}</span>
+                                <div key={c.id}>
+                                  <div className="flex gap-2.5">
+                                    <Avatar src={c.author_photo} name={c.author_name} size="sm" className="mt-0.5 shrink-0" />
+                                    <div className="min-w-0 flex-1">
+                                      <div className="rounded-xl bg-surface-muted px-3 py-2">
+                                        <div className="flex items-baseline gap-2">
+                                          <span className="text-body-sm font-semibold text-ink">{c.author_name}</span>
+                                          <span className="text-caption text-ink-muted">{timeAgo(c.created_at)}</span>
+                                        </div>
+                                        <p className="mt-0.5 text-body-sm text-ink leading-relaxed">{c.content}</p>
+                                      </div>
+                                      {/* Reply button + view replies */}
+                                      <div className="ml-2 mt-1 flex items-center gap-3">
+                                        <button type="button"
+                                          onClick={() => {
+                                            if (replyingTo?.commentId === c.id) { setReplyingTo(null); }
+                                            else { setReplyingTo({ postId: post.id, commentId: c.id }); setReplyText(''); }
+                                          }}
+                                          className="text-caption font-medium text-ink-secondary transition hover:text-brand-600">
+                                          Reply
+                                        </button>
+                                        {(c.reply_count > 0 || (replies[c.id]?.length ?? 0) > 0) && (
+                                          <button type="button"
+                                            onClick={() => toggleReplies(post.id, c.id)}
+                                            className="text-caption text-ink-muted transition hover:text-brand-600">
+                                            {expandedReplies.has(c.id)
+                                              ? 'Hide replies'
+                                              : `View ${c.reply_count > 0 ? c.reply_count : replies[c.id]?.length} ${(c.reply_count === 1 || replies[c.id]?.length === 1) ? 'reply' : 'replies'}`}
+                                          </button>
+                                        )}
+                                      </div>
+                                      {/* Reply input */}
+                                      {replyingTo?.commentId === c.id && (
+                                        <div className="ml-2 mt-2 flex gap-2">
+                                          <Avatar src={user.profile_photo_url} name={user.full_name} size="sm" className="shrink-0" />
+                                          <div className="flex min-w-0 flex-1 gap-2">
+                                            <Input
+                                              value={replyText}
+                                              onChange={(e) => setReplyText(e.target.value)}
+                                              placeholder={`Reply to ${c.author_name}…`}
+                                              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleReply(post.id, c.id); } }}
+                                              className="flex-1 text-sm"
+                                            />
+                                            <Button onClick={() => handleReply(post.id, c.id)} size="sm" disabled={!replyText.trim()}>Post</Button>
+                                          </div>
+                                        </div>
+                                      )}
+                                      {/* Expanded replies */}
+                                      {expandedReplies.has(c.id) && (
+                                        <div className="ml-6 mt-2 space-y-2 border-l-2 border-border pl-3">
+                                          {repliesLoading[c.id] ? (
+                                            <div className="space-y-2 py-1">
+                                              {[1, 2].map((i) => (
+                                                <div key={i} className="flex gap-2">
+                                                  <Skeleton className="h-6 w-6 shrink-0" rounded="full" />
+                                                  <div className="flex-1 space-y-1"><Skeleton className="h-3 w-20" /><Skeleton className="h-3 w-full" /></div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          ) : (replies[c.id] ?? []).length === 0 ? (
+                                            <p className="py-1 text-caption text-ink-muted">No replies yet.</p>
+                                          ) : (
+                                            (replies[c.id] ?? []).map((r) => (
+                                              <div key={r.id} className="flex gap-2">
+                                                <Avatar src={r.author_photo} name={r.author_name} size="sm" className="h-6 w-6 shrink-0" />
+                                                <div className="rounded-lg bg-surface-subtle px-2.5 py-1.5">
+                                                  <div className="flex items-baseline gap-1.5">
+                                                    <span className="text-caption font-semibold text-ink">{r.author_name}</span>
+                                                    <span className="text-[10px] text-ink-muted">{timeAgo(r.created_at)}</span>
+                                                  </div>
+                                                  <p className="mt-0.5 text-caption text-ink leading-relaxed">{r.content}</p>
+                                                </div>
+                                              </div>
+                                            ))
+                                          )}
+                                        </div>
+                                      )}
                                     </div>
-                                    <p className="mt-0.5 text-body-sm text-ink leading-relaxed">{c.content}</p>
                                   </div>
                                 </div>
                               ))}
@@ -907,6 +1152,87 @@ export default function FeedPage() {
           </div>
         </aside>
       </div>
+
+      {/* Share Post modal */}
+      {sharePost && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-16"
+          onClick={(e) => { if (e.target === e.currentTarget) setSharePost(null); }}>
+          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <h3 className="font-semibold text-ink">Share Post</h3>
+              <button type="button" onClick={() => setSharePost(null)}
+                className="rounded-lg p-1 text-ink-secondary hover:bg-surface-muted">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Post preview */}
+            <div className="border-b border-border bg-surface-muted px-5 py-3">
+              <p className="line-clamp-2 text-caption text-ink-secondary">{sharePost.content}</p>
+            </div>
+
+            {/* Copy link */}
+            <div className="border-b border-border px-5 py-3">
+              <button type="button" onClick={() => handleCopyPostLink(sharePost.id)}
+                className={cn('flex w-full items-center gap-3 rounded-xl border border-border px-4 py-2.5 text-left transition hover:border-brand-400 hover:bg-brand-50', shareCopied && 'border-brand-600 bg-brand-50')}>
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-100">
+                  <svg className="h-4 w-4 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+                  </svg>
+                </div>
+                <span className={cn('text-body-sm font-medium', shareCopied ? 'text-brand-600' : 'text-ink')}>
+                  {shareCopied ? '✓ Link copied!' : 'Copy link'}
+                </span>
+              </button>
+            </div>
+
+            {/* Share to follower */}
+            <div className="px-5 py-3">
+              <p className="mb-2.5 text-body-sm font-medium text-ink">Share to…</p>
+              <Input value={shareSearch} onChange={(e) => setShareSearch(e.target.value)} placeholder="Search people you follow…" className="mb-2" />
+              <div className="max-h-56 overflow-y-auto rounded-xl border border-border">
+                {shareLoading ? (
+                  <div className="space-y-0 py-2">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+                        <Skeleton className="h-9 w-9 shrink-0" rounded="full" />
+                        <div className="flex-1 space-y-1.5"><Skeleton className="h-4 w-28" /><Skeleton className="h-3 w-20" /></div>
+                      </div>
+                    ))}
+                  </div>
+                ) : shareFollowers.filter((f) => f.full_name.toLowerCase().includes(shareSearch.toLowerCase())).length === 0 ? (
+                  <p className="py-8 text-center text-caption text-ink-muted">
+                    {shareSearch ? 'No results' : 'Follow people to share posts with them'}
+                  </p>
+                ) : (
+                  shareFollowers
+                    .filter((f) => f.full_name.toLowerCase().includes(shareSearch.toLowerCase()))
+                    .map((f) => {
+                      const sent = shareSentIds.has(f.id);
+                      const sending = shareSendingId === f.id;
+                      return (
+                        <div key={f.id} className="flex items-center gap-3 px-4 py-2.5 transition hover:bg-surface-muted">
+                          <Avatar src={f.profile_photo_url} name={f.full_name} size="sm" />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-body-sm font-medium text-ink">{f.full_name}</p>
+                            <p className="truncate text-caption text-ink-muted">{f.department}</p>
+                          </div>
+                          <Button size="sm" variant={sent ? 'outline' : 'primary'}
+                            disabled={sent || sending} loading={sending}
+                            onClick={() => handleShareToUser(f.id)}>
+                            {sent ? '✓ Sent' : 'Send'}
+                          </Button>
+                        </div>
+                      );
+                    })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Image lightbox */}
       {lightboxUrl && (

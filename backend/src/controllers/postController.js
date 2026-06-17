@@ -1,5 +1,6 @@
 const Post = require('../models/Post');
 const Comment = require('../models/Comment');
+const Reply = require('../models/Reply');
 const Notification = require('../models/Notification');
 const cloudinary = require('../config/cloudinary');
 
@@ -149,4 +150,30 @@ async function deletePost(req, res) {
   }
 }
 
-module.exports = { createPost, getFeed, likePost, addComment, getComments, deletePost };
+async function getReplies(req, res) {
+  try {
+    const commentId = parseInt(req.params.commentId, 10);
+    const replies = await Reply.getRepliesByComment(commentId);
+    res.json({ replies });
+  } catch (err) {
+    console.error('Get replies error:', err.message);
+    res.status(500).json({ message: 'Server error fetching replies' });
+  }
+}
+
+async function addReply(req, res) {
+  try {
+    const commentId = parseInt(req.params.commentId, 10);
+    const { content } = req.body;
+    if (!content || !content.trim()) {
+      return res.status(400).json({ message: 'Reply content is required' });
+    }
+    const reply = await Reply.createReply({ commentId, userId: req.user.id, content: content.trim() });
+    res.status(201).json({ reply });
+  } catch (err) {
+    console.error('Add reply error:', err.message);
+    res.status(500).json({ message: 'Server error adding reply' });
+  }
+}
+
+module.exports = { createPost, getFeed, likePost, addComment, getComments, deletePost, getReplies, addReply };

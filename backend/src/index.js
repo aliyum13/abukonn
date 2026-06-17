@@ -23,8 +23,11 @@ const { createMessagesTables } = require('./models/Message');
 const { createWhitelistTable } = require('./models/Whitelist');
 const { createFollowsTable } = require('./models/Follow');
 const { createNotificationsTable } = require('./models/Notification');
+const { createGroupTables } = require('./models/Group');
+const { createRepliesTable } = require('./models/Reply');
 const notificationRoutes = require('./routes/notifications');
 const adminRoutes = require('./routes/admin');
+const groupRoutes = require('./routes/groups');
 
 const app = express();
 const server = http.createServer(app);
@@ -69,6 +72,10 @@ io.on('connection', (socket) => {
   // ── Conversations ────────────────────────────────────────────────────
   socket.on('join_conversation', (conversationId) => {
     socket.join(`conversation_${conversationId}`);
+  });
+
+  socket.on('join_group', (groupId) => {
+    socket.join(`group_${groupId}`);
   });
 
   socket.on('send_message', async ({ conversationId, content, token }) => {
@@ -148,6 +155,7 @@ app.use('/api/search', searchRoutes);
 app.use('/api/follows', followRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/groups', groupRoutes);
 
 // Test route
 app.get('/', (req, res) => {
@@ -165,6 +173,8 @@ createUsersTable()
   .then(() => createFollowsTable())
   .then(() => createPostLikesTable())
   .then(() => createNotificationsTable())
+  .then(() => createGroupTables())
+  .then(() => createRepliesTable())
   .then(() => {
     server.listen(PORT, () => {
       console.log(`ABUkonn server running on port ${PORT}`);

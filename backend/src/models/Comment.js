@@ -27,7 +27,8 @@ async function createComment({ postId, userId, content }) {
 
 async function getCommentsByPost(postId) {
   const result = await pool.query(
-    `SELECT c.*, u.full_name AS author_name, u.profile_photo_url AS author_photo
+    `SELECT c.*, u.full_name AS author_name, u.profile_photo_url AS author_photo,
+            (SELECT COUNT(*) FROM abukonn.comment_replies cr WHERE cr.comment_id = c.id)::int AS reply_count
      FROM abukonn.comments c
      JOIN abukonn.users u ON c.user_id = u.id
      WHERE c.post_id = $1

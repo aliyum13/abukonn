@@ -8,6 +8,8 @@ const {
   addComment,
   getComments,
   deletePost,
+  getReplies,
+  addReply,
 } = require('../controllers/postController');
 
 const router = express.Router();
@@ -20,5 +22,7 @@ router.post('/:id/like', likePost);
 router.get('/:id/comments', getComments);
 router.post('/:id/comments', addComment);
 router.delete('/:id', deletePost);
+router.get('/:id/comments/:commentId/replies', getReplies);
+router.post('/:id/comments/:commentId/replies', addReply);
 
 module.exports = router;
