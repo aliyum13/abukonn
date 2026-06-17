@@ -73,6 +73,74 @@ type ListItem =
   | ({ kind: 'dm' } & Conversation)
   | ({ kind: 'group' } & Group);
 
+// ── Shared-post helpers ───────────────────────────────────────────────────────
+
+interface SharedPostData {
+  type: 'shared_post';
+  post_id: number;
+  author_name: string;
+  content: string;
+  image_url: string | null;
+}
+
+function parseSharedPost(content: string): SharedPostData | null {
+  try {
+    const data = JSON.parse(content);
+    if (data?.type === 'shared_post') return data as SharedPostData;
+  } catch { /* not JSON */ }
+  return null;
+}
+
+/** Returns a friendly preview string for the conversation list. */
+function friendlyPreview(content: string | null): string {
+  if (!content) return 'No messages yet';
+  const shared = parseSharedPost(content);
+  if (shared) return `📌 Shared a post`;
+  return content;
+}
+
+function SharedPostCard({ data, isSent }: { data: SharedPostData; isSent: boolean }) {
+  return (
+    <div className="w-full">
+      <p className={cn('mb-2 text-[11px] font-medium', isSent ? 'text-brand-200' : 'text-ink-muted')}>
+        📌 {data.author_name} shared a post
+      </p>
+      <div className={cn(
+        'overflow-hidden rounded-xl border',
+        isSent ? 'border-brand-500/50 bg-white/10' : 'border-border bg-surface-muted'
+      )}>
+        {data.image_url && (
+          <img
+            src={data.image_url}
+            alt="Shared post"
+            className="h-32 w-full object-cover"
+          />
+        )}
+        <div className="px-3 py-2.5">
+          <p className={cn(
+            'line-clamp-3 text-[13px] leading-relaxed',
+            isSent ? 'text-white/90' : 'text-ink'
+          )}>
+            {data.content}
+          </p>
+          <Link
+            href={`/feed#post-${data.post_id}`}
+            className={cn(
+              'mt-2.5 inline-flex items-center gap-1 text-[11px] font-semibold transition',
+              isSent ? 'text-brand-200 hover:text-white' : 'text-brand-600 hover:text-brand-700'
+            )}
+          >
+            View post
+            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+            </svg>
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Skeletons ────────────────────────────────────────────────────────────────
 
 function ConversationSkeleton() {
@@ -549,7 +617,7 @@ export default function MessagesPage() {
                             {conv.last_message_at && <span className="shrink-0 text-caption text-ink-muted">{timeAgo(conv.last_message_at)}</span>}
                           </div>
                           <div className="flex items-center justify-between gap-2">
-                            <p className={cn('truncate text-caption', conv.unread_count > 0 ? 'font-medium text-ink' : 'text-ink-muted')}>{conv.last_message || 'No messages yet'}</p>
+                            <p className={cn('truncate text-caption', conv.unread_count > 0 ? 'font-medium text-ink' : 'text-ink-muted')}>{friendlyPreview(conv.last_message)}</p>
                             {conv.unread_count > 0 && <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-600 text-[10px] font-bold text-white">{conv.unread_count > 9 ? '9+' : conv.unread_count}</span>}
                           </div>
                         </div>
@@ -618,13 +686,25 @@ export default function MessagesPage() {
                         return (
                           <div key={msg.id} className={cn('flex items-end gap-2', isSent ? 'justify-end' : 'justify-start')}>
                             {!isSent && <div className="w-7 shrink-0">{showAvatar && <Avatar src={activeConversation.other_user_photo} name={activeConversation.other_user_name} size="sm" className="h-7 w-7" />}</div>}
-                            <div className={cn('max-w-[75%] min-w-0 rounded-2xl px-4 py-2.5 text-body-sm', isSent ? 'rounded-br-md bg-brand-600 text-white' : 'rounded-bl-md border border-border bg-white text-ink')}>
-                              <p className="whitespace-pre-wrap break-words">{msg.content}</p>
-                              <div className={cn('mt-1 flex items-center gap-2', isSent ? 'justify-end' : 'justify-start')}>
-                                <span className={cn('text-caption', isSent ? 'text-brand-200' : 'text-ink-muted')}>{formatTime(msg.created_at)}</span>
-                                {isLastSent && <span className={cn('text-caption', isSent ? 'text-brand-200' : 'text-ink-muted')}>{msg.is_read ? '✓✓ Read' : '✓ Delivered'}</span>}
-                              </div>
-                            </div>
+                            {(() => {
+                              const shared = parseSharedPost(msg.content);
+                              return (
+                                <div className={cn(
+                                  'min-w-0 rounded-2xl px-4 py-2.5 text-body-sm',
+                                  shared ? 'max-w-[85%] w-72' : 'max-w-[75%]',
+                                  isSent ? 'rounded-br-md bg-brand-600 text-white' : 'rounded-bl-md border border-border bg-white text-ink'
+                                )}>
+                                  {shared
+                                    ? <SharedPostCard data={shared} isSent={isSent} />
+                                    : <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                                  }
+                                  <div className={cn('mt-1 flex items-center gap-2', isSent ? 'justify-end' : 'justify-start')}>
+                                    <span className={cn('text-caption', isSent ? 'text-brand-200' : 'text-ink-muted')}>{formatTime(msg.created_at)}</span>
+                                    {isLastSent && <span className={cn('text-caption', isSent ? 'text-brand-200' : 'text-ink-muted')}>{msg.is_read ? '✓✓ Read' : '✓ Delivered'}</span>}
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </div>
                         );
                       })}
@@ -691,10 +771,22 @@ export default function MessagesPage() {
                               {showSenderInfo && !isSent && (
                                 <p className="mb-0.5 ml-1 text-caption font-medium text-ink-secondary">{msg.sender_name}</p>
                               )}
-                              <div className={cn('rounded-2xl px-4 py-2.5 text-body-sm', isSent ? 'rounded-br-md bg-brand-600 text-white' : 'rounded-bl-md border border-border bg-white text-ink')}>
-                                <p className="whitespace-pre-wrap break-words">{msg.content}</p>
-                                <p className={cn('mt-1 text-caption', isSent ? 'text-brand-200 text-right' : 'text-ink-muted')}>{formatTime(msg.created_at)}</p>
-                              </div>
+                              {(() => {
+                                const shared = parseSharedPost(msg.content);
+                                return (
+                                  <div className={cn(
+                                    'rounded-2xl px-4 py-2.5 text-body-sm',
+                                    shared ? 'w-72' : '',
+                                    isSent ? 'rounded-br-md bg-brand-600 text-white' : 'rounded-bl-md border border-border bg-white text-ink'
+                                  )}>
+                                    {shared
+                                      ? <SharedPostCard data={shared} isSent={isSent} />
+                                      : <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                                    }
+                                    <p className={cn('mt-1 text-caption', isSent ? 'text-brand-200 text-right' : 'text-ink-muted')}>{formatTime(msg.created_at)}</p>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           </div>
                         );

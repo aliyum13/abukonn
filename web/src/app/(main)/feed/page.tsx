@@ -613,10 +613,13 @@ export default function FeedPage() {
       });
       if (!convRes.ok) throw new Error('Failed to start conversation');
       const { conversation } = await convRes.json();
-      const preview = sharePost.content.length > 200
-        ? `${sharePost.content.substring(0, 200)}…`
-        : sharePost.content;
-      const content = `📌 Shared a post by ${sharePost.author_name}:\n\n"${preview}"`;
+      const content = JSON.stringify({
+        type: 'shared_post',
+        post_id: sharePost.id,
+        author_name: sharePost.author_name,
+        content: sharePost.content,
+        image_url: sharePost.image_url ?? null,
+      });
       await fetch(`${API_URL}/api/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
