@@ -1,5 +1,6 @@
 const Message = require('../models/Message');
 const User = require('../models/User');
+const Notification = require('../models/Notification');
 
 async function saveMessage(conversationId, senderId, content) {
   if (!content || !content.trim()) {
@@ -44,10 +45,56 @@ async function getMessages(req, res) {
       return res.status(404).json({ message: 'Conversation not found' });
     }
 
+    // Mark received messages as read silently
+    Message.markConversationRead(conversationId, req.user.id).catch(() => {});
+
     res.json(data);
   } catch (err) {
     console.error('Get messages error:', err.message);
     res.status(500).json({ message: 'Server error fetching messages' });
+  }
+}
+
+async function startConversation(req, res) {
+  try {
+    const { recipient_id } = req.body;
+    if (!recipient_id) {
+      return res.status(400).json({ message: 'recipient_id is required' });
+    }
+    const recipientId = parseInt(recipient_id, 10);
+    if (recipientId === req.user.id) {
+      return res.status(400).json({ message: 'Cannot message yourself' });
+    }
+    const recipient = await User.findById(recipientId);
+    if (!recipient) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    const conversation = await Message.findOrCreateConversation(req.user.id, recipientId);
+    res.json({
+      conversation: {
+        id: conversation.id,
+        other_user_id: recipient.id,
+        other_user_name: recipient.full_name,
+        other_user_department: recipient.department,
+        other_user_photo: recipient.profile_photo_url,
+        last_message: null,
+        last_message_at: null,
+        unread_count: 0,
+      },
+    });
+  } catch (err) {
+    console.error('Start conversation error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function getUnreadCountHandler(req, res) {
+  try {
+    const count = await Message.getUnreadCount(req.user.id);
+    res.json({ count });
+  } catch (err) {
+    console.error('Get msg unread count error:', err.message);
+    res.status(500).json({ message: 'Server error' });
   }
 }
 
@@ -92,4 +139,4 @@ async function sendMessageHandler(req, res) {
   }
 }
 
-module.exports = { saveMessage, getConversations, getMessages, sendMessageHandler };
+module.exports = { saveMessage, getConversations, getMessages, sendMessageHandler, startConversation, getUnreadCountHandler };

@@ -52,16 +52,13 @@ async function getConversations(userId) {
             u.full_name AS other_user_name,
             u.department AS other_user_department,
             u.profile_photo_url AS other_user_photo,
-            (
-              SELECT m.content FROM abukonn.messages m
-              WHERE m.conversation_id = c.id
-              ORDER BY m.created_at DESC LIMIT 1
-            ) AS last_message,
-            (
-              SELECT m.created_at FROM abukonn.messages m
-              WHERE m.conversation_id = c.id
-              ORDER BY m.created_at DESC LIMIT 1
-            ) AS last_message_at
+            (SELECT m.content FROM abukonn.messages m
+             WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS last_message,
+            (SELECT m.created_at FROM abukonn.messages m
+             WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS last_message_at,
+            (SELECT COUNT(*) FROM abukonn.messages m
+             WHERE m.conversation_id = c.id AND m.sender_id != $1 AND m.is_read = FALSE
+            )::int AS unread_count
      FROM abukonn.conversations c
      JOIN abukonn.users u ON u.id = CASE WHEN c.user1_id = $1 THEN c.user2_id ELSE c.user1_id END
      WHERE c.user1_id = $1 OR c.user2_id = $1
@@ -69,6 +66,26 @@ async function getConversations(userId) {
     [userId]
   );
   return result.rows;
+}
+
+async function markConversationRead(conversationId, userId) {
+  await pool.query(
+    `UPDATE abukonn.messages SET is_read = TRUE
+     WHERE conversation_id = $1 AND sender_id != $2 AND is_read = FALSE`,
+    [conversationId, userId]
+  );
+}
+
+async function getUnreadCount(userId) {
+  const result = await pool.query(
+    `SELECT COUNT(*) FROM abukonn.messages m
+     JOIN abukonn.conversations c ON m.conversation_id = c.id
+     WHERE (c.user1_id = $1 OR c.user2_id = $1)
+       AND m.sender_id != $1
+       AND m.is_read = FALSE`,
+    [userId]
+  );
+  return parseInt(result.rows[0].count, 10);
 }
 
 async function getMessages(conversationId, userId) {
@@ -118,4 +135,6 @@ module.exports = {
   getMessages,
   sendMessage,
   getConversationById,
+  markConversationRead,
+  getUnreadCount,
 };

@@ -14,6 +14,7 @@ const messageRoutes = require('./routes/messages');
 const searchRoutes = require('./routes/search');
 const followRoutes = require('./routes/follows');
 const { saveMessage } = require('./controllers/messageController');
+const { markConversationRead } = require('./models/Message');
 const { createUsersTable } = require('./models/User');
 const { createPostsTable, createPostLikesTable } = require('./models/Post');
 const { createCommentsTable } = require('./models/Comment');
@@ -30,14 +31,39 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: 'http://localhost:3001',
+    origin: process.env.CLIENT_URL || 'http://localhost:3001',
     methods: ['GET', 'POST'],
   },
 });
 
-io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
+// Track online users: userId -> Set of socketIds
+const onlineUsers = new Map();
 
+io.on('connection', (socket) => {
+  // ── Presence ────────────────────────────────────────────────────────
+  socket.on('user_online', (token) => {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const uid = decoded.id;
+      socket.data.userId = uid;
+      if (!onlineUsers.has(uid)) onlineUsers.set(uid, new Set());
+      onlineUsers.get(uid).add(socket.id);
+      socket.broadcast.emit('user_status', { userId: uid, online: true });
+    } catch {
+      // invalid token — ignore
+    }
+  });
+
+  socket.on('get_online_status', (userIds, callback) => {
+    if (typeof callback !== 'function') return;
+    const statuses = (userIds || []).map((id) => ({
+      userId: id,
+      online: onlineUsers.has(id),
+    }));
+    callback(statuses);
+  });
+
+  // ── Conversations ────────────────────────────────────────────────────
   socket.on('join_conversation', (conversationId) => {
     socket.join(`conversation_${conversationId}`);
   });
@@ -53,8 +79,54 @@ io.on('connection', (socket) => {
     }
   });
 
+  // ── Typing indicators ────────────────────────────────────────────────
+  socket.on('typing_start', ({ conversationId, token }) => {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      socket
+        .to(`conversation_${conversationId}`)
+        .emit('user_typing', { conversationId, userId: decoded.id });
+    } catch {
+      // ignore
+    }
+  });
+
+  socket.on('typing_stop', ({ conversationId, token }) => {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      socket
+        .to(`conversation_${conversationId}`)
+        .emit('user_stopped_typing', { conversationId, userId: decoded.id });
+    } catch {
+      // ignore
+    }
+  });
+
+  // ── Read receipts ────────────────────────────────────────────────────
+  socket.on('mark_read', async ({ conversationId, token }) => {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      await markConversationRead(conversationId, decoded.id);
+      socket
+        .to(`conversation_${conversationId}`)
+        .emit('messages_read', { conversationId });
+    } catch {
+      // ignore
+    }
+  });
+
   socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
+    const uid = socket.data?.userId;
+    if (uid) {
+      const sockets = onlineUsers.get(uid);
+      if (sockets) {
+        sockets.delete(socket.id);
+        if (sockets.size === 0) {
+          onlineUsers.delete(uid);
+          socket.broadcast.emit('user_status', { userId: uid, online: false });
+        }
+      }
+    }
   });
 });
 

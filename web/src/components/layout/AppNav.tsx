@@ -90,6 +90,31 @@ export function AppNav() {
   const [notifLoading, setNotifLoading] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
 
+  // Message unread count
+  const [msgUnreadCount, setMsgUnreadCount] = useState(0);
+
+  const fetchMsgUnreadCount = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_URL}/api/messages/unread-count`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMsgUnreadCount(data.count ?? 0);
+      }
+    } catch {
+      // silent
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    fetchMsgUnreadCount();
+    const id = setInterval(fetchMsgUnreadCount, 30_000);
+    return () => clearInterval(id);
+  }, [token, fetchMsgUnreadCount]);
+
   const handleLogout = () => {
     logout();
     router.push('/login');
@@ -309,13 +334,18 @@ export function AppNav() {
               <Link
                 key={link.href}
                 href={link.href}
-                className={`rounded-xl px-3.5 py-2 text-body-sm font-medium transition ${
+                className={`relative rounded-xl px-3.5 py-2 text-body-sm font-medium transition ${
                   isActive(link.href)
                     ? 'bg-brand-50 text-brand-700'
                     : 'text-ink-secondary hover:bg-surface-subtle hover:text-ink'
                 }`}
               >
                 {link.label}
+                {link.href === '/messages' && msgUnreadCount > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
+                    {msgUnreadCount > 9 ? '9+' : msgUnreadCount}
+                  </span>
+                )}
               </Link>
             ))}
           </div>
@@ -589,13 +619,18 @@ export function AppNav() {
           <Link
             key={link.href}
             href={link.href}
-            className={`flex-1 py-2.5 text-center text-caption font-medium ${
+            className={`relative flex-1 py-2.5 text-center text-caption font-medium ${
               isActive(link.href)
                 ? 'border-b-2 border-brand-600 text-brand-600'
                 : 'text-ink-muted'
             }`}
           >
             {link.label}
+            {link.href === '/messages' && msgUnreadCount > 0 && (
+              <span className="absolute right-3 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
+                {msgUnreadCount > 9 ? '9+' : msgUnreadCount}
+              </span>
+            )}
           </Link>
         ))}
       </div>
