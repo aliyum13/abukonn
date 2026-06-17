@@ -530,6 +530,7 @@ export default function FeedPage() {
       created_at: new Date().toISOString(),
       author_name: user.full_name,
       author_photo: user.profile_photo_url,
+      reply_count: 0,
     };
     setComments((prev) => ({ ...prev, [postId]: [...(prev[postId] ?? []), tempComment] }));
     setCommentText('');
