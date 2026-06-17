@@ -215,7 +215,6 @@ export default function UserProfilePage() {
 
           <div className="mt-3">
             <h1 className="text-xl font-bold text-ink">{profile.full_name}</h1>
-            <p className="text-body-sm text-ink-muted">{profile.matric_number}</p>
             <div className="mt-2 flex flex-wrap gap-2">
               <Badge variant="brand">{profile.department}</Badge>
               <Badge variant="default">{profile.level}</Badge>

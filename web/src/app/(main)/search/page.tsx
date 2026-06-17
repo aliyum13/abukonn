@@ -108,8 +108,7 @@ function UserCard({ user, token }: { user: SearchUser; token: string | null }) {
           >
             {user.full_name}
           </Link>
-          <p className="text-caption text-ink-muted">{user.matric_number}</p>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
+          <div className="mt-1 flex flex-wrap gap-1.5">
             <Badge variant="brand">{user.department}</Badge>
             <Badge variant="default">{user.level}</Badge>
           </div>

@@ -20,8 +20,9 @@ async function getProfile(req, res) {
 
     const posts = await Post.getPostsByUserId(req.user.id);
 
+    // Own profile — include matric_number
     res.json({
-      user: User.toPublicUser(user),
+      user: User.toPrivateUser(user),
       posts,
     });
   } catch (err) {
@@ -45,9 +46,17 @@ async function getUserById(req, res) {
       Follow.isFollowing(req.user.id, userId),
     ]);
 
+    const publicUser = User.toPublicUser(user);
+
+    // Expose matric_number only to the user themselves or admins
+    const canSeeMatric = req.user.id === userId || req.user.is_admin;
+    if (!canSeeMatric) {
+      delete publicUser.matric_number;
+    }
+
     res.json({
       user: {
-        ...User.toPublicUser(user),
+        ...publicUser,
         followers_count: stats.followers_count,
         following_count: stats.following_count,
         is_following: following,
@@ -72,7 +81,7 @@ async function updateProfile(req, res) {
 
     res.json({
       message: 'Profile updated',
-      user: User.toPublicUser(user),
+      user: User.toPrivateUser(user),
     });
   } catch (err) {
     console.error('Update profile error:', err.message);
@@ -95,7 +104,7 @@ async function uploadPhoto(req, res) {
 
     res.json({
       message: 'Photo uploaded successfully',
-      user: User.toPublicUser(user),
+      user: User.toPrivateUser(user),
     });
   } catch (err) {
     console.error('Upload photo error:', err.message);

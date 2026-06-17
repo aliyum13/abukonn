@@ -339,7 +339,6 @@ function SidebarProfile({
           <div className="flex flex-col items-center text-center">
             <Avatar src={user.profile_photo_url} name={user.full_name} size="xl" />
             <h3 className="mt-3 font-semibold text-ink">{user.full_name}</h3>
-            <p className="text-caption text-ink-muted">{user.matric_number}</p>
             <Badge variant="brand" className="mt-2">{user.department}</Badge>
           </div>
           <div className="mt-5 grid grid-cols-3 divide-x divide-border rounded-xl border border-border bg-surface-muted py-3">

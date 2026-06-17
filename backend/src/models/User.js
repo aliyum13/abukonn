@@ -96,7 +96,7 @@ async function createUser({ matricNumber, fullName, email, department, level, pa
 function toPublicUser(user) {
   return {
     id: user.id,
-    matric_number: user.matric_number,
+    // matric_number excluded by default — added back only for own profile or admin views
     full_name: user.full_name,
     email: user.email,
     department: user.department,
@@ -105,6 +105,14 @@ function toPublicUser(user) {
     bio: user.bio,
     is_admin: user.is_admin || false,
     created_at: user.created_at,
+  };
+}
+
+// Full user data including matric — for own-profile and admin use only
+function toPrivateUser(user) {
+  return {
+    ...toPublicUser(user),
+    matric_number: user.matric_number,
   };
 }
 
@@ -118,4 +126,5 @@ module.exports = {
   updateProfilePhoto,
   createUser,
   toPublicUser,
+  toPrivateUser,
 };
