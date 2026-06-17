@@ -193,6 +193,22 @@ function StoriesBar({
           </span>
         </button>
       ))}
+      {/* Ghost circles when no one has posted stories */}
+      {others.length === 0 && (
+        <>
+          {[1, 2, 3].map(i => (
+            <div key={i} className="flex shrink-0 flex-col items-center gap-1.5">
+              <div className="h-14 w-14 rounded-full bg-gray-100 ring-2 ring-gray-100 ring-offset-2" />
+              <div className="h-2 w-9 rounded-full bg-gray-100" />
+            </div>
+          ))}
+          <div className="flex shrink-0 items-center pl-2">
+            <p className="max-w-[96px] text-[11px] leading-tight text-ink-muted">
+              Follow people to see their stories
+            </p>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1107,19 +1123,21 @@ export default function FeedPage() {
 
           {/* Sticky category filter tabs */}
           <div className="sticky top-14 z-20 border-b border-border bg-white/95 backdrop-blur-sm">
-            <div className="flex gap-0 overflow-x-auto scrollbar-hide">
-              {[{ value: 'ALL', label: 'All' }, ...POST_CATEGORIES].map(cat => (
-                <button key={cat.value} type="button"
-                  onClick={() => setCategoryFilter(cat.value as PostCategory | 'ALL')}
-                  className={cn(
-                    'shrink-0 border-b-2 px-4 py-3 text-[13px] font-medium transition whitespace-nowrap',
-                    categoryFilter === cat.value
-                      ? 'border-brand-600 text-brand-600'
-                      : 'border-transparent text-ink-muted hover:text-ink hover:border-border'
-                  )}>
-                  {cat.label}
-                </button>
-              ))}
+            <div className="overflow-x-auto scrollbar-hide">
+              <div className="flex min-w-max gap-0 pl-2 pr-4">
+                {[{ value: 'ALL', label: 'All' }, ...POST_CATEGORIES].map(cat => (
+                  <button key={cat.value} type="button"
+                    onClick={() => setCategoryFilter(cat.value as PostCategory | 'ALL')}
+                    className={cn(
+                      'shrink-0 border-b-2 px-3.5 py-3 text-[13px] font-medium transition whitespace-nowrap',
+                      categoryFilter === cat.value
+                        ? 'border-brand-600 text-brand-600'
+                        : 'border-transparent text-ink-muted hover:text-ink hover:border-border'
+                    )}>
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -1156,10 +1174,10 @@ export default function FeedPage() {
                     </div>
                   )}
 
-                  <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
-                    <div className="flex items-center gap-1">
+                  <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
                       <button type="button" onClick={() => imageInputRef.current?.click()}
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-brand-600 transition hover:bg-brand-50" title="Add photo">
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-brand-600 transition hover:bg-brand-50" title="Add photo">
                         <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
                         </svg>
@@ -1167,13 +1185,13 @@ export default function FeedPage() {
                       <select
                         value={newPostCategory}
                         onChange={e => setNewPostCategory(e.target.value as PostCategory)}
-                        className="rounded-full border border-border bg-transparent px-3 py-1 text-[13px] text-ink-secondary focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                        className="min-w-0 flex-1 rounded-full border border-border bg-transparent py-1.5 pl-3 pr-2 text-[13px] text-ink-secondary focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                       >
                         {POST_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                       </select>
                     </div>
                     <Button type="submit" size="sm" disabled={posting || !newPost.trim()} loading={posting}
-                      className="rounded-full px-5">
+                      className="shrink-0 rounded-full px-5">
                       Post
                     </Button>
                   </div>
