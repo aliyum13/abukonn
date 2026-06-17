@@ -81,6 +81,13 @@ export default function LoginPage() {
           Create one free
         </Link>
       </p>
+
+      <p className="mt-4 text-center text-caption text-ink-muted">
+        By using ABUkonn you agree to our{' '}
+        <Link href="/terms" className="underline underline-offset-2 transition hover:text-brand-600">
+          Terms &amp; Conditions
+        </Link>
+      </p>
     </AuthSplitLayout>
   );
 }

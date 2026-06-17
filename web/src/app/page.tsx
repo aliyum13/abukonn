@@ -320,6 +320,9 @@ export default function Home() {
               <a href="#features" className="transition hover:text-brand-600">
                 Features
               </a>
+              <Link href="/terms" className="transition hover:text-brand-600">
+                Terms &amp; Conditions
+              </Link>
             </div>
           </div>
 

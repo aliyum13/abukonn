@@ -53,6 +53,7 @@ export default function RegisterPage() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   const handleChange = (field: string, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -165,8 +166,30 @@ export default function RegisterPage() {
           autoComplete="new-password"
         />
 
-        <div className="pt-2">
-          <Button type="submit" fullWidth size="lg" loading={loading}>
+        {/* Terms checkbox */}
+        <div className="pt-1">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={agreedToTerms}
+              onChange={(e) => setAgreedToTerms(e.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-brand-600 cursor-pointer"
+            />
+            <span className="text-body-sm text-ink-secondary leading-snug">
+              I agree to the{' '}
+              <Link
+                href="/terms"
+                target="_blank"
+                className="font-medium text-brand-600 underline underline-offset-2 transition hover:text-brand-700"
+              >
+                Terms &amp; Conditions
+              </Link>
+            </span>
+          </label>
+        </div>
+
+        <div className="pt-1">
+          <Button type="submit" fullWidth size="lg" loading={loading} disabled={!agreedToTerms}>
             {loading ? 'Creating account...' : 'Create account'}
           </Button>
         </div>
