@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Whitelist = require('../models/Whitelist');
 
 function generateToken(user) {
   return jwt.sign(
@@ -20,6 +21,18 @@ async function register(req, res) {
 
     if (password.length < 6) {
       return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    }
+
+    // Enforce whitelist only when at least one matric number has been uploaded
+    const whitelistCount = await Whitelist.getCount();
+    if (whitelistCount > 0) {
+      const allowed = await Whitelist.isWhitelisted(matric_number);
+      if (!allowed) {
+        return res.status(403).json({
+          message: 'Your matric number is not on the approved student list. Contact admin if this is an error.',
+          field: 'matric_number',
+        });
+      }
     }
 
     // Email is the unique login identifier — check it first

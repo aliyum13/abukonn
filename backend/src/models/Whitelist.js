@@ -46,4 +46,12 @@ async function clearAll() {
   await pool.query('DELETE FROM abukonn.matric_whitelist');
 }
 
-module.exports = { createWhitelistTable, getCount, getAll, bulkInsert, clearAll };
+async function isWhitelisted(matricNumber) {
+  const result = await pool.query(
+    'SELECT 1 FROM abukonn.matric_whitelist WHERE LOWER(matric_number) = LOWER($1)',
+    [matricNumber]
+  );
+  return result.rows.length > 0;
+}
+
+module.exports = { createWhitelistTable, getCount, getAll, bulkInsert, clearAll, isWhitelisted };
