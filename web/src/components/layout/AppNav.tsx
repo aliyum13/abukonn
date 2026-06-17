@@ -42,6 +42,17 @@ interface SearchResults {
   posts: SearchPost[];
 }
 
+interface AppNotification {
+  id: number;
+  type: 'like' | 'comment' | 'follow';
+  post_id: number | null;
+  is_read: boolean;
+  created_at: string;
+  sender_id: number;
+  sender_name: string;
+  sender_photo: string | null;
+}
+
 function SearchIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -72,10 +83,111 @@ export function AppNav() {
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Notification state
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifList, setNotifList] = useState<AppNotification[]>([]);
+  const [notifLoading, setNotifLoading] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
+
   const handleLogout = () => {
     logout();
     router.push('/login');
   };
+
+  // ── Notification helpers ────────────────────────────────────────────
+  const fetchUnreadCount = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_URL}/api/notifications/unread-count`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUnreadCount(data.count);
+      }
+    } catch {
+      // silent
+    }
+  }, [token]);
+
+  // Poll unread count every 30 s
+  useEffect(() => {
+    if (!token) return;
+    fetchUnreadCount();
+    const id = setInterval(fetchUnreadCount, 30_000);
+    return () => clearInterval(id);
+  }, [token, fetchUnreadCount]);
+
+  const fetchNotifications = useCallback(async () => {
+    if (!token) return;
+    setNotifLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/notifications`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setNotifList(data.notifications);
+      }
+    } catch {
+      // silent
+    } finally {
+      setNotifLoading(false);
+    }
+  }, [token]);
+
+  const handleBellClick = () => {
+    if (!notifOpen) fetchNotifications();
+    setNotifOpen((prev) => !prev);
+  };
+
+  const handleMarkAllRead = async () => {
+    if (!token) return;
+    try {
+      await fetch(`${API_URL}/api/notifications/read-all`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setNotifList((prev) => prev.map((n) => ({ ...n, is_read: true })));
+      setUnreadCount(0);
+    } catch {
+      // silent
+    }
+  };
+
+  const handleNotifClick = async (notif: AppNotification) => {
+    if (!token) return;
+    if (!notif.is_read) {
+      fetch(`${API_URL}/api/notifications/${notif.id}/read`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+      setNotifList((prev) =>
+        prev.map((n) => (n.id === notif.id ? { ...n, is_read: true } : n))
+      );
+      setUnreadCount((c) => Math.max(0, c - 1));
+    }
+    setNotifOpen(false);
+    router.push(notif.type === 'follow' ? `/profile/${notif.sender_id}` : '/feed');
+  };
+
+  const notifMessage = (n: AppNotification) => {
+    if (n.type === 'follow') return `${n.sender_name} started following you`;
+    if (n.type === 'like') return `${n.sender_name} liked your post`;
+    return `${n.sender_name} commented on your post`;
+  };
+
+  // Close notification panel on click outside
+  useEffect(() => {
+    function handleDown(e: MouseEvent) {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setNotifOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleDown);
+    return () => document.removeEventListener('mousedown', handleDown);
+  }, []);
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);
@@ -140,10 +252,13 @@ export function AppNav() {
     return () => document.removeEventListener('mousedown', handleDown);
   }, []);
 
-  // Close on Escape
+  // Close search / notification panel on Escape
   useEffect(() => {
     function handleKey(e: globalThis.KeyboardEvent) {
-      if (e.key === 'Escape') closeSearch();
+      if (e.key === 'Escape') {
+        closeSearch();
+        setNotifOpen(false);
+      }
     }
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
@@ -345,9 +460,104 @@ export function AppNav() {
           </button>
         )}
 
-        {/* Right side: avatar + logout */}
+        {/* Right side: bell + avatar + logout */}
         {!searchOpen && (
-          <div className="flex shrink-0 items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2">
+            {/* Notification bell */}
+            {!loading && user && (
+              <div ref={notifRef} className="relative">
+                <button
+                  type="button"
+                  onClick={handleBellClick}
+                  aria-label="Notifications"
+                  className="relative flex h-9 w-9 items-center justify-center rounded-xl text-ink-secondary transition hover:bg-surface-subtle hover:text-ink"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                  </svg>
+                  {unreadCount > 0 && (
+                    <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </button>
+
+                {/* Notification dropdown */}
+                {notifOpen && (
+                  <div className="absolute right-0 top-full z-[60] mt-2 w-80 overflow-hidden rounded-2xl border border-border bg-white shadow-xl">
+                    {/* Header */}
+                    <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                      <h3 className="font-semibold text-ink">Notifications</h3>
+                      <div className="flex items-center gap-2">
+                        {unreadCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleMarkAllRead}
+                            className="text-caption font-medium text-brand-600 hover:text-brand-700"
+                          >
+                            Mark all read
+                          </button>
+                        )}
+                        <Link
+                          href="/notifications"
+                          onClick={() => setNotifOpen(false)}
+                          className="text-caption font-medium text-ink-muted hover:text-ink"
+                        >
+                          See all
+                        </Link>
+                      </div>
+                    </div>
+
+                    {/* Body */}
+                    <div className="max-h-[380px] overflow-y-auto">
+                      {notifLoading ? (
+                        <div className="space-y-0">
+                          {[1, 2, 3].map((i) => (
+                            <div key={i} className="flex items-start gap-3 px-4 py-3">
+                              <div className="h-9 w-9 shrink-0 animate-pulse rounded-full bg-surface-muted" />
+                              <div className="flex-1 space-y-1.5 pt-1">
+                                <div className="h-3 w-48 animate-pulse rounded bg-surface-muted" />
+                                <div className="h-2.5 w-24 animate-pulse rounded bg-surface-muted" />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : notifList.length === 0 ? (
+                        <div className="flex flex-col items-center py-10 text-center">
+                          <svg className="mb-2 h-8 w-8 text-ink-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                          </svg>
+                          <p className="text-body-sm text-ink-muted">No notifications yet</p>
+                        </div>
+                      ) : (
+                        notifList.map((n) => (
+                          <button
+                            key={n.id}
+                            type="button"
+                            onClick={() => handleNotifClick(n)}
+                            className={`flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-surface-muted ${!n.is_read ? 'bg-brand-50/60' : ''}`}
+                          >
+                            <div className="relative shrink-0">
+                              <Avatar src={n.sender_photo} name={n.sender_name} size="sm" />
+                              {!n.is_read && (
+                                <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-brand-500 ring-2 ring-white" />
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-body-sm text-ink leading-snug">
+                                {notifMessage(n)}
+                              </p>
+                              <p className="mt-0.5 text-caption text-ink-muted">{timeAgo(n.created_at)}</p>
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {!loading && user && (
               <Link href="/profile" className="hidden items-center gap-2 sm:flex">
                 <Avatar

@@ -1,4 +1,5 @@
 const Follow = require('../models/Follow');
+const Notification = require('../models/Notification');
 
 async function follow(req, res) {
   try {
@@ -11,6 +12,14 @@ async function follow(req, res) {
 
     await Follow.followUser(followerId, followingId);
     const stats = await Follow.getStats(followingId);
+
+    // Notify the followed user
+    Notification.createNotification({
+      recipientId: followingId,
+      senderId: followerId,
+      type: 'follow',
+    }).catch(() => {});
+
     res.json({ message: 'Followed successfully', ...stats });
   } catch (err) {
     console.error('Follow error:', err.message);

@@ -1,5 +1,6 @@
 const Post = require('../models/Post');
 const Comment = require('../models/Comment');
+const Notification = require('../models/Notification');
 const cloudinary = require('../config/cloudinary');
 
 async function uploadBufferToCloudinary(buffer, mimetype) {
@@ -58,6 +59,17 @@ async function likePost(req, res) {
     }
 
     const { post, is_liked } = await Post.toggleLike(postId, req.user.id);
+
+    // Notify post owner only when liking (not unliking), skip own posts
+    if (is_liked && existing.user_id !== req.user.id) {
+      Notification.createNotification({
+        recipientId: existing.user_id,
+        senderId: req.user.id,
+        type: 'like',
+        postId,
+      }).catch(() => {});
+    }
+
     res.json({ message: is_liked ? 'Post liked' : 'Post unliked', post, is_liked });
   } catch (err) {
     console.error('Like post error:', err.message);
@@ -98,6 +110,16 @@ async function addComment(req, res) {
 
     await Post.incrementCommentsCount(postId);
     const post = await Post.getPostById(postId);
+
+    // Notify post owner when someone else comments
+    if (existing.user_id !== req.user.id) {
+      Notification.createNotification({
+        recipientId: existing.user_id,
+        senderId: req.user.id,
+        type: 'comment',
+        postId,
+      }).catch(() => {});
+    }
 
     res.status(201).json({ message: 'Comment added', comment, post });
   } catch (err) {

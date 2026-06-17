@@ -1,0 +1,224 @@
+'use client';
+
+import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { useAuth } from '@/context/AuthContext';
+import { timeAgo } from '@/lib/format';
+import { Avatar, Button, Card, CardContent, Skeleton } from '@/components/ui';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+
+interface Notification {
+  id: number;
+  type: 'like' | 'comment' | 'follow';
+  post_id: number | null;
+  is_read: boolean;
+  created_at: string;
+  sender_id: number;
+  sender_name: string;
+  sender_photo: string | null;
+}
+
+function notifMessage(n: Notification) {
+  if (n.type === 'follow') return `started following you`;
+  if (n.type === 'like') return `liked your post`;
+  return `commented on your post`;
+}
+
+function notifHref(n: Notification) {
+  return n.type === 'follow' ? `/profile/${n.sender_id}` : '/feed';
+}
+
+function NotifIcon({ type }: { type: Notification['type'] }) {
+  if (type === 'follow') {
+    return (
+      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-100 text-brand-600">
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM3 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 019.374 21c-2.331 0-4.512-.645-6.374-1.766z" />
+        </svg>
+      </span>
+    );
+  }
+  if (type === 'like') {
+    return (
+      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-red-100 text-red-500">
+        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" />
+        </svg>
+      </span>
+    );
+  }
+  return (
+    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 text-blue-500">
+      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.74 1.676v2.954a.75.75 0 01-1.088.67L6.19 21.1a.75.75 0 01-.365-.633v-1.44C3.512 17.962 3 15.075 3 12z" />
+      </svg>
+    </span>
+  );
+}
+
+function NotifSkeleton() {
+  return (
+    <div className="flex items-start gap-4 px-6 py-4">
+      <Skeleton className="h-10 w-10 shrink-0" rounded="full" />
+      <div className="flex-1 space-y-2">
+        <Skeleton className="h-4 w-56" />
+        <Skeleton className="h-3 w-28" />
+      </div>
+    </div>
+  );
+}
+
+export default function NotificationsPage() {
+  const { user, token, loading: authLoading } = useAuth();
+  const router = useRouter();
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [markingAll, setMarkingAll] = useState(false);
+
+  const fetchNotifications = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_URL}/api/notifications`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setNotifications(data.notifications);
+      }
+    } catch {
+      // silent
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (!authLoading && !token) router.push('/login');
+  }, [authLoading, token, router]);
+
+  useEffect(() => {
+    if (token) fetchNotifications();
+  }, [token, fetchNotifications]);
+
+  const handleMarkAllRead = async () => {
+    if (!token) return;
+    setMarkingAll(true);
+    try {
+      await fetch(`${API_URL}/api/notifications/read-all`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    } catch {
+      // silent
+    } finally {
+      setMarkingAll(false);
+    }
+  };
+
+  const handleNotifClick = async (n: Notification) => {
+    if (!token || n.is_read) {
+      router.push(notifHref(n));
+      return;
+    }
+    fetch(`${API_URL}/api/notifications/${n.id}/read`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}` },
+    }).catch(() => {});
+    setNotifications((prev) =>
+      prev.map((notif) => (notif.id === n.id ? { ...notif, is_read: true } : notif))
+    );
+    router.push(notifHref(n));
+  };
+
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
+
+  if (authLoading) return null;
+
+  return (
+    <div className="mx-auto max-w-2xl px-4 py-6 sm:px-6">
+      {/* Header */}
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-ink">Notifications</h1>
+          {!loading && unreadCount > 0 && (
+            <p className="mt-0.5 text-body-sm text-ink-muted">
+              {unreadCount} unread
+            </p>
+          )}
+        </div>
+        {unreadCount > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleMarkAllRead}
+            loading={markingAll}
+          >
+            Mark all as read
+          </Button>
+        )}
+      </div>
+
+      <Card>
+        {loading ? (
+          <div className="divide-y divide-border">
+            <NotifSkeleton />
+            <NotifSkeleton />
+            <NotifSkeleton />
+            <NotifSkeleton />
+          </div>
+        ) : notifications.length === 0 ? (
+          <CardContent className="flex flex-col items-center py-16 text-center">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-surface-muted">
+              <svg className="h-8 w-8 text-ink-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+              </svg>
+            </div>
+            <h3 className="font-semibold text-ink">No notifications yet</h3>
+            <p className="mt-1 text-body-sm text-ink-muted">
+              When someone likes your post, comments, or follows you, it will appear here.
+            </p>
+            <Link href="/feed" className="mt-4">
+              <Button variant="outline" size="sm">Go to feed</Button>
+            </Link>
+          </CardContent>
+        ) : (
+          <div className="divide-y divide-border">
+            {notifications.map((n) => (
+              <button
+                key={n.id}
+                type="button"
+                onClick={() => handleNotifClick(n)}
+                className={`flex w-full items-start gap-4 px-6 py-4 text-left transition hover:bg-surface-muted ${!n.is_read ? 'bg-brand-50/50' : ''}`}
+              >
+                {/* Avatar with type icon overlay */}
+                <div className="relative shrink-0">
+                  <Avatar src={n.sender_photo} name={n.sender_name} size="md" />
+                  <div className="absolute -bottom-1 -right-1">
+                    <NotifIcon type={n.type} />
+                  </div>
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <p className="text-body-sm text-ink leading-snug">
+                    <span className="font-semibold">{n.sender_name}</span>
+                    {' '}
+                    {notifMessage(n)}
+                  </p>
+                  <p className="mt-1 text-caption text-ink-muted">{timeAgo(n.created_at)}</p>
+                </div>
+
+                {/* Unread indicator */}
+                {!n.is_read && (
+                  <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-brand-500" />
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
