@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, FormEvent } from 'react';
+import { useEffect, useState, useRef, FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -299,10 +299,23 @@ export default function FeedPage() {
   const [commentingId, setCommentingId] = useState<number | null>(null);
   const [commentText, setCommentText] = useState('');
   const [error, setError] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!authLoading && !token) router.push('/login');
   }, [authLoading, token, router]);
+
+  // Close lightbox on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightboxUrl(null);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
 
   const fetchPosts = async () => {
     if (!token) return;
@@ -323,19 +336,46 @@ export default function FeedPage() {
     if (token) fetchPosts();
   }, [token]);
 
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image must be under 5MB');
+      return;
+    }
+    setImageFile(file);
+    const reader = new FileReader();
+    reader.onloadend = () => setImagePreview(reader.result as string);
+    reader.readAsDataURL(file);
+    // reset input so the same file can be re-selected
+    e.target.value = '';
+  };
+
+  const removeImage = () => {
+    setImageFile(null);
+    setImagePreview(null);
+  };
+
   const handleCreatePost = async (e: FormEvent) => {
     e.preventDefault();
     if (!newPost.trim() || !token) return;
     setPosting(true);
     setError('');
     try {
+      const formData = new FormData();
+      formData.append('content', newPost.trim());
+      if (imageFile) formData.append('image', imageFile);
+
       const res = await fetch(`${API_URL}/api/posts`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ content: newPost }),
+        // No Content-Type header — browser sets multipart boundary automatically
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
       });
       if (!res.ok) throw new Error('Failed to create post');
       setNewPost('');
+      setImageFile(null);
+      setImagePreview(null);
       await fetchPosts();
     } catch {
       setError('Failed to create post');
@@ -500,11 +540,51 @@ export default function FeedPage() {
                         'focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20'
                       )}
                     />
-                    <div className="mt-3 flex justify-end">
+
+                    {/* Image preview */}
+                    {imagePreview && (
+                      <div className="relative mt-3 inline-block">
+                        <img
+                          src={imagePreview}
+                          alt="Preview"
+                          className="max-h-48 max-w-full rounded-xl object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={removeImage}
+                          className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/80"
+                        >
+                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Action row */}
+                    <div className="mt-3 flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={() => imageInputRef.current?.click()}
+                        className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-body-sm text-ink-muted transition hover:bg-surface-subtle hover:text-brand-600"
+                      >
+                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                        </svg>
+                        Photo
+                      </button>
                       <Button type="submit" disabled={posting || !newPost.trim()} loading={posting}>
                         Post
                       </Button>
                     </div>
+
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageSelect}
+                      className="hidden"
+                    />
                   </div>
                 </div>
               </form>
@@ -556,11 +636,17 @@ export default function FeedPage() {
                       </p>
 
                       {post.image_url && (
-                        <img
-                          src={post.image_url}
-                          alt="Post"
-                          className="mt-3 max-h-80 w-full rounded-xl object-cover"
-                        />
+                        <button
+                          type="button"
+                          onClick={() => setLightboxUrl(post.image_url)}
+                          className="mt-3 block w-full overflow-hidden rounded-xl"
+                        >
+                          <img
+                            src={post.image_url}
+                            alt="Post"
+                            className="max-h-80 w-full object-cover transition hover:opacity-95"
+                          />
+                        </button>
                       )}
 
                       <div className="mt-4 flex items-center gap-6 border-t border-border pt-3">
@@ -647,6 +733,31 @@ export default function FeedPage() {
           </div>
         </aside>
       </div>
+
+      {/* Image lightbox */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxUrl(null)}
+            className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+            aria-label="Close"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          <img
+            src={lightboxUrl}
+            alt="Full size"
+            className="max-h-[90vh] max-w-full rounded-xl object-contain shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }

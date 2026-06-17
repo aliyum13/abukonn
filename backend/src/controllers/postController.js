@@ -1,22 +1,36 @@
 const Post = require('../models/Post');
 const Comment = require('../models/Comment');
+const cloudinary = require('../config/cloudinary');
+
+async function uploadBufferToCloudinary(buffer, mimetype) {
+  const dataUri = `data:${mimetype};base64,${buffer.toString('base64')}`;
+  return cloudinary.uploader.upload(dataUri, {
+    folder: 'abukonn/posts',
+    resource_type: 'image',
+  });
+}
 
 async function createPost(req, res) {
   try {
-    const { content, image_url } = req.body;
+    const content = req.body.content;
 
     if (!content || !content.trim()) {
       return res.status(400).json({ message: 'Post content is required' });
     }
 
+    let imageUrl = null;
+    if (req.file) {
+      const result = await uploadBufferToCloudinary(req.file.buffer, req.file.mimetype);
+      imageUrl = result.secure_url;
+    }
+
     const post = await Post.createPost({
       userId: req.user.id,
       content: content.trim(),
-      imageUrl: image_url || null,
+      imageUrl,
     });
 
     const fullPost = await Post.getPostById(post.id);
-
     res.status(201).json({ message: 'Post created', post: fullPost });
   } catch (err) {
     console.error('Create post error:', err.message);
