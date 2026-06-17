@@ -40,7 +40,7 @@ async function createPost(req, res) {
 
 async function getFeed(req, res) {
   try {
-    const posts = await Post.getAllPosts();
+    const posts = await Post.getAllPosts(req.user.id);
     res.json({ posts });
   } catch (err) {
     console.error('Get feed error:', err.message);
@@ -57,11 +57,22 @@ async function likePost(req, res) {
       return res.status(404).json({ message: 'Post not found' });
     }
 
-    const post = await Post.likePost(postId);
-    res.json({ message: 'Post liked', post });
+    const { post, is_liked } = await Post.toggleLike(postId, req.user.id);
+    res.json({ message: is_liked ? 'Post liked' : 'Post unliked', post, is_liked });
   } catch (err) {
     console.error('Like post error:', err.message);
     res.status(500).json({ message: 'Server error liking post' });
+  }
+}
+
+async function getComments(req, res) {
+  try {
+    const postId = parseInt(req.params.id, 10);
+    const comments = await Comment.getCommentsByPost(postId);
+    res.json({ comments });
+  } catch (err) {
+    console.error('Get comments error:', err.message);
+    res.status(500).json({ message: 'Server error fetching comments' });
   }
 }
 
@@ -116,4 +127,4 @@ async function deletePost(req, res) {
   }
 }
 
-module.exports = { createPost, getFeed, likePost, addComment, deletePost };
+module.exports = { createPost, getFeed, likePost, addComment, getComments, deletePost };

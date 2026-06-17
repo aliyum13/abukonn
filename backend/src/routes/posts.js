@@ -6,6 +6,7 @@ const {
   getFeed,
   likePost,
   addComment,
+  getComments,
   deletePost,
 } = require('../controllers/postController');
 
@@ -16,6 +17,7 @@ router.use(auth);
 router.get('/', getFeed);
 router.post('/', upload.single('image'), createPost);
 router.post('/:id/like', likePost);
+router.get('/:id/comments', getComments);
 router.post('/:id/comments', addComment);
 router.delete('/:id', deletePost);
 

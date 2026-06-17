@@ -15,7 +15,7 @@ const searchRoutes = require('./routes/search');
 const followRoutes = require('./routes/follows');
 const { saveMessage } = require('./controllers/messageController');
 const { createUsersTable } = require('./models/User');
-const { createPostsTable } = require('./models/Post');
+const { createPostsTable, createPostLikesTable } = require('./models/Post');
 const { createCommentsTable } = require('./models/Comment');
 const { createNewsTable } = require('./models/News');
 const { createMessagesTables } = require('./models/Message');
@@ -85,6 +85,7 @@ createUsersTable()
   .then(() => createMessagesTables())
   .then(() => createWhitelistTable())
   .then(() => createFollowsTable())
+  .then(() => createPostLikesTable())
   .then(() => {
     server.listen(PORT, () => {
       console.log(`ABUkonn server running on port ${PORT}`);

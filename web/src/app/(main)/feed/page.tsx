@@ -61,11 +61,22 @@ interface Post {
   image_url: string | null;
   likes_count: number;
   comments_count: number;
+  is_liked: boolean;
   created_at: string;
   author_name: string;
   author_department: string;
   author_photo: string | null;
   author_matric: string;
+}
+
+interface Comment {
+  id: number;
+  post_id: number;
+  user_id: number;
+  content: string;
+  created_at: string;
+  author_name: string;
+  author_photo: string | null;
 }
 
 function PostSkeleton() {
@@ -302,6 +313,8 @@ export default function FeedPage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [comments, setComments] = useState<Record<number, Comment[]>>({});
+  const [commentsLoading, setCommentsLoading] = useState<Record<number, boolean>>({});
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -316,6 +329,14 @@ export default function FeedPage() {
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, []);
+
+  // Load comments when a post's section is expanded
+  useEffect(() => {
+    if (commentingId !== null && comments[commentingId] === undefined) {
+      fetchComments(commentingId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commentingId]);
 
   const fetchPosts = async () => {
     if (!token) return;
@@ -384,8 +405,34 @@ export default function FeedPage() {
     }
   };
 
+  const fetchComments = async (postId: number) => {
+    if (!token) return;
+    setCommentsLoading((prev) => ({ ...prev, [postId]: true }));
+    try {
+      const res = await fetch(`${API_URL}/api/posts/${postId}/comments`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setComments((prev) => ({ ...prev, [postId]: data.comments }));
+      }
+    } catch {
+      // non-blocking
+    } finally {
+      setCommentsLoading((prev) => ({ ...prev, [postId]: false }));
+    }
+  };
+
   const handleLike = async (postId: number) => {
     if (!token) return;
+    // Optimistic toggle
+    setPosts((prev) =>
+      prev.map((p) =>
+        p.id === postId
+          ? { ...p, is_liked: !p.is_liked, likes_count: p.is_liked ? p.likes_count - 1 : p.likes_count + 1 }
+          : p
+      )
+    );
     try {
       const res = await fetch(`${API_URL}/api/posts/${postId}/like`, {
         method: 'POST',
@@ -394,34 +441,82 @@ export default function FeedPage() {
       if (res.ok) {
         const data = await res.json();
         setPosts((prev) =>
-          prev.map((p) => (p.id === postId ? { ...p, likes_count: data.post.likes_count } : p))
+          prev.map((p) =>
+            p.id === postId ? { ...p, likes_count: data.post.likes_count, is_liked: data.is_liked } : p
+          )
+        );
+      } else {
+        // Revert on server error
+        setPosts((prev) =>
+          prev.map((p) =>
+            p.id === postId
+              ? { ...p, is_liked: !p.is_liked, likes_count: p.is_liked ? p.likes_count - 1 : p.likes_count + 1 }
+              : p
+          )
         );
       }
     } catch {
-      setError('Failed to like post');
+      // Revert on network error
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === postId
+            ? { ...p, is_liked: !p.is_liked, likes_count: p.is_liked ? p.likes_count - 1 : p.likes_count + 1 }
+            : p
+        )
+      );
     }
   };
 
   const handleComment = async (postId: number) => {
-    if (!commentText.trim() || !token) return;
+    if (!commentText.trim() || !token || !user) return;
+    const text = commentText.trim();
+
+    // Optimistic add
+    const tempComment: Comment = {
+      id: -Date.now(),
+      post_id: postId,
+      user_id: user.id,
+      content: text,
+      created_at: new Date().toISOString(),
+      author_name: user.full_name,
+      author_photo: user.profile_photo_url,
+    };
+    setComments((prev) => ({ ...prev, [postId]: [...(prev[postId] ?? []), tempComment] }));
+    setCommentText('');
+
     try {
       const res = await fetch(`${API_URL}/api/posts/${postId}/comments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ content: commentText }),
+        body: JSON.stringify({ content: text }),
       });
       if (res.ok) {
         const data = await res.json();
         setPosts((prev) =>
-          prev.map((p) =>
-            p.id === postId ? { ...p, comments_count: data.post.comments_count } : p
-          )
+          prev.map((p) => p.id === postId ? { ...p, comments_count: data.post.comments_count } : p)
         );
-        setCommentText('');
-        setCommentingId(null);
+        // Replace temp with real comment from server
+        setComments((prev) => ({
+          ...prev,
+          [postId]: [
+            ...(prev[postId] ?? []).filter((c) => c.id !== tempComment.id),
+            data.comment,
+          ],
+        }));
+      } else {
+        // Revert
+        setComments((prev) => ({
+          ...prev,
+          [postId]: (prev[postId] ?? []).filter((c) => c.id !== tempComment.id),
+        }));
+        setCommentText(text);
       }
     } catch {
-      setError('Failed to add comment');
+      setComments((prev) => ({
+        ...prev,
+        [postId]: (prev[postId] ?? []).filter((c) => c.id !== tempComment.id),
+      }));
+      setCommentText(text);
     }
   };
 
@@ -653,9 +748,20 @@ export default function FeedPage() {
                         <button
                           type="button"
                           onClick={() => handleLike(post.id)}
-                          className="flex items-center gap-1.5 text-body-sm text-ink-secondary transition hover:text-brand-600"
+                          className={cn(
+                            'flex items-center gap-1.5 text-body-sm transition',
+                            post.is_liked
+                              ? 'font-medium text-brand-600 hover:text-brand-700'
+                              : 'text-ink-secondary hover:text-brand-600'
+                          )}
                         >
-                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <svg
+                            className="h-5 w-5"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={1.5}
+                            fill={post.is_liked ? 'currentColor' : 'none'}
+                          >
                             <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
                           </svg>
                           {post.likes_count}
@@ -663,7 +769,12 @@ export default function FeedPage() {
                         <button
                           type="button"
                           onClick={() => setCommentingId(commentingId === post.id ? null : post.id)}
-                          className="flex items-center gap-1.5 text-body-sm text-ink-secondary transition hover:text-brand-600"
+                          className={cn(
+                            'flex items-center gap-1.5 text-body-sm transition',
+                            commentingId === post.id
+                              ? 'font-medium text-brand-600'
+                              : 'text-ink-secondary hover:text-brand-600'
+                          )}
                         >
                           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.74 1.676v2.954a.75.75 0 01-1.088.67L6.19 21.1a.75.75 0 01-.365-.633v-1.44C3.512 17.962 3 15.075 3 12z" />
@@ -672,18 +783,66 @@ export default function FeedPage() {
                         </button>
                       </div>
 
+                      {/* Comments section */}
                       {commentingId === post.id && (
-                        <div className="mt-3 flex gap-2">
-                          <Input
-                            value={commentText}
-                            onChange={(e) => setCommentText(e.target.value)}
-                            placeholder="Write a comment..."
-                            onKeyDown={(e) => e.key === 'Enter' && handleComment(post.id)}
-                            className="flex-1"
-                          />
-                          <Button onClick={() => handleComment(post.id)} size="md">
-                            Reply
-                          </Button>
+                        <div className="mt-4 border-t border-border pt-4">
+                          {/* Existing comments */}
+                          {commentsLoading[post.id] ? (
+                            <div className="mb-3 space-y-3">
+                              {[1, 2].map((i) => (
+                                <div key={i} className="flex gap-2.5">
+                                  <Skeleton className="h-8 w-8 shrink-0" rounded="full" />
+                                  <div className="flex-1 space-y-1.5">
+                                    <Skeleton className="h-3 w-24" />
+                                    <Skeleton className="h-3 w-full" />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (comments[post.id] ?? []).length > 0 ? (
+                            <div className="mb-4 space-y-3">
+                              {(comments[post.id] ?? []).map((c) => (
+                                <div key={c.id} className="flex gap-2.5">
+                                  <Avatar src={c.author_photo} name={c.author_name} size="sm" className="shrink-0" />
+                                  <div className="min-w-0 flex-1 rounded-xl bg-surface-muted px-3 py-2">
+                                    <div className="flex items-baseline gap-2">
+                                      <span className="text-body-sm font-semibold text-ink">{c.author_name}</span>
+                                      <span className="text-caption text-ink-muted">{timeAgo(c.created_at)}</span>
+                                    </div>
+                                    <p className="mt-0.5 text-body-sm text-ink leading-relaxed">{c.content}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="mb-3 text-center text-caption text-ink-muted">No comments yet — be the first!</p>
+                          )}
+
+                          {/* New comment input */}
+                          <div className="flex gap-2">
+                            <Avatar src={user.profile_photo_url} name={user.full_name} size="sm" className="shrink-0" />
+                            <div className="flex min-w-0 flex-1 gap-2">
+                              <Input
+                                value={commentText}
+                                onChange={(e) => setCommentText(e.target.value)}
+                                placeholder="Write a comment…"
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    handleComment(post.id);
+                                  }
+                                }}
+                                className="flex-1"
+                              />
+                              <Button
+                                onClick={() => handleComment(post.id)}
+                                size="sm"
+                                disabled={!commentText.trim()}
+                              >
+                                Post
+                              </Button>
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>
