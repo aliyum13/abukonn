@@ -23,6 +23,13 @@ CREATE TABLE IF NOT EXISTS abukonn.post_likes (
 
 async function createPostsTable() {
   await pool.query(CREATE_POSTS_TABLE);
+  // Add new columns to existing tables (idempotent)
+  await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS category VARCHAR(50) DEFAULT 'GENERAL'`);
+  await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS repost_count INTEGER DEFAULT 0`);
+  await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS view_count INTEGER DEFAULT 0`);
+  await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS is_repost BOOLEAN DEFAULT FALSE`);
+  await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS original_post_id INTEGER`);
+  await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS original_author_name TEXT`);
   console.log('Posts table ready');
 }
 
@@ -31,25 +38,35 @@ async function createPostLikesTable() {
   console.log('Post likes table ready');
 }
 
-async function createPost({ userId, content, imageUrl = null }) {
+async function createPost({ userId, content, imageUrl = null, category = 'GENERAL', isRepost = false, originalPostId = null, originalAuthorName = null }) {
   const result = await pool.query(
-    `INSERT INTO abukonn.posts (user_id, content, image_url)
-     VALUES ($1, $2, $3)
+    `INSERT INTO abukonn.posts (user_id, content, image_url, category, is_repost, original_post_id, original_author_name)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING *`,
-    [userId, content, imageUrl]
+    [userId, content, imageUrl, category, isRepost, originalPostId, originalAuthorName]
   );
   return result.rows[0];
 }
 
 async function getAllPosts(currentUserId) {
   const result = await pool.query(
-    `SELECT p.id, p.user_id, p.content, p.image_url, p.likes_count, p.comments_count, p.created_at,
+    `SELECT p.id, p.user_id, p.content, p.image_url, p.likes_count, p.comments_count,
+            COALESCE(p.repost_count, 0) AS repost_count,
+            COALESCE(p.view_count, 0) AS view_count,
+            COALESCE(p.category, 'GENERAL') AS category,
+            COALESCE(p.is_repost, FALSE) AS is_repost,
+            p.original_post_id, p.original_author_name,
+            p.created_at,
             u.full_name AS author_name, u.department AS author_department,
             u.profile_photo_url AS author_photo, u.matric_number AS author_matric,
             EXISTS(
               SELECT 1 FROM abukonn.post_likes pl
               WHERE pl.post_id = p.id AND pl.user_id = $1
-            ) AS is_liked
+            ) AS is_liked,
+            EXISTS(
+              SELECT 1 FROM abukonn.follows f
+              WHERE f.follower_id = $1 AND f.following_id = p.user_id
+            ) AS is_following_author
      FROM abukonn.posts p
      JOIN abukonn.users u ON p.user_id = u.id
      ORDER BY p.created_at DESC`,
@@ -119,6 +136,37 @@ async function getPostsByUserId(userId) {
   return result.rows;
 }
 
+async function repostPost(originalPostId, userId) {
+  const original = await getPostById(originalPostId);
+  if (!original) throw new Error('Post not found');
+  const newPost = await pool.query(
+    `INSERT INTO abukonn.posts
+       (user_id, content, image_url, category, is_repost, original_post_id, original_author_name)
+     VALUES ($1, $2, $3, $4, TRUE, $5, $6)
+     RETURNING *`,
+    [
+      userId,
+      original.content,
+      original.image_url,
+      original.category || 'GENERAL',
+      originalPostId,
+      original.author_name,
+    ]
+  );
+  await pool.query(
+    `UPDATE abukonn.posts SET repost_count = COALESCE(repost_count, 0) + 1 WHERE id = $1`,
+    [originalPostId]
+  );
+  return newPost.rows[0];
+}
+
+async function incrementViewCount(postId) {
+  await pool.query(
+    `UPDATE abukonn.posts SET view_count = COALESCE(view_count, 0) + 1 WHERE id = $1`,
+    [postId]
+  );
+}
+
 async function deletePost(id) {
   const result = await pool.query(
     'DELETE FROM abukonn.posts WHERE id = $1 RETURNING *',
@@ -137,5 +185,7 @@ module.exports = {
   getPostById,
   toggleLike,
   incrementCommentsCount,
+  repostPost,
+  incrementViewCount,
   deletePost,
 };

@@ -54,6 +54,45 @@ const TRENDING = [
   { tag: '#ABUSports', posts: '52 posts' },
 ];
 
+const POST_CATEGORIES = [
+  { value: 'GENERAL',      label: 'General' },
+  { value: 'EXAMINATION',  label: 'Examination' },
+  { value: 'REGISTRATION', label: 'Registration' },
+  { value: 'ACADEMIC',     label: 'Academic' },
+  { value: 'SPORTS',       label: 'Sports' },
+  { value: 'EVENTS',       label: 'Events' },
+  { value: 'CAMPUS_LIFE',  label: 'Campus Life' },
+] as const;
+
+type PostCategory = typeof POST_CATEGORIES[number]['value'];
+
+const CATEGORY_COLORS: Record<string, string> = {
+  GENERAL:      'bg-gray-100 text-gray-600',
+  EXAMINATION:  'bg-red-100 text-red-700',
+  REGISTRATION: 'bg-orange-100 text-orange-700',
+  ACADEMIC:     'bg-blue-100 text-blue-700',
+  SPORTS:       'bg-yellow-100 text-yellow-700',
+  EVENTS:       'bg-purple-100 text-purple-700',
+  CAMPUS_LIFE:  'bg-brand-100 text-brand-700',
+};
+
+interface Story {
+  id: number;
+  user_id: number;
+  media_url: string;
+  media_type: 'image' | 'video';
+  created_at: string;
+  expires_at: string;
+}
+
+interface StoryGroup {
+  user_id: number;
+  user_name: string;
+  user_photo: string | null;
+  is_own: boolean;
+  stories: Story[];
+}
+
 interface Post {
   id: number;
   user_id: number;
@@ -61,7 +100,14 @@ interface Post {
   image_url: string | null;
   likes_count: number;
   comments_count: number;
+  repost_count: number;
+  view_count: number;
+  category: PostCategory;
   is_liked: boolean;
+  is_repost: boolean;
+  original_post_id: number | null;
+  original_author_name: string | null;
+  is_following_author: boolean;
   created_at: string;
   author_name: string;
   author_department: string;
@@ -95,6 +141,106 @@ interface ShareFollower {
   full_name: string;
   profile_photo_url: string | null;
   department: string;
+}
+
+// ── Stories components ───────────────────────────────────────────────────────
+
+function StoriesBar({
+  groups, user, onAddStory, onViewGroup,
+}: {
+  groups: StoryGroup[];
+  user: NonNullable<ReturnType<typeof useAuth>['user']>;
+  onAddStory: () => void;
+  onViewGroup: (g: StoryGroup) => void;
+}) {
+  const ownGroup = groups.find(g => g.is_own);
+  const others = groups.filter(g => !g.is_own);
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex gap-4 overflow-x-auto pb-1 scrollbar-hide">
+          {/* My Status */}
+          <button type="button" onClick={() => ownGroup ? onViewGroup(ownGroup) : onAddStory()}
+            className="flex shrink-0 flex-col items-center gap-1.5 group">
+            <div className="relative">
+              <div className={cn('h-14 w-14 rounded-full ring-2 ring-offset-2', ownGroup ? 'ring-brand-500' : 'ring-border')}>
+                <Avatar src={user.profile_photo_url} name={user.full_name} size="xl" className="h-14 w-14" />
+              </div>
+              {!ownGroup && (
+                <span className="absolute bottom-0 right-0 flex h-5 w-5 items-center justify-center rounded-full bg-brand-600 ring-2 ring-white">
+                  <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                  </svg>
+                </span>
+              )}
+            </div>
+            <span className="max-w-[52px] truncate text-[11px] text-ink-muted">My Status</span>
+          </button>
+          {/* Others */}
+          {others.map(g => (
+            <button key={g.user_id} type="button" onClick={() => onViewGroup(g)}
+              className="flex shrink-0 flex-col items-center gap-1.5">
+              <div className="h-14 w-14 rounded-full ring-2 ring-brand-500 ring-offset-2">
+                <Avatar src={g.user_photo} name={g.user_name} size="xl" className="h-14 w-14" />
+              </div>
+              <span className="max-w-[52px] truncate text-[11px] text-ink-muted">
+                {g.user_name.split(' ')[0]}
+              </span>
+            </button>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function StoryViewer({
+  group, index, onClose, onPrev, onNext,
+}: {
+  group: StoryGroup;
+  index: number;
+  onClose: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  const story = group.stories[index];
+  if (!story) return null;
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black"
+      onClick={onClose}>
+      {/* Progress bars */}
+      <div className="absolute top-0 left-0 right-0 flex gap-1 p-3">
+        {group.stories.map((_, i) => (
+          <div key={i} className="h-0.5 flex-1 rounded-full bg-white/30">
+            <div className={cn('h-full rounded-full bg-white transition-all',
+              i < index ? 'w-full' : i === index ? 'animate-[story-progress_5s_linear_forwards]' : 'w-0')} />
+          </div>
+        ))}
+      </div>
+      {/* Header */}
+      <div className="absolute top-6 left-0 right-0 flex items-center justify-between px-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-2">
+          <Avatar src={group.user_photo} name={group.user_name} size="sm" />
+          <span className="text-sm font-medium text-white">{group.user_name}</span>
+          <span className="text-xs text-white/60">{new Date(story.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+        </div>
+        <button type="button" onClick={onClose} className="rounded-full bg-black/30 p-1.5 text-white hover:bg-black/50">
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+      </div>
+      {/* Media */}
+      <div className="flex h-full w-full max-w-sm items-center justify-center" onClick={e => e.stopPropagation()}>
+        {story.media_type === 'video' ? (
+          <video src={story.media_url} autoPlay muted loop className="max-h-full w-full object-contain" />
+        ) : (
+          <img src={story.media_url} alt="Story" className="max-h-full w-full object-contain" />
+        )}
+      </div>
+      {/* Tap zones */}
+      <button type="button" className="absolute left-0 top-0 h-full w-1/3" onClick={e => { e.stopPropagation(); onPrev(); }} aria-label="Previous" />
+      <button type="button" className="absolute right-0 top-0 h-full w-1/3" onClick={e => { e.stopPropagation(); onNext(); }} aria-label="Next" />
+    </div>
+  );
 }
 
 function PostSkeleton() {
@@ -350,20 +496,85 @@ export default function FeedPage() {
   const [repliesLoading, setRepliesLoading] = useState<Record<number, boolean>>({});
   const [expandedReplies, setExpandedReplies] = useState<Set<number>>(new Set());
 
+  // Stories
+  const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);
+  const [viewingGroup, setViewingGroup] = useState<StoryGroup | null>(null);
+  const [viewingIdx, setViewingIdx] = useState(0);
+  const [showUploadStory, setShowUploadStory] = useState(false);
+  const [storyFile, setStoryFile] = useState<File | null>(null);
+  const [storyPreview, setStoryPreview] = useState<string | null>(null);
+  const [uploadingStory, setUploadingStory] = useState(false);
+
+  // Category filter
+  const [categoryFilter, setCategoryFilter] = useState<PostCategory | 'ALL'>('ALL');
+  const [newPostCategory, setNewPostCategory] = useState<PostCategory>('GENERAL');
+
+  // Repost
+  const [repostingId, setRepostingId] = useState<number | null>(null);
+
+  // Show more/less per post
+  const [expandedPosts, setExpandedPosts] = useState<Set<number>>(new Set());
+
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const storyInputRef = useRef<HTMLInputElement>(null);
+  const viewedPostsRef = useRef<Set<number>>(new Set());
+  const storyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!authLoading && !token) router.push('/login');
   }, [authLoading, token, router]);
 
-  // Close lightbox on Escape
+  // Close lightbox/story viewer on Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setLightboxUrl(null);
+      if (e.key === 'Escape') { setLightboxUrl(null); setViewingGroup(null); }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, []);
+
+  // Fetch stories
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${API_URL}/api/stories`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => setStoryGroups(d.groups || []))
+      .catch(() => {});
+  }, [token]);
+
+  // IntersectionObserver for view counts
+  useEffect(() => {
+    if (!token || loading) return;
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          const id = parseInt((entry.target as HTMLElement).dataset.postId || '0', 10);
+          if (id && !viewedPostsRef.current.has(id)) {
+            viewedPostsRef.current.add(id);
+            fetch(`${API_URL}/api/posts/${id}/view`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+            setPosts(prev => prev.map(p => p.id === id ? { ...p, view_count: p.view_count + 1 } : p));
+            observer.unobserve(entry.target);
+          }
+        }
+      }
+    }, { threshold: 0.6 });
+    document.querySelectorAll('[data-post-id]').forEach(el => observer.observe(el));
+    return () => observer.disconnect();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, loading, posts.length]);
+
+  // Auto-advance story viewer
+  useEffect(() => {
+    if (!viewingGroup) { if (storyTimerRef.current) clearTimeout(storyTimerRef.current); return; }
+    storyTimerRef.current = setTimeout(() => {
+      if (viewingIdx < viewingGroup.stories.length - 1) {
+        setViewingIdx(i => i + 1);
+      } else {
+        setViewingGroup(null);
+      }
+    }, 5000);
+    return () => { if (storyTimerRef.current) clearTimeout(storyTimerRef.current); };
+  }, [viewingGroup, viewingIdx]);
 
   // Read ?openComments=<postId> from URL on mount and auto-expand that post
   useEffect(() => {
@@ -435,6 +646,7 @@ export default function FeedPage() {
     try {
       const formData = new FormData();
       formData.append('content', newPost.trim());
+      formData.append('category', newPostCategory);
       if (imageFile) formData.append('image', imageFile);
 
       const res = await fetch(`${API_URL}/api/posts`, {
@@ -445,6 +657,7 @@ export default function FeedPage() {
       });
       if (!res.ok) throw new Error('Failed to create post');
       setNewPost('');
+      setNewPostCategory('GENERAL');
       setImageFile(null);
       setImagePreview(null);
       await fetchPosts();
@@ -581,6 +794,85 @@ export default function FeedPage() {
       if (res.ok) setPosts((prev) => prev.filter((p) => p.id !== postId));
     } catch {
       setError('Failed to delete post');
+    }
+  };
+
+  // ── Stories ─────────────────────────────────────────────────────────────────
+
+  const handleStoryFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setStoryFile(file);
+    const reader = new FileReader();
+    reader.onloadend = () => setStoryPreview(reader.result as string);
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleUploadStory = async () => {
+    if (!storyFile || !token) return;
+    setUploadingStory(true);
+    try {
+      const formData = new FormData();
+      formData.append('media', storyFile);
+      const res = await fetch(`${API_URL}/api/stories`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (!res.ok) throw new Error('Upload failed');
+      const data = await res.json();
+      // Add own story group or prepend story to existing own group
+      setStoryGroups(prev => {
+        const ownIdx = prev.findIndex(g => g.is_own);
+        if (ownIdx >= 0) {
+          const updated = [...prev];
+          updated[ownIdx] = { ...updated[ownIdx], stories: [...updated[ownIdx].stories, data.story] };
+          return updated;
+        }
+        return [{ user_id: user!.id, user_name: user!.full_name, user_photo: user!.profile_photo_url, is_own: true, stories: [data.story] }, ...prev];
+      });
+      setShowUploadStory(false);
+      setStoryFile(null);
+      setStoryPreview(null);
+    } catch { /* silent */ }
+    finally { setUploadingStory(false); }
+  };
+
+  // ── Repost ───────────────────────────────────────────────────────────────────
+
+  const handleRepost = async (postId: number) => {
+    if (!token || repostingId !== null) return;
+    setRepostingId(postId);
+    try {
+      const res = await fetch(`${API_URL}/api/posts/${postId}/repost`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed');
+      const data = await res.json();
+      // Increment repost_count on original, prepend new post
+      setPosts(prev => [
+        { ...data.post, is_liked: false, is_following_author: false, repost_count: 0, view_count: 0, comments_count: 0, likes_count: 0 },
+        ...prev.map(p => p.id === postId ? { ...p, repost_count: p.repost_count + 1 } : p),
+      ]);
+    } catch { /* silent */ }
+    finally { setRepostingId(null); }
+  };
+
+  // ── Follow from post card ────────────────────────────────────────────────────
+
+  const handleFollowFromCard = async (authorId: number) => {
+    if (!token) return;
+    // Optimistic: flip is_following_author on all posts by this author
+    setPosts(prev => prev.map(p => p.user_id === authorId ? { ...p, is_following_author: true } : p));
+    try {
+      await fetch(`${API_URL}/api/follows/${authorId}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch {
+      setPosts(prev => prev.map(p => p.user_id === authorId ? { ...p, is_following_author: false } : p));
     }
   };
 
@@ -795,6 +1087,30 @@ export default function FeedPage() {
             </CardContent>
           </Card>
 
+          {/* Stories bar */}
+          <StoriesBar
+            groups={storyGroups}
+            user={user}
+            onAddStory={() => setShowUploadStory(true)}
+            onViewGroup={(g) => { setViewingGroup(g); setViewingIdx(0); }}
+          />
+
+          {/* Category filter tabs */}
+          <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-hide">
+            {[{ value: 'ALL', label: 'All' }, ...POST_CATEGORIES].map(cat => (
+              <button key={cat.value} type="button"
+                onClick={() => setCategoryFilter(cat.value as PostCategory | 'ALL')}
+                className={cn(
+                  'shrink-0 rounded-full px-3.5 py-1.5 text-body-sm font-medium transition',
+                  categoryFilter === cat.value
+                    ? 'bg-brand-600 text-white shadow-sm'
+                    : 'bg-white border border-border text-ink-secondary hover:border-brand-400 hover:text-brand-600'
+                )}>
+                {cat.label}
+              </button>
+            ))}
+          </div>
+
           {error && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-body-sm text-red-600">
               {error}
@@ -841,17 +1157,26 @@ export default function FeedPage() {
                     )}
 
                     {/* Action row */}
-                    <div className="mt-3 flex items-center justify-between">
-                      <button
-                        type="button"
-                        onClick={() => imageInputRef.current?.click()}
-                        className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-body-sm text-ink-muted transition hover:bg-surface-subtle hover:text-brand-600"
-                      >
-                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
-                        </svg>
-                        Photo
-                      </button>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => imageInputRef.current?.click()}
+                          className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-body-sm text-ink-muted transition hover:bg-surface-subtle hover:text-brand-600"
+                        >
+                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                          </svg>
+                          Photo
+                        </button>
+                        <select
+                          value={newPostCategory}
+                          onChange={e => setNewPostCategory(e.target.value as PostCategory)}
+                          className="rounded-lg border border-border bg-white px-2.5 py-1.5 text-body-sm text-ink-secondary focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                        >
+                          {POST_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                        </select>
+                      </div>
                       <Button type="submit" disabled={posting || !newPost.trim()} loading={posting}>
                         Post
                       </Button>
@@ -890,15 +1215,44 @@ export default function FeedPage() {
               />
             </Card>
           ) : (
-            posts.map((post) => (
-              <Card key={post.id} id={`post-${post.id}`} className="overflow-hidden scroll-mt-20">
+            posts
+              .filter(post => categoryFilter === 'ALL' || post.category === categoryFilter)
+              .map((post) => {
+                const isExpanded = expandedPosts.has(post.id);
+                const longContent = post.content.length > 280;
+              return (
+              <Card key={post.id} id={`post-${post.id}`} data-post-id={post.id} className="overflow-hidden scroll-mt-20">
                 <CardContent className="p-5">
+                  {/* Repost label */}
+                  {post.is_repost && (
+                    <div className="mb-3 flex items-center gap-1.5 text-caption text-ink-muted">
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" />
+                      </svg>
+                      Reposted from {post.original_author_name}
+                    </div>
+                  )}
                   <div className="flex gap-3">
                     <Avatar src={post.author_photo} name={post.author_name} size="md" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="font-semibold text-ink">{post.author_name}</p>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-semibold text-ink">{post.author_name}</p>
+                            {/* Category badge */}
+                            {post.category && post.category !== 'GENERAL' && (
+                              <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide', CATEGORY_COLORS[post.category] ?? 'bg-gray-100 text-gray-600')}>
+                                {POST_CATEGORIES.find(c => c.value === post.category)?.label ?? post.category}
+                              </span>
+                            )}
+                            {/* Follow button */}
+                            {post.user_id !== user.id && !post.is_following_author && (
+                              <button type="button" onClick={() => handleFollowFromCard(post.user_id)}
+                                className="rounded-full border border-brand-500 px-2.5 py-0.5 text-[11px] font-semibold text-brand-600 transition hover:bg-brand-50">
+                                Follow
+                              </button>
+                            )}
+                          </div>
                           <p className="text-caption text-ink-muted">
                             {post.author_department} · {timeAgo(post.created_at)}
                           </p>
@@ -910,9 +1264,19 @@ export default function FeedPage() {
                         )}
                       </div>
 
-                      <p className="mt-3 whitespace-pre-wrap text-body-sm text-ink leading-relaxed">
-                        {post.content}
-                      </p>
+                      {/* Content with show more/less */}
+                      <div className="mt-3">
+                        <p className={cn('whitespace-pre-wrap text-body-sm text-ink leading-relaxed', !isExpanded && longContent && 'line-clamp-3')}>
+                          {post.content}
+                        </p>
+                        {longContent && (
+                          <button type="button"
+                            onClick={() => setExpandedPosts(prev => { const n = new Set(prev); if (isExpanded) n.delete(post.id); else n.add(post.id); return n; })}
+                            className="mt-0.5 text-body-sm font-medium text-brand-600 hover:text-brand-700">
+                            {isExpanded ? 'Show less' : 'Show more'}
+                          </button>
+                        )}
+                      </div>
 
                       {post.image_url && (
                         <button
@@ -965,6 +1329,20 @@ export default function FeedPage() {
                           </svg>
                           {post.comments_count}
                         </button>
+                        {/* Repost */}
+                        {post.user_id !== user.id && (
+                          <button
+                            type="button"
+                            onClick={() => handleRepost(post.id)}
+                            disabled={repostingId === post.id}
+                            className="flex items-center gap-1.5 text-body-sm text-ink-secondary transition hover:text-brand-600 disabled:opacity-50"
+                          >
+                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" />
+                            </svg>
+                            {post.repost_count > 0 ? post.repost_count : ''}
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => openShareModal(post)}
@@ -975,6 +1353,13 @@ export default function FeedPage() {
                           </svg>
                           Share
                         </button>
+                        {/* View count */}
+                        <span className="ml-auto flex items-center gap-1 text-caption text-ink-muted">
+                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+                          </svg>
+                          {post.view_count > 0 ? post.view_count.toLocaleString() : '0'}
+                        </span>
                       </div>
 
                       {/* Comments section */}
@@ -1113,7 +1498,8 @@ export default function FeedPage() {
                   </div>
                 </CardContent>
               </Card>
-            ))
+              );
+            })
           )}
         </div>
 
@@ -1156,6 +1542,64 @@ export default function FeedPage() {
           </div>
         </aside>
       </div>
+
+      {/* Story Viewer */}
+      {viewingGroup && (
+        <StoryViewer
+          group={viewingGroup}
+          index={viewingIdx}
+          onClose={() => setViewingGroup(null)}
+          onPrev={() => viewingIdx > 0 ? setViewingIdx(i => i - 1) : setViewingGroup(null)}
+          onNext={() => viewingIdx < viewingGroup.stories.length - 1 ? setViewingIdx(i => i + 1) : setViewingGroup(null)}
+        />
+      )}
+
+      {/* Story Upload modal */}
+      {showUploadStory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={e => { if (e.target === e.currentTarget) { setShowUploadStory(false); setStoryFile(null); setStoryPreview(null); } }}>
+          <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <h3 className="font-semibold text-ink">Add to Status</h3>
+              <button type="button" onClick={() => { setShowUploadStory(false); setStoryFile(null); setStoryPreview(null); }}
+                className="rounded-lg p-1 text-ink-secondary hover:bg-surface-muted">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="p-5">
+              {storyPreview ? (
+                <div className="relative mb-4">
+                  {storyFile?.type.startsWith('video') ? (
+                    <video src={storyPreview} className="max-h-64 w-full rounded-xl object-cover" controls />
+                  ) : (
+                    <img src={storyPreview} alt="Preview" className="max-h-64 w-full rounded-xl object-cover" />
+                  )}
+                  <button type="button" onClick={() => { setStoryFile(null); setStoryPreview(null); }}
+                    className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80">
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => storyInputRef.current?.click()}
+                  className="mb-4 flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border py-10 text-ink-muted transition hover:border-brand-400 hover:text-brand-600">
+                  <svg className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                  </svg>
+                  <p className="text-body-sm font-medium">Tap to add photo or video</p>
+                  <p className="text-caption">Story disappears after 24 hours</p>
+                </button>
+              )}
+              <input ref={storyInputRef} type="file" accept="image/*,video/*" onChange={handleStoryFileSelect} className="hidden" />
+              <div className="flex gap-3">
+                <Button variant="outline" className="flex-1" onClick={() => { setShowUploadStory(false); setStoryFile(null); setStoryPreview(null); }}>Cancel</Button>
+                <Button className="flex-1" disabled={!storyFile || uploadingStory} loading={uploadingStory} onClick={handleUploadStory}>
+                  Share Story
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Share Post modal */}
       {sharePost && (

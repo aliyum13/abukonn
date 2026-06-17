@@ -26,10 +26,12 @@ async function createPost(req, res) {
       imageUrl = result.secure_url;
     }
 
+    const category = (req.body.category || 'GENERAL').toUpperCase();
     const post = await Post.createPost({
       userId: req.user.id,
       content: content.trim(),
       imageUrl,
+      category,
     });
 
     const fullPost = await Post.getPostById(post.id);
@@ -150,6 +152,28 @@ async function deletePost(req, res) {
   }
 }
 
+async function repostPost(req, res) {
+  try {
+    const originalPostId = parseInt(req.params.id, 10);
+    const newPost = await Post.repostPost(originalPostId, req.user.id);
+    res.status(201).json({ message: 'Reposted', post: newPost });
+  } catch (err) {
+    console.error('Repost error:', err.message);
+    res.status(500).json({ message: err.message === 'Post not found' ? 'Post not found' : 'Server error' });
+  }
+}
+
+async function viewPost(req, res) {
+  try {
+    const postId = parseInt(req.params.id, 10);
+    await Post.incrementViewCount(postId);
+    res.json({ message: 'Viewed' });
+  } catch (err) {
+    console.error('View post error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
 async function getReplies(req, res) {
   try {
     const commentId = parseInt(req.params.commentId, 10);
@@ -176,4 +200,4 @@ async function addReply(req, res) {
   }
 }
 
-module.exports = { createPost, getFeed, likePost, addComment, getComments, deletePost, getReplies, addReply };
+module.exports = { createPost, getFeed, likePost, addComment, getComments, deletePost, getReplies, addReply, repostPost, viewPost };
