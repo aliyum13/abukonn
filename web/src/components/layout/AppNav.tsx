@@ -11,9 +11,9 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
 const NAV_LINKS = [
   { href: '/feed', label: 'Feed' },
-  { href: '/profile', label: 'Profile' },
-  { href: '/messages', label: 'Messages' },
   { href: '/news', label: 'News' },
+  { href: '/messages', label: 'Messages' },
+  { href: '/profile', label: 'Profile' },
 ];
 
 interface SearchUser {
