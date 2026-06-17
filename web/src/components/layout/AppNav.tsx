@@ -521,7 +521,10 @@ export function AppNav() {
 
                 {/* Notification dropdown */}
                 {notifOpen && (
-                  <div className="absolute right-0 top-full z-[60] mt-2 w-[calc(100vw-2rem)] max-w-sm sm:w-72 overflow-hidden rounded-2xl border border-border bg-white shadow-xl">
+                  <div className="
+                    fixed left-0 right-0 top-14 z-[60] mx-0 overflow-hidden rounded-b-2xl border-b border-border bg-white shadow-xl
+                    sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80 sm:rounded-2xl sm:border sm:border-border
+                  ">
                     {/* Header */}
                     <div className="flex items-center justify-between border-b border-border px-4 py-3">
                       <h3 className="font-semibold text-ink">Notifications</h3>
@@ -546,7 +549,7 @@ export function AppNav() {
                     </div>
 
                     {/* Body */}
-                    <div className="max-h-[380px] overflow-y-auto">
+                    <div className="max-h-[70vh] overflow-y-auto sm:max-h-[380px]">
                       {notifLoading ? (
                         <div className="space-y-0">
                           {[1, 2, 3].map((i) => (
