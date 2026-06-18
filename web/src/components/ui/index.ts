@@ -32,3 +32,7 @@ export { RoleBadge, usesFollowSystem } from './RoleBadge';
 export type { UserRole } from './RoleBadge';
 
 export { PostContent } from './PostContent';
+
+export { Toggle } from './Toggle';
+
+export { ThemeToggleRow } from './ThemeToggleRow';

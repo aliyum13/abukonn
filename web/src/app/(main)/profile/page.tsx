@@ -1,26 +1,15 @@
 'use client';
 
-import { useEffect, useState, FormEvent, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { timeAgo } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { useFollow } from '@/hooks/useFollow';
-import { Avatar, Button, Select, Skeleton, RoleBadge, PostContent } from '@/components/ui';
+import { Avatar, Button, Skeleton, RoleBadge, PostContent } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-
-const DEPARTMENTS = [
-  'Computer Science', 'Software Engineering', 'Information Technology',
-  'Electrical Engineering', 'Civil Engineering', 'Mechanical Engineering',
-  'Medicine & Surgery', 'Law', 'Economics', 'Accounting',
-  'Mass Communication', 'Political Science', 'Sociology',
-  'Mathematics', 'Physics', 'Chemistry', 'Biochemistry',
-  'Microbiology', 'Pharmacy', 'Nursing Science',
-];
-
-const LEVELS = ['100 Level', '200 Level', '300 Level', '400 Level', '500 Level', 'Spill Over', 'Postgraduate'];
 
 interface ProfilePost {
   id: number;
@@ -124,19 +113,14 @@ function ModalUserRow({
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function ProfilePage() {
-  const { user, token, loading: authLoading, updateUser } = useAuth();
+  const { user, token, loading: authLoading } = useAuth();
   const router = useRouter();
 
   const [posts, setPosts] = useState<ProfilePost[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [form, setForm] = useState({ bio: '', department: '', level: '', username: '' });
   const [matricNumber, setMatricNumber] = useState('');
-  const [uploading, setUploading] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('posts');
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [followersCount, setFollowersCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
@@ -156,12 +140,6 @@ export default function ProfilePage() {
       .then(r => r.json())
       .then(data => {
         if (data.user) {
-          setForm({
-            bio: data.user.bio || '',
-            department: data.user.department || '',
-            level: data.user.level || '',
-            username: data.user.username || '',
-          });
           setMatricNumber(data.user.matric_number || '');
           setPosts(data.posts || []);
         }
@@ -197,51 +175,6 @@ export default function ProfilePage() {
     finally { setModalLoading(false); }
   };
 
-  const handleSave = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!token) return;
-    setSaving(true);
-    setError('');
-    try {
-      const res = await fetch(`${API_URL}/api/users/me`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(form),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-      updateUser(data.user);
-      setEditing(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update profile');
-    } finally { setSaving(false); }
-  };
-
-  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !token) return;
-    if (file.size > 5 * 1024 * 1024) { setError('Photo must be under 5MB'); return; }
-    setUploading(true);
-    setError('');
-    try {
-      const fd = new FormData();
-      fd.append('photo', file);
-      const res = await fetch(`${API_URL}/api/users/me/photo`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: fd,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Upload failed');
-      updateUser(data.user);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to upload photo');
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
-
   if (authLoading || !user) return <ProfileSkeleton />;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -254,17 +187,16 @@ export default function ProfilePage() {
       {/* ── Top bar ── */}
       <div className="sticky top-14 z-10 flex h-12 items-center justify-between border-b border-border bg-white/95 dark:bg-[#0a0a0a]/95 dark:border-[#222] px-4 backdrop-blur-sm">
         <h2 className="font-semibold text-[15px] text-ink">{user.full_name}</h2>
-        <button
-          type="button"
-          onClick={() => { setEditing(p => !p); setError(''); }}
-          title="Settings / Edit profile"
+        <Link
+          href="/settings"
+          title="Settings"
           className="flex h-9 w-9 items-center justify-center rounded-full text-ink-muted transition hover:bg-surface-muted hover:text-ink"
         >
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
-        </button>
+        </Link>
       </div>
 
       {/* ── Profile header ── */}
@@ -274,44 +206,20 @@ export default function ProfilePage() {
         )}
 
         <div className="flex items-start justify-between gap-4">
-          {/* Avatar */}
           <div className="relative shrink-0">
             <div className="h-24 w-24 rounded-full bg-gradient-to-tr from-brand-500 to-emerald-400 p-[2.5px]">
               <div className="h-full w-full rounded-full bg-white dark:bg-[#0a0a0a] p-[2px]">
                 <Avatar src={user.profile_photo_url} name={user.full_name} size="xl" className="h-full w-full" />
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="absolute bottom-0.5 right-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-brand-600 text-white shadow ring-2 ring-white dark:ring-[#0a0a0a] transition hover:bg-brand-700 disabled:opacity-50"
-              title="Change photo"
-            >
-              {uploading ? (
-                <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-              ) : (
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 18.63a4 4 0 010-5.656l8.486-8.486a4 4 0 015.656 5.656l-8.486 8.486a4 4 0 01-5.656 0z" />
-                </svg>
-              )}
-            </button>
-            <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoSelect} className="hidden" />
           </div>
 
-          {/* Edit button */}
           <div className="pt-1">
-            <Button
-              variant={editing ? 'outline' : 'secondary'}
-              size="sm"
-              onClick={() => { setEditing(p => !p); setError(''); }}
-              className="rounded-full px-5"
-            >
-              {editing ? 'Cancel' : 'Edit profile'}
-            </Button>
+            <Link href="/settings#account">
+              <Button variant="secondary" size="sm" className="rounded-full px-5">
+                Edit profile
+              </Button>
+            </Link>
           </div>
         </div>
 
@@ -324,11 +232,16 @@ export default function ProfilePage() {
           <p className="mt-0.5 text-[14px] text-ink-muted">@{displayUsername}</p>
 
           {/* Bio */}
-          {!editing && (
-            user.bio
-              ? <p className="mt-3 text-[15px] leading-relaxed text-ink">{user.bio}</p>
-              : <p className="mt-3 text-[14px] italic text-ink-muted">No bio yet — tap ⚙ to add one.</p>
-          )}
+          {user.bio
+            ? <p className="mt-3 text-[15px] leading-relaxed text-ink">{user.bio}</p>
+            : (
+              <p className="mt-3 text-[14px] italic text-ink-muted">
+                No bio yet —{' '}
+                <Link href="/settings#account" className="text-brand-600 hover:underline dark:text-brand-400">
+                  add one in Settings
+                </Link>
+              </p>
+            )}
 
           {/* Meta row */}
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[13px] text-ink-muted">
@@ -378,49 +291,6 @@ export default function ProfilePage() {
             <p className="text-[12px] text-ink-muted">Following</p>
           </button>
         </div>
-
-        {/* Edit form */}
-        {editing && (
-          <form onSubmit={handleSave} className="mt-5 space-y-4 border-b border-border pb-6">
-            <div>
-              <label className="mb-1.5 block text-[13px] font-medium text-ink-secondary">Username</label>
-              <input
-                value={form.username}
-                onChange={e => setForm({ ...form, username: e.target.value.replace(/[^a-zA-Z0-9_]/g, '') })}
-                placeholder="your_username"
-                maxLength={30}
-                className={cn(
-                  'w-full rounded-xl border border-border bg-white dark:bg-[#1a1a1a] dark:border-[#333] px-4 py-2.5 text-[14px] text-ink placeholder:text-ink-muted',
-                  'focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20'
-                )}
-              />
-              <p className="mt-1 text-[11px] text-ink-muted">Letters, numbers, and underscores only · max 30 chars</p>
-            </div>
-            <div>
-              <label className="mb-1.5 block text-[13px] font-medium text-ink-secondary">Bio</label>
-              <textarea
-                value={form.bio}
-                onChange={e => setForm({ ...form, bio: e.target.value })}
-                rows={3}
-                placeholder="Tell others about yourself..."
-                maxLength={200}
-                className={cn(
-                  'w-full resize-none rounded-xl border border-border bg-white dark:bg-[#1a1a1a] dark:border-[#333] px-4 py-2.5 text-[14px] text-ink placeholder:text-ink-muted',
-                  'focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20'
-                )}
-              />
-            </div>
-            <Select label="Department" value={form.department} onChange={e => setForm({ ...form, department: e.target.value })}>
-              {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-            </Select>
-            <Select label="Level" value={form.level} onChange={e => setForm({ ...form, level: e.target.value })}>
-              {LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
-            </Select>
-            <Button type="submit" loading={saving} className="w-full rounded-full">
-              Save changes
-            </Button>
-          </form>
-        )}
       </div>
 
       {/* ── Tab bar ── */}

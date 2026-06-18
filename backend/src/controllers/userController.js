@@ -71,7 +71,7 @@ async function getUserById(req, res) {
 
 async function updateProfile(req, res) {
   try {
-    const { bio, department, level, username } = req.body;
+    const { bio, department, level, username, full_name } = req.body;
 
     // Validate username: only letters, numbers, underscores, max 30 chars
     if (username !== undefined && username !== null && username !== '') {
@@ -80,7 +80,7 @@ async function updateProfile(req, res) {
       }
     }
 
-    const user = await User.updateProfile(req.user.id, { bio, department, level, username });
+    const user = await User.updateProfile(req.user.id, { bio, department, level, username, full_name });
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' });

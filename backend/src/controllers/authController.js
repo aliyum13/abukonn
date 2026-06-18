@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Whitelist = require('../models/Whitelist');
+const UserSettings = require('../models/UserSettings');
 
 function generateToken(user) {
   return jwt.sign(
@@ -65,6 +66,8 @@ async function register(req, res) {
       username,
     });
 
+    await UserSettings.getOrCreate(user.id);
+
     const token = generateToken(user);
 
     res.status(201).json({
@@ -94,6 +97,11 @@ async function login(req, res) {
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
       return res.status(401).json({ message: 'Invalid email or password' });
+    }
+
+    const settings = await UserSettings.getOrCreate(user.id);
+    if (settings.is_deactivated) {
+      return res.status(403).json({ message: 'This account has been deactivated. Contact support to reactivate.' });
     }
 
     const token = generateToken(user);

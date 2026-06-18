@@ -96,6 +96,33 @@ async function findById(id) {
   return result.rows[0] || null;
 }
 
+async function findByIdWithPassword(id) {
+  const result = await pool.query(
+    `SELECT id, email, password_hash, full_name FROM abukonn.users WHERE id = $1`,
+    [id]
+  );
+  return result.rows[0] || null;
+}
+
+async function updateEmail(id, email) {
+  const result = await pool.query(
+    `UPDATE abukonn.users SET email = $2 WHERE id = $1 RETURNING ${COLS}`,
+    [id, email]
+  );
+  return result.rows[0] || null;
+}
+
+async function updatePassword(id, passwordHash) {
+  await pool.query(
+    `UPDATE abukonn.users SET password_hash = $2 WHERE id = $1`,
+    [id, passwordHash]
+  );
+}
+
+async function deleteById(id) {
+  await pool.query('DELETE FROM abukonn.users WHERE id = $1', [id]);
+}
+
 async function updateRole(id, role) {
   const result = await pool.query(
     `UPDATE abukonn.users SET role = $2 WHERE id = $1 RETURNING ${COLS}`,
@@ -104,16 +131,17 @@ async function updateRole(id, role) {
   return result.rows[0] || null;
 }
 
-async function updateProfile(id, { bio, department, level, username }) {
+async function updateProfile(id, { bio, department, level, username, full_name }) {
   const result = await pool.query(
     `UPDATE abukonn.users
      SET bio        = COALESCE($2, bio),
          department = COALESCE($3, department),
          level      = COALESCE($4, level),
-         username   = COALESCE($5, username)
+         username   = COALESCE($5, username),
+         full_name  = COALESCE($6, full_name)
      WHERE id = $1
      RETURNING ${COLS}`,
-    [id, bio ?? null, department ?? null, level ?? null, username ?? null]
+    [id, bio ?? null, department ?? null, level ?? null, username ?? null, full_name ?? null]
   );
   return result.rows[0] || null;
 }
@@ -170,9 +198,13 @@ module.exports = {
   findByEmail,
   findByUsername,
   findById,
+  findByIdWithPassword,
   updateProfile,
   updateRole,
   updateProfilePhoto,
+  updateEmail,
+  updatePassword,
+  deleteById,
   createUser,
   toPublicUser,
   toPrivateUser,
