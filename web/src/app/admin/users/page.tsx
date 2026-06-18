@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { Avatar, Badge, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Input, Skeleton } from '@/components/ui';
+import { Avatar, Badge, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Input, Skeleton, RoleBadge } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 const PAGE_LIMIT = 20;
@@ -18,9 +18,18 @@ interface AdminUser {
   level: string;
   profile_photo_url: string | null;
   is_admin: boolean;
+  role?: string;
   post_count: string;
   created_at: string;
 }
+
+const ROLE_OPTIONS = [
+  { value: 'user', label: 'User' },
+  { value: 'verified', label: '✓ Verified' },
+  { value: 'bod', label: '★ BOD' },
+  { value: 'influencer', label: '⭐ Influencer' },
+  { value: 'admin', label: '🛡 Admin' },
+];
 
 function RowSkeleton() {
   return (
@@ -116,6 +125,23 @@ export default function AdminUsersPage() {
     }
   };
 
+  const handleSetRole = async (userId: number, role: string) => {
+    if (!token) return;
+    setActionLoading(userId);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/users/${userId}/role`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role }),
+      });
+      const data = await res.json();
+      showToast(data.message || `Role set to ${role}`);
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, role, is_admin: role === 'admin' } : u));
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const totalPages = Math.ceil(total / PAGE_LIMIT);
 
   return (
@@ -161,7 +187,7 @@ export default function AdminUsersPage() {
                   <th className="px-4 py-3 font-semibold text-ink">Matric</th>
                   <th className="hidden px-4 py-3 font-semibold text-ink md:table-cell">Department</th>
                   <th className="hidden px-4 py-3 font-semibold text-ink lg:table-cell">Posts</th>
-                  <th className="hidden px-4 py-3 font-semibold text-ink sm:table-cell">Joined</th>
+                  <th className="hidden px-4 py-3 font-semibold text-ink sm:table-cell">Role</th>
                   <th className="px-4 py-3 font-semibold text-ink">Actions</th>
                 </tr>
               </thead>
@@ -192,7 +218,7 @@ export default function AdminUsersPage() {
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-medium text-ink truncate">{u.full_name}</span>
-                              {u.is_admin && <Badge variant="brand">Admin</Badge>}
+                              <RoleBadge role={u.role || (u.is_admin ? 'admin' : 'user')} />
                               {me?.id === u.id && <Badge variant="outline">You</Badge>}
                             </div>
                             <p className="text-caption text-ink-muted truncate">{u.email}</p>
@@ -202,32 +228,28 @@ export default function AdminUsersPage() {
                       <td className="px-4 py-3 font-mono text-caption text-ink-secondary">{u.matric_number}</td>
                       <td className="hidden px-4 py-3 text-ink-secondary md:table-cell">{u.department}</td>
                       <td className="hidden px-4 py-3 text-ink-secondary lg:table-cell">{u.post_count}</td>
-                      <td className="hidden px-4 py-3 text-ink-secondary sm:table-cell">{formatDate(u.created_at)}</td>
+                      <td className="hidden px-4 py-3 sm:table-cell">
+                        <select
+                          value={u.role || (u.is_admin ? 'admin' : 'user')}
+                          disabled={me?.id === u.id || actionLoading === u.id}
+                          onChange={e => handleSetRole(u.id, e.target.value)}
+                          className="rounded-lg border border-border bg-white dark:bg-[#111] dark:border-[#333] px-2.5 py-1.5 text-[13px] text-ink focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50 cursor-pointer"
+                        >
+                          {ROLE_OPTIONS.map(o => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
+                          ))}
+                        </select>
+                      </td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={me?.id === u.id || actionLoading === u.id}
-                            onClick={() => handleToggleAdmin(u.id)}
-                            className={cn(
-                              u.is_admin
-                                ? 'border-amber-300 text-amber-700 hover:bg-amber-50'
-                                : 'border-brand-300 text-brand-700 hover:bg-brand-50'
-                            )}
-                          >
-                            {u.is_admin ? 'Revoke admin' : 'Make admin'}
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={me?.id === u.id || actionLoading === u.id}
-                            onClick={() => handleDelete(u.id, u.full_name)}
-                            className="border-red-200 text-red-600 hover:bg-red-50"
-                          >
-                            Delete
-                          </Button>
-                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={me?.id === u.id || actionLoading === u.id}
+                          onClick={() => handleDelete(u.id, u.full_name)}
+                          className="border-red-200 text-red-600 hover:bg-red-50"
+                        >
+                          Delete
+                        </Button>
                       </td>
                     </tr>
                   ))}

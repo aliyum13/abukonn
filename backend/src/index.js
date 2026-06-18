@@ -26,10 +26,12 @@ const { createNotificationsTable } = require('./models/Notification');
 const { createGroupTables } = require('./models/Group');
 const { createRepliesTable } = require('./models/Reply');
 const { createStoriesTable } = require('./models/Story');
+const { createConnectTables } = require('./models/Connect');
 const notificationRoutes = require('./routes/notifications');
 const adminRoutes = require('./routes/admin');
 const groupRoutes = require('./routes/groups');
 const storyRoutes = require('./routes/stories');
+const connectRoutes = require('./routes/connect');
 
 const app = express();
 const server = http.createServer(app);
@@ -159,6 +161,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/stories', storyRoutes);
+app.use('/api/connect', connectRoutes);
 
 // Test route
 app.get('/', (req, res) => {
@@ -179,6 +182,7 @@ createUsersTable()
   .then(() => createGroupTables())
   .then(() => createRepliesTable())
   .then(() => createStoriesTable())
+  .then(() => createConnectTables())
   .then(() => {
     server.listen(PORT, () => {
       console.log(`ABUkonn server running on port ${PORT}`);

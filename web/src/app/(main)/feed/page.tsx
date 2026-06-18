@@ -16,6 +16,7 @@ import {
   EmptyState,
   Input,
   Skeleton,
+  RoleBadge,
 } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
@@ -113,6 +114,7 @@ interface Post {
   author_department: string;
   author_photo: string | null;
   author_matric: string;
+  author_role?: string;
 }
 
 interface Comment {
@@ -1250,6 +1252,7 @@ export default function FeedPage() {
                             className="font-semibold text-[15px] text-ink hover:underline">
                             {post.author_name}
                           </Link>
+                          <RoleBadge role={post.author_role || 'user'} iconOnly />
                           {post.category && post.category !== 'GENERAL' && (
                             <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold', CATEGORY_COLORS[post.category] ?? 'bg-gray-100 text-gray-600')}>
                               {POST_CATEGORIES.find(c => c.value === post.category)?.label}

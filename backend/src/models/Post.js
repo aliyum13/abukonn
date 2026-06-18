@@ -59,6 +59,7 @@ async function getAllPosts(currentUserId) {
             p.created_at,
             u.full_name AS author_name, u.department AS author_department,
             u.profile_photo_url AS author_photo, u.matric_number AS author_matric,
+            COALESCE(u.role, 'user') AS author_role,
             EXISTS(
               SELECT 1 FROM abukonn.post_likes pl
               WHERE pl.post_id = p.id AND pl.user_id = $1

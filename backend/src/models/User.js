@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS abukonn.users (
 
 ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS username VARCHAR(100);
+ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'user';
 
 DO $$
 BEGIN
@@ -85,12 +86,20 @@ async function findByUsername(username) {
   return result.rows[0] || null;
 }
 
-const COLS = 'id, username, matric_number, full_name, email, department, level, profile_photo_url, bio, is_admin, created_at';
+const COLS = 'id, username, matric_number, full_name, email, department, level, profile_photo_url, bio, is_admin, role, created_at';
 
 async function findById(id) {
   const result = await pool.query(
     `SELECT ${COLS} FROM abukonn.users WHERE id = $1`,
     [id]
+  );
+  return result.rows[0] || null;
+}
+
+async function updateRole(id, role) {
+  const result = await pool.query(
+    `UPDATE abukonn.users SET role = $2 WHERE id = $1 RETURNING ${COLS}`,
+    [id, role]
   );
   return result.rows[0] || null;
 }
@@ -141,6 +150,7 @@ function toPublicUser(user) {
     profile_photo_url: user.profile_photo_url,
     bio: user.bio,
     is_admin: user.is_admin || false,
+    role: user.role || 'user',
     created_at: user.created_at,
   };
 }
@@ -161,6 +171,7 @@ module.exports = {
   findByUsername,
   findById,
   updateProfile,
+  updateRole,
   updateProfilePhoto,
   createUser,
   toPublicUser,

@@ -5,13 +5,22 @@ CREATE TABLE IF NOT EXISTS abukonn.notifications (
   id SERIAL PRIMARY KEY,
   recipient_id INTEGER NOT NULL REFERENCES abukonn.users(id) ON DELETE CASCADE,
   sender_id   INTEGER NOT NULL REFERENCES abukonn.users(id) ON DELETE CASCADE,
-  type        VARCHAR(20) NOT NULL CHECK (type IN ('like', 'comment', 'follow')),
+  type        VARCHAR(20) NOT NULL CHECK (type IN ('like', 'comment', 'follow', 'connect_request', 'connect_accepted')),
   post_id     INTEGER REFERENCES abukonn.posts(id) ON DELETE CASCADE,
   is_read     BOOLEAN DEFAULT FALSE,
   created_at  TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS notifications_recipient_idx
   ON abukonn.notifications(recipient_id);
+
+-- Widen type constraint to include connect notifications
+DO $$
+BEGIN
+  ALTER TABLE abukonn.notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
+  ALTER TABLE abukonn.notifications ADD CONSTRAINT notifications_type_check
+    CHECK (type IN ('like','comment','follow','connect_request','connect_accepted'));
+EXCEPTION WHEN others THEN NULL;
+END $$;
 `;
 
 async function createNotificationsTable() {

@@ -7,7 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { timeAgo } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { useFollow } from '@/hooks/useFollow';
-import { Avatar, Button, Skeleton } from '@/components/ui';
+import { Avatar, Button, Skeleton, RoleBadge, usesFollowSystem } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -21,6 +21,7 @@ interface UserProfile {
   profile_photo_url: string | null;
   bio: string | null;
   is_admin?: boolean;
+  role?: string;
   created_at: string;
   followers_count: number;
   following_count: number;
@@ -39,7 +40,12 @@ interface Post {
 
 type TabType = 'posts' | 'replies';
 
-// ── Subcomponents ─────────────────────────────────────────────────────────────
+type ConnectStatus =
+  | { status: 'none' }
+  | { status: 'pending'; request_id: number; initiated_by_me: boolean }
+  | { status: 'connected' };
+
+// ── Skeletons ──────────────────────────────────────────────────────────────────
 
 function ProfileSkeleton() {
   return (
@@ -84,6 +90,8 @@ function PostSkeleton() {
   );
 }
 
+// ── Follow button (for verified/BOD/Influencer/Admin profiles) ─────────────────
+
 function FollowBtn({
   userId, initialIsFollowing, initialFollowersCount, token,
 }: {
@@ -96,17 +104,137 @@ function FollowBtn({
       size="sm"
       onClick={toggle}
       loading={loading}
-      className={cn(
-        'rounded-full px-5',
-        isFollowing && 'border-border hover:border-red-300 hover:text-red-600'
-      )}
+      className={cn('rounded-full px-5', isFollowing && 'border-border hover:border-red-300 hover:text-red-600')}
     >
       {isFollowing ? 'Following' : 'Follow'}
     </Button>
   );
 }
 
-// ── Main page ─────────────────────────────────────────────────────────────────
+// ── Connect button (for regular user profiles) ─────────────────────────────────
+
+function ConnectBtn({ targetId, token }: { targetId: number; token: string | null }) {
+  const [status, setStatus] = useState<ConnectStatus>({ status: 'none' });
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!token || !targetId) return;
+    fetch(`${API_URL}/api/connect/${targetId}/status`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then(d => setStatus(d))
+      .catch(() => {});
+  }, [token, targetId]);
+
+  async function sendRequest() {
+    if (!token) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`${API_URL}/api/connect/${targetId}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStatus({ status: 'pending', request_id: data.request.id, initiated_by_me: true });
+      }
+    } finally { setBusy(false); }
+  }
+
+  async function cancelRequest() {
+    if (!token) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`${API_URL}/api/connect/${targetId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) setStatus({ status: 'none' });
+    } finally { setBusy(false); }
+  }
+
+  async function acceptRequest() {
+    if (!token || status.status !== 'pending') return;
+    setBusy(true);
+    try {
+      const res = await fetch(`${API_URL}/api/connect/${status.request_id}/accept`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) setStatus({ status: 'connected' });
+    } finally { setBusy(false); }
+  }
+
+  async function declineRequest() {
+    if (!token || status.status !== 'pending') return;
+    setBusy(true);
+    try {
+      const res = await fetch(`${API_URL}/api/connect/${status.request_id}/decline`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) setStatus({ status: 'none' });
+    } finally { setBusy(false); }
+  }
+
+  async function disconnect() {
+    if (!token) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`${API_URL}/api/connect/${targetId}/remove`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) setStatus({ status: 'none' });
+    } finally { setBusy(false); }
+  }
+
+  if (status.status === 'connected') {
+    return (
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={disconnect}
+        loading={busy}
+        className="rounded-full px-5 border-brand-300 text-brand-700 hover:border-red-300 hover:text-red-600 dark:border-brand-700 dark:text-brand-400"
+      >
+        ✓ Connected
+      </Button>
+    );
+  }
+
+  if (status.status === 'pending' && status.initiated_by_me) {
+    return (
+      <Button variant="outline" size="sm" onClick={cancelRequest} loading={busy}
+        className="rounded-full px-5 text-ink-muted hover:border-red-300 hover:text-red-600">
+        Pending…
+      </Button>
+    );
+  }
+
+  if (status.status === 'pending' && !status.initiated_by_me) {
+    return (
+      <div className="flex items-center gap-2">
+        <Button size="sm" onClick={acceptRequest} loading={busy} className="rounded-full px-4">
+          Accept
+        </Button>
+        <Button variant="outline" size="sm" onClick={declineRequest} disabled={busy}
+          className="rounded-full px-4">
+          Decline
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <Button size="sm" onClick={sendRequest} loading={busy} className="rounded-full px-5">
+      Connect
+    </Button>
+  );
+}
+
+// ── Main page ──────────────────────────────────────────────────────────────────
 
 export default function UserProfilePage() {
   const { token, user: currentUser, loading: authLoading } = useAuth();
@@ -125,9 +253,7 @@ export default function UserProfilePage() {
   }, [authLoading, token, router]);
 
   useEffect(() => {
-    if (currentUser && userId === String(currentUser.id)) {
-      router.replace('/profile');
-    }
+    if (currentUser && userId === String(currentUser.id)) router.replace('/profile');
   }, [currentUser, userId, router]);
 
   useEffect(() => {
@@ -150,15 +276,7 @@ export default function UserProfilePage() {
     })();
   }, [token, userId]);
 
-  if (authLoading || loading) {
-    return (
-      <>
-        <ProfileSkeleton />
-        <PostSkeleton />
-        <PostSkeleton />
-      </>
-    );
-  }
+  if (authLoading || loading) return (<><ProfileSkeleton /><PostSkeleton /><PostSkeleton /></>);
 
   if (notFound) {
     return (
@@ -178,20 +296,16 @@ export default function UserProfilePage() {
   if (!profile) return null;
 
   const displayUsername = profile.username || profile.email?.split('@')[0] || '';
-  const roleBadge = profile.is_admin
-    ? { label: 'ADMIN', cls: 'bg-brand-100 text-brand-700' }
-    : { label: 'USER', cls: 'bg-gray-100 dark:bg-[#1a1a1a] text-gray-500 dark:text-gray-400' };
+  const profileRole = profile.role || (profile.is_admin ? 'admin' : 'user');
+  const showFollowBtn = usesFollowSystem(profileRole);
 
   return (
     <div className="mx-auto max-w-2xl bg-white dark:bg-[#0a0a0a] min-h-screen">
       {/* ── Top bar ── */}
       <div className="sticky top-14 z-10 flex h-12 items-center gap-3 border-b border-border bg-white/95 dark:bg-[#0a0a0a]/95 dark:border-[#222] px-4 backdrop-blur-sm">
-        <button
-          type="button"
-          onClick={() => router.back()}
+        <button type="button" onClick={() => router.back()}
           className="flex h-9 w-9 items-center justify-center rounded-full text-ink-muted transition hover:bg-surface-muted hover:text-ink"
-          aria-label="Go back"
-        >
+          aria-label="Go back">
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
           </svg>
@@ -210,7 +324,7 @@ export default function UserProfilePage() {
           </div>
 
           {/* Action buttons */}
-          <div className="flex items-center gap-2 pt-1">
+          <div className="flex flex-wrap items-center gap-2 pt-1">
             <Link href={`/messages?userId=${profile.id}`}>
               <Button variant="outline" size="sm" className="rounded-full px-4 flex items-center gap-1.5">
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
@@ -219,31 +333,32 @@ export default function UserProfilePage() {
                 <span className="hidden sm:inline">Message</span>
               </Button>
             </Link>
-            <FollowBtn
-              userId={profile.id}
-              initialIsFollowing={profile.is_following}
-              initialFollowersCount={profile.followers_count}
-              token={token}
-            />
+
+            {showFollowBtn ? (
+              <FollowBtn
+                userId={profile.id}
+                initialIsFollowing={profile.is_following}
+                initialFollowersCount={profile.followers_count}
+                token={token}
+              />
+            ) : (
+              <ConnectBtn targetId={profile.id} token={token} />
+            )}
           </div>
         </div>
 
-        {/* Name + badge + handle */}
+        {/* Name + role badge + handle */}
         <div className="mt-4">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-[22px] font-bold leading-tight text-ink">{profile.full_name}</h1>
-            <span className={cn('rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider', roleBadge.cls)}>
-              {roleBadge.label}
-            </span>
+            <RoleBadge role={profileRole} />
           </div>
           <p className="mt-0.5 text-[14px] text-ink-muted">@{displayUsername}</p>
 
-          {/* Bio */}
           {profile.bio && (
             <p className="mt-3 text-[15px] leading-relaxed text-ink">{profile.bio}</p>
           )}
 
-          {/* Meta row */}
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[13px] text-ink-muted">
             <span className="flex items-center gap-1.5">
               <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -253,15 +368,14 @@ export default function UserProfilePage() {
             </span>
           </div>
 
-          {/* Dept + level pills */}
           <div className="mt-3 flex flex-wrap gap-2">
-            <span className="rounded-full bg-brand-50 px-3 py-1 text-[12px] font-medium text-brand-700">{profile.department}</span>
+            <span className="rounded-full bg-brand-50 dark:bg-brand-950 px-3 py-1 text-[12px] font-medium text-brand-700 dark:text-brand-400">{profile.department}</span>
             <span className="rounded-full bg-gray-100 dark:bg-[#1a1a1a] px-3 py-1 text-[12px] font-medium text-gray-600 dark:text-gray-400">{profile.level}</span>
           </div>
         </div>
 
         {/* Stats row */}
-        <div className="mt-5 flex gap-8 border-b border-border pb-4">
+        <div className="mt-5 flex gap-8 border-b border-border pb-4 dark:border-[#222]">
           <div>
             <p className="text-[17px] font-bold text-ink">{posts.length}</p>
             <p className="text-[12px] text-ink-muted">Posts</p>
@@ -283,16 +397,14 @@ export default function UserProfilePage() {
           <button key={tab} type="button" onClick={() => setActiveTab(tab)}
             className={cn(
               'flex-1 border-b-2 py-3 text-[14px] font-medium capitalize transition',
-              activeTab === tab
-                ? 'border-brand-600 text-brand-600'
-                : 'border-transparent text-ink-muted hover:text-ink'
+              activeTab === tab ? 'border-brand-600 text-brand-600' : 'border-transparent text-ink-muted hover:text-ink'
             )}>
             {tab === 'posts' ? `Posts${posts.length > 0 ? ` (${posts.length})` : ''}` : 'Replies'}
           </button>
         ))}
       </div>
 
-      {/* ── Posts tab ── */}
+      {/* ── Posts ── */}
       {activeTab === 'posts' && (
         posts.length === 0 ? (
           <div className="flex flex-col items-center px-4 py-16 text-center">
@@ -312,8 +424,9 @@ export default function UserProfilePage() {
                   </div>
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline gap-2">
+                  <div className="flex flex-wrap items-baseline gap-2">
                     <span className="text-[14px] font-semibold text-ink">{profile.full_name}</span>
+                    <RoleBadge role={profileRole} iconOnly />
                     <span className="text-[12px] text-ink-muted">{timeAgo(post.created_at)}</span>
                   </div>
                   <p className="mt-1.5 whitespace-pre-wrap text-[15px] leading-relaxed text-ink">{post.content}</p>
@@ -341,7 +454,7 @@ export default function UserProfilePage() {
         )
       )}
 
-      {/* ── Replies tab ── */}
+      {/* ── Replies ── */}
       {activeTab === 'replies' && (
         <div className="flex flex-col items-center px-4 py-16 text-center">
           <svg className="mb-3 h-10 w-10 text-ink-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>

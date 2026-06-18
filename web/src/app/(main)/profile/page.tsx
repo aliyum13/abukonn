@@ -7,7 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { timeAgo } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { useFollow } from '@/hooks/useFollow';
-import { Avatar, Button, Select, Skeleton } from '@/components/ui';
+import { Avatar, Button, Select, Skeleton, RoleBadge } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -246,9 +246,8 @@ export default function ProfilePage() {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const displayUsername = (user as any).username || user.email?.split('@')[0] || '';
-  const roleBadge = user.is_admin
-    ? { label: 'ADMIN', cls: 'bg-brand-100 text-brand-700' }
-    : { label: 'USER', cls: 'bg-gray-100 dark:bg-[#1a1a1a] text-gray-500 dark:text-gray-400' };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const profileRole: string = (user as any).role || (user.is_admin ? 'admin' : 'user');
 
   return (
     <div className="mx-auto max-w-2xl bg-white dark:bg-[#0a0a0a] min-h-screen">
@@ -320,9 +319,7 @@ export default function ProfilePage() {
         <div className="mt-4">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-[22px] font-bold leading-tight text-ink">{user.full_name}</h1>
-            <span className={cn('rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider', roleBadge.cls)}>
-              {roleBadge.label}
-            </span>
+            <RoleBadge role={profileRole} />
           </div>
           <p className="mt-0.5 text-[14px] text-ink-muted">@{displayUsername}</p>
 

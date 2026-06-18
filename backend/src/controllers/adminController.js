@@ -2,6 +2,7 @@ const pool = require('../config/db');
 const cloudinary = require('../config/cloudinary');
 const News = require('../models/News');
 const Whitelist = require('../models/Whitelist');
+const { updateRole } = require('../models/User');
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
 
@@ -48,7 +49,7 @@ async function getUsers(req, res) {
 
     const usersResult = await pool.query(
       `SELECT u.id, u.matric_number, u.full_name, u.email, u.department, u.level,
-              u.profile_photo_url, u.is_admin, u.created_at,
+              u.profile_photo_url, u.is_admin, COALESCE(u.role, 'user') AS role, u.created_at,
               COUNT(p.id) AS post_count
        FROM abukonn.users u
        LEFT JOIN abukonn.posts p ON p.user_id = u.id
@@ -328,12 +329,34 @@ async function clearWhitelist(req, res) {
   }
 }
 
+async function setUserRole(req, res) {
+  try {
+    const VALID = ['user', 'verified', 'bod', 'influencer', 'admin'];
+    const { role } = req.body;
+    if (!role || !VALID.includes(role)) {
+      return res.status(400).json({ message: 'Invalid role' });
+    }
+    const updated = await updateRole(parseInt(req.params.id, 10), role);
+    if (!updated) return res.status(404).json({ message: 'User not found' });
+    // Also sync is_admin boolean
+    await pool.query(
+      `UPDATE abukonn.users SET is_admin = $2 WHERE id = $1`,
+      [updated.id, role === 'admin']
+    );
+    return res.json({ message: 'Role updated', user: updated });
+  } catch (err) {
+    console.error('setUserRole:', err.message);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
 module.exports = {
   getStats,
   getUsers,
   getRecentUsers,
   deleteUser,
   toggleAdmin,
+  setUserRole,
   adminGetAllNews,
   adminCreateNews,
   adminUpdateNews,

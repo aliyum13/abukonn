@@ -45,7 +45,7 @@ interface SearchResults {
 
 interface AppNotification {
   id: number;
-  type: 'like' | 'comment' | 'follow';
+  type: 'like' | 'comment' | 'follow' | 'connect_request' | 'connect_accepted';
   post_id: number | null;
   is_read: boolean;
   created_at: string;
@@ -118,6 +118,29 @@ export function AppNav() {
   const [notifList, setNotifList] = useState<AppNotification[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
+
+  // Connect request count
+  const [connectCount, setConnectCount] = useState(0);
+
+  const fetchConnectCount = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_URL}/api/connect/requests/incoming/count`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const d = await res.json();
+        setConnectCount(d.count ?? 0);
+      }
+    } catch { /* silent */ }
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    fetchConnectCount();
+    const id = setInterval(fetchConnectCount, 30_000);
+    return () => clearInterval(id);
+  }, [token, fetchConnectCount]);
 
   // Message unread count
   const [msgUnreadCount, setMsgUnreadCount] = useState(0);
@@ -223,8 +246,10 @@ export function AppNav() {
       setUnreadCount((c) => Math.max(0, c - 1));
     }
     setNotifOpen(false);
-    if (notif.type === 'follow') {
+    if (notif.type === 'follow' || notif.type === 'connect_accepted') {
       router.push(`/profile/${notif.sender_id}`);
+    } else if (notif.type === 'connect_request') {
+      router.push('/connect/requests');
     } else if (notif.type === 'comment' && notif.post_id) {
       router.push(`/feed?openComments=${notif.post_id}`);
     } else {
@@ -235,6 +260,8 @@ export function AppNav() {
   const notifMessage = (n: AppNotification) => {
     if (n.type === 'follow') return `${n.sender_name} started following you`;
     if (n.type === 'like') return `${n.sender_name} liked your post`;
+    if (n.type === 'connect_request') return `${n.sender_name} sent you a connect request`;
+    if (n.type === 'connect_accepted') return `${n.sender_name} accepted your connect request`;
     return `${n.sender_name} commented on your post`;
   };
 
@@ -541,9 +568,9 @@ export function AppNav() {
                   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
                   </svg>
-                  {unreadCount > 0 && (
+                  {(unreadCount + connectCount) > 0 && (
                     <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-                      {unreadCount > 9 ? '9+' : unreadCount}
+                      {(unreadCount + connectCount) > 9 ? '9+' : (unreadCount + connectCount)}
                     </span>
                   )}
                 </button>
@@ -577,6 +604,28 @@ export function AppNav() {
                         </Link>
                       </div>
                     </div>
+
+                    {/* Connect Requests Banner */}
+                    {connectCount > 0 && (
+                      <Link
+                        href="/connect/requests"
+                        onClick={() => setNotifOpen(false)}
+                        className="flex items-center gap-3 border-b border-border px-4 py-3 bg-brand-50 dark:bg-brand-950/30 dark:border-[#222] hover:bg-brand-100 dark:hover:bg-brand-950/50 transition"
+                      >
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white">
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
+                          </svg>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-semibold text-brand-700 dark:text-brand-400">
+                            {connectCount} pending connect request{connectCount > 1 ? 's' : ''}
+                          </p>
+                          <p className="text-[12px] text-brand-600/70 dark:text-brand-500">Tap to review</p>
+                        </div>
+                        <span className="rounded-full bg-brand-600 px-2 py-0.5 text-[11px] font-bold text-white">{connectCount}</span>
+                      </Link>
+                    )}
 
                     {/* Body */}
                     <div className="max-h-[70vh] overflow-y-auto sm:max-h-[380px]">

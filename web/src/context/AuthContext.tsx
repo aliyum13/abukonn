@@ -6,12 +6,14 @@ export interface User {
   id: number;
   matric_number: string;
   full_name: string;
+  username?: string;
   email: string;
   department: string;
   level: string;
   profile_photo_url: string | null;
   bio: string | null;
   is_admin: boolean;
+  role?: string;
   created_at: string;
 }
 

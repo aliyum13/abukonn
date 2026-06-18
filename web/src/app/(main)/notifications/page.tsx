@@ -11,7 +11,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
 interface Notification {
   id: number;
-  type: 'like' | 'comment' | 'follow';
+  type: 'like' | 'comment' | 'follow' | 'connect_request' | 'connect_accepted';
   post_id: number | null;
   is_read: boolean;
   created_at: string;
@@ -23,11 +23,14 @@ interface Notification {
 function notifMessage(n: Notification) {
   if (n.type === 'follow') return `started following you`;
   if (n.type === 'like') return `liked your post`;
+  if (n.type === 'connect_request') return `sent you a connect request`;
+  if (n.type === 'connect_accepted') return `accepted your connect request`;
   return `commented on your post`;
 }
 
 function notifHref(n: Notification) {
-  if (n.type === 'follow') return `/profile/${n.sender_id}`;
+  if (n.type === 'follow' || n.type === 'connect_accepted') return `/profile/${n.sender_id}`;
+  if (n.type === 'connect_request') return '/connect/requests';
   if (n.type === 'comment' && n.post_id) return `/feed?openComments=${n.post_id}`;
   return '/feed';
 }
@@ -47,6 +50,15 @@ function NotifIcon({ type }: { type: Notification['type'] }) {
       <span className="flex h-7 w-7 items-center justify-center rounded-full bg-red-100 text-red-500">
         <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
           <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" />
+        </svg>
+      </span>
+    );
+  }
+  if (type === 'connect_request' || type === 'connect_accepted') {
+    return (
+      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-green-100 text-green-600 dark:bg-green-950 dark:text-green-400">
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
         </svg>
       </span>
     );
