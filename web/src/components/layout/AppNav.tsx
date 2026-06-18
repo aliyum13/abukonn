@@ -205,7 +205,15 @@ export function AppNav() {
       });
       if (res.ok) {
         const data = await res.json();
-        setNotifList(data.notifications);
+        // Merge: preserve any optimistic is_read=true we already applied locally
+        // so that a re-fetch doesn't un-mark notifications the user just clicked
+        setNotifList(prev => {
+          const localReadIds = new Set(prev.filter(n => n.is_read).map(n => n.id));
+          return (data.notifications as AppNotification[]).map(n => ({
+            ...n,
+            is_read: n.is_read || localReadIds.has(n.id),
+          }));
+        });
       }
     } catch {
       // silent
@@ -221,29 +229,39 @@ export function AppNav() {
 
   const handleMarkAllRead = async () => {
     if (!token) return;
+    // Optimistic: clear everything immediately so the UI responds instantly
+    setNotifList((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    setUnreadCount(0);
     try {
-      await fetch(`${API_URL}/api/notifications/read-all`, {
+      const res = await fetch(`${API_URL}/api/notifications/read-all`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}` },
       });
-      setNotifList((prev) => prev.map((n) => ({ ...n, is_read: true })));
-      setUnreadCount(0);
+      if (!res.ok) {
+        // Refresh actual count from server on failure
+        fetchUnreadCount();
+      }
     } catch {
-      // silent
+      fetchUnreadCount();
     }
   };
 
   const handleNotifClick = async (notif: AppNotification) => {
     if (!token) return;
     if (!notif.is_read) {
-      fetch(`${API_URL}/api/notifications/${notif.id}/read`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}` },
-      }).catch(() => {});
+      // Optimistic: mark read and decrement badge right away
       setNotifList((prev) =>
         prev.map((n) => (n.id === notif.id ? { ...n, is_read: true } : n))
       );
       setUnreadCount((c) => Math.max(0, c - 1));
+      // API call — fire and don't await so navigation isn't delayed
+      fetch(`${API_URL}/api/notifications/${notif.id}/read`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {
+        // On network failure, the optimistic update stays for this session.
+        // The next poll will correct the server-side count.
+      });
     }
     setNotifOpen(false);
     if (notif.type === 'follow' || notif.type === 'connect_accepted') {

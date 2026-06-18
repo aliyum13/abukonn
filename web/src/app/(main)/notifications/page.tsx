@@ -118,32 +118,38 @@ export default function NotificationsPage() {
 
   const handleMarkAllRead = async () => {
     if (!token) return;
+    // Optimistic update first — dots and count disappear immediately
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
     setMarkingAll(true);
     try {
-      await fetch(`${API_URL}/api/notifications/read-all`, {
+      const res = await fetch(`${API_URL}/api/notifications/read-all`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}` },
       });
-      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+      if (!res.ok) {
+        // Revert optimistic update on API error
+        fetchNotifications();
+      }
     } catch {
-      // silent
+      fetchNotifications();
     } finally {
       setMarkingAll(false);
     }
   };
 
   const handleNotifClick = async (n: Notification) => {
-    if (!token || n.is_read) {
-      router.push(notifHref(n));
-      return;
+    if (!token) return;
+    if (!n.is_read) {
+      // Optimistic: mark read immediately so dot disappears before navigation
+      setNotifications((prev) =>
+        prev.map((notif) => (notif.id === n.id ? { ...notif, is_read: true } : notif))
+      );
+      // API call — fire without awaiting so navigation is instant
+      fetch(`${API_URL}/api/notifications/${n.id}/read`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
     }
-    fetch(`${API_URL}/api/notifications/${n.id}/read`, {
-      method: 'PATCH',
-      headers: { Authorization: `Bearer ${token}` },
-    }).catch(() => {});
-    setNotifications((prev) =>
-      prev.map((notif) => (notif.id === n.id ? { ...notif, is_read: true } : notif))
-    );
     router.push(notifHref(n));
   };
 
@@ -205,7 +211,7 @@ export default function NotificationsPage() {
                 key={n.id}
                 type="button"
                 onClick={() => handleNotifClick(n)}
-                className={`flex w-full items-start gap-4 px-6 py-4 text-left transition hover:bg-surface-muted ${!n.is_read ? 'bg-brand-50/50' : ''}`}
+                className={`flex w-full items-start gap-4 px-6 py-4 text-left transition hover:bg-surface-muted dark:hover:bg-[#1a1a1a] ${!n.is_read ? 'bg-brand-50/60 dark:bg-brand-950/30' : ''}`}
               >
                 {/* Avatar with type icon overlay */}
                 <div className="relative shrink-0">
