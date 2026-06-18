@@ -58,6 +58,18 @@ async function getFeed(req, res) {
   }
 }
 
+async function getSinglePost(req, res) {
+  try {
+    const postId = parseInt(req.params.id, 10);
+    const post = await Post.getPostByIdForUser(postId, req.user.id);
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+    res.json({ post });
+  } catch (err) {
+    console.error('Get single post error:', err.message);
+    res.status(500).json({ message: 'Server error fetching post' });
+  }
+}
+
 async function likePost(req, res) {
   try {
     const postId = parseInt(req.params.id, 10);
@@ -208,4 +220,4 @@ async function addReply(req, res) {
   }
 }
 
-module.exports = { createPost, getFeed, likePost, addComment, getComments, deletePost, getReplies, addReply, repostPost, viewPost };
+module.exports = { createPost, getFeed, getSinglePost, likePost, addComment, getComments, deletePost, getReplies, addReply, repostPost, viewPost };

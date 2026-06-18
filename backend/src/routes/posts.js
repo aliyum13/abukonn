@@ -4,6 +4,7 @@ const upload = require('../middleware/upload');
 const {
   createPost,
   getFeed,
+  getSinglePost,
   likePost,
   addComment,
   getComments,
@@ -20,6 +21,7 @@ router.use(auth);
 
 router.get('/', getFeed);
 router.post('/', upload.single('image'), createPost);
+router.get('/:id', getSinglePost);
 router.post('/:id/like', likePost);
 router.get('/:id/comments', getComments);
 router.post('/:id/comments', addComment);

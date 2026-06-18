@@ -87,6 +87,34 @@ async function getPostById(id) {
   return result.rows[0] || null;
 }
 
+async function getPostByIdForUser(id, currentUserId) {
+  const result = await pool.query(
+    `SELECT p.id, p.user_id, p.content, p.image_url, p.likes_count, p.comments_count,
+            COALESCE(p.repost_count, 0) AS repost_count,
+            COALESCE(p.view_count, 0) AS view_count,
+            COALESCE(p.category, 'GENERAL') AS category,
+            COALESCE(p.is_repost, FALSE) AS is_repost,
+            p.original_post_id, p.original_author_name,
+            p.created_at,
+            u.full_name AS author_name, u.department AS author_department,
+            u.profile_photo_url AS author_photo, u.matric_number AS author_matric,
+            COALESCE(u.role, 'user') AS author_role,
+            EXISTS(
+              SELECT 1 FROM abukonn.post_likes pl
+              WHERE pl.post_id = p.id AND pl.user_id = $2
+            ) AS is_liked,
+            EXISTS(
+              SELECT 1 FROM abukonn.follows f
+              WHERE f.follower_id = $2 AND f.following_id = p.user_id
+            ) AS is_following_author
+     FROM abukonn.posts p
+     JOIN abukonn.users u ON p.user_id = u.id
+     WHERE p.id = $1`,
+    [id, currentUserId]
+  );
+  return result.rows[0] || null;
+}
+
 async function toggleLike(postId, userId) {
   const existing = await pool.query(
     `SELECT 1 FROM abukonn.post_likes WHERE post_id = $1 AND user_id = $2`,
@@ -184,6 +212,7 @@ module.exports = {
   getAllPosts,
   getPostsByUserId,
   getPostById,
+  getPostByIdForUser,
   toggleLike,
   incrementCommentsCount,
   repostPost,
