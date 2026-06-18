@@ -53,6 +53,7 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [toast, setToast] = useState('');
+  const [toastIsError, setToastIsError] = useState(false);
 
   // Debounce search
   useEffect(() => {
@@ -88,9 +89,10 @@ export default function AdminUsersPage() {
     setPage(1);
   }, [debouncedSearch]);
 
-  const showToast = (msg: string) => {
+  const showToast = (msg: string, isError = false) => {
     setToast(msg);
-    setTimeout(() => setToast(''), 3000);
+    setToastIsError(isError);
+    setTimeout(() => setToast(''), 3500);
   };
 
   const handleDelete = async (userId: number, name: string) => {
@@ -125,18 +127,29 @@ export default function AdminUsersPage() {
     }
   };
 
-  const handleSetRole = async (userId: number, role: string) => {
+  const handleSetRole = async (userId: number, newRole: string, previousRole: string) => {
     if (!token) return;
+    // Optimistic update
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole, is_admin: newRole === 'admin' } : u));
     setActionLoading(userId);
     try {
       const res = await fetch(`${API_URL}/api/admin/users/${userId}/role`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role }),
+        body: JSON.stringify({ role: newRole }),
       });
       const data = await res.json();
-      showToast(data.message || `Role set to ${role}`);
-      setUsers(prev => prev.map(u => u.id === userId ? { ...u, role, is_admin: role === 'admin' } : u));
+      if (!res.ok) {
+        // Revert optimistic update
+        setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: previousRole, is_admin: previousRole === 'admin' } : u));
+        showToast(data.message || 'Failed to update role', true);
+        return;
+      }
+      showToast(`✓ Role updated to "${newRole}"`);
+    } catch {
+      // Revert on network error
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: previousRole, is_admin: previousRole === 'admin' } : u));
+      showToast('Network error — role not saved', true);
     } finally {
       setActionLoading(null);
     }
@@ -157,7 +170,12 @@ export default function AdminUsersPage() {
 
       {/* Toast */}
       {toast && (
-        <div className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-body-sm text-brand-700">
+        <div className={cn(
+          'rounded-xl border px-4 py-3 text-body-sm transition',
+          toastIsError
+            ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-400'
+            : 'border-brand-200 bg-brand-50 text-brand-700 dark:border-brand-800 dark:bg-brand-950/40 dark:text-brand-400'
+        )}>
           {toast}
         </div>
       )}
@@ -232,7 +250,7 @@ export default function AdminUsersPage() {
                         <select
                           value={u.role || (u.is_admin ? 'admin' : 'user')}
                           disabled={me?.id === u.id || actionLoading === u.id}
-                          onChange={e => handleSetRole(u.id, e.target.value)}
+                          onChange={e => handleSetRole(u.id, e.target.value, u.role || (u.is_admin ? 'admin' : 'user'))}
                           className="rounded-lg border border-border bg-white dark:bg-[#111] dark:border-[#333] px-2.5 py-1.5 text-[13px] text-ink focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50 cursor-pointer"
                         >
                           {ROLE_OPTIONS.map(o => (

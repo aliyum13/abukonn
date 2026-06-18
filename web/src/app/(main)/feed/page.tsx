@@ -1741,12 +1741,18 @@ function SuggestionRow({
   onFollowed: (userId: number) => void;
 }) {
   const { isFollowing, loading, toggle } = useFollow(user.id, false, 0, token);
+  const [hovered, setHovered] = useState(false);
 
   const handleClick = async () => {
     await toggle();
-    // Remove from suggestions after a short delay so the button state is visible
-    setTimeout(() => onFollowed(user.id), 600);
+    if (!isFollowing) {
+      // Just followed — remove from list after a beat
+      setTimeout(() => onFollowed(user.id), 700);
+    }
+    // If unfollowing from sidebar (edge case), keep them visible so user can re-follow
   };
+
+  const label = isFollowing ? (hovered ? 'Unfollow' : 'Following') : 'Follow';
 
   return (
     <div className="flex items-center gap-3">
@@ -1763,12 +1769,22 @@ function SuggestionRow({
         <p className="truncate text-caption text-ink-muted">{user.department}</p>
       </div>
       <Button
-        variant={isFollowing ? 'secondary' : 'outline'}
+        variant={isFollowing ? 'outline' : 'outline'}
         size="sm"
         onClick={handleClick}
         loading={loading}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        className={cn(
+          'min-w-[82px] transition-colors',
+          isFollowing && hovered
+            ? 'border-red-300 text-red-600 dark:border-red-700 dark:text-red-400'
+            : isFollowing
+            ? 'border-brand-400 text-brand-700 dark:border-brand-600 dark:text-brand-400'
+            : ''
+        )}
       >
-        {isFollowing ? 'Following' : 'Follow'}
+        {label}
       </Button>
     </div>
   );

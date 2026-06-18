@@ -98,15 +98,30 @@ function FollowBtn({
   userId: number; initialIsFollowing: boolean; initialFollowersCount: number; token: string | null;
 }) {
   const { isFollowing, loading, toggle } = useFollow(userId, initialIsFollowing, initialFollowersCount, token);
+  const [hovered, setHovered] = useState(false);
+
+  const label = isFollowing
+    ? (hovered ? 'Unfollow' : 'Following')
+    : 'Follow';
+
   return (
     <Button
       variant={isFollowing ? 'outline' : 'primary'}
       size="sm"
       onClick={toggle}
       loading={loading}
-      className={cn('rounded-full px-5', isFollowing && 'border-border hover:border-red-300 hover:text-red-600')}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className={cn(
+        'rounded-full px-5 min-w-[90px] transition-colors',
+        isFollowing && hovered
+          ? 'border-red-300 text-red-600 dark:border-red-700 dark:text-red-400'
+          : isFollowing
+          ? 'border-border'
+          : ''
+      )}
     >
-      {isFollowing ? 'Following' : 'Follow'}
+      {label}
     </Button>
   );
 }
@@ -266,6 +281,14 @@ export default function UserProfilePage() {
         if (res.status === 404) { setNotFound(true); return; }
         if (!res.ok) throw new Error();
         const data = await res.json();
+        // Debug: log role to help diagnose Follow vs Connect display
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[Profile] user data from API:', {
+            id: data.user?.id,
+            role: data.user?.role,
+            is_admin: data.user?.is_admin,
+          });
+        }
         setProfile(data.user);
         setPosts(data.posts);
       } catch {
