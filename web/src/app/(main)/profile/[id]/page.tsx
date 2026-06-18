@@ -43,7 +43,7 @@ type TabType = 'posts' | 'replies';
 
 function ProfileSkeleton() {
   return (
-    <div className="mx-auto max-w-2xl bg-white">
+    <div className="mx-auto max-w-2xl bg-white dark:bg-[#0a0a0a]">
       <div className="h-12 border-b border-border" />
       <div className="px-4 pt-5">
         <div className="flex items-start justify-between gap-4">
@@ -180,12 +180,12 @@ export default function UserProfilePage() {
   const displayUsername = profile.username || profile.email?.split('@')[0] || '';
   const roleBadge = profile.is_admin
     ? { label: 'ADMIN', cls: 'bg-brand-100 text-brand-700' }
-    : { label: 'USER', cls: 'bg-gray-100 text-gray-500' };
+    : { label: 'USER', cls: 'bg-gray-100 dark:bg-[#1a1a1a] text-gray-500 dark:text-gray-400' };
 
   return (
-    <div className="mx-auto max-w-2xl bg-white min-h-screen">
+    <div className="mx-auto max-w-2xl bg-white dark:bg-[#0a0a0a] min-h-screen">
       {/* ── Top bar ── */}
-      <div className="sticky top-14 z-10 flex h-12 items-center gap-3 border-b border-border bg-white/95 px-4 backdrop-blur-sm">
+      <div className="sticky top-14 z-10 flex h-12 items-center gap-3 border-b border-border bg-white/95 dark:bg-[#0a0a0a]/95 dark:border-[#222] px-4 backdrop-blur-sm">
         <button
           type="button"
           onClick={() => router.back()}
@@ -204,7 +204,7 @@ export default function UserProfilePage() {
         <div className="flex items-start justify-between gap-4">
           {/* Avatar */}
           <div className="h-24 w-24 shrink-0 rounded-full bg-gradient-to-tr from-brand-500 to-emerald-400 p-[2.5px]">
-            <div className="h-full w-full rounded-full bg-white p-[2px]">
+            <div className="h-full w-full rounded-full bg-white dark:bg-[#0a0a0a] p-[2px]">
               <Avatar src={profile.profile_photo_url} name={profile.full_name} size="xl" className="h-full w-full" />
             </div>
           </div>
@@ -256,7 +256,7 @@ export default function UserProfilePage() {
           {/* Dept + level pills */}
           <div className="mt-3 flex flex-wrap gap-2">
             <span className="rounded-full bg-brand-50 px-3 py-1 text-[12px] font-medium text-brand-700">{profile.department}</span>
-            <span className="rounded-full bg-gray-100 px-3 py-1 text-[12px] font-medium text-gray-600">{profile.level}</span>
+            <span className="rounded-full bg-gray-100 dark:bg-[#1a1a1a] px-3 py-1 text-[12px] font-medium text-gray-600 dark:text-gray-400">{profile.level}</span>
           </div>
         </div>
 
@@ -278,7 +278,7 @@ export default function UserProfilePage() {
       </div>
 
       {/* ── Tab bar ── */}
-      <div className="sticky top-[104px] z-10 flex border-b border-border bg-white">
+      <div className="sticky top-[104px] z-10 flex border-b border-border bg-white dark:bg-[#0a0a0a] dark:border-[#222]">
         {(['posts', 'replies'] as TabType[]).map(tab => (
           <button key={tab} type="button" onClick={() => setActiveTab(tab)}
             className={cn(
@@ -304,10 +304,10 @@ export default function UserProfilePage() {
           </div>
         ) : (
           posts.map(post => (
-            <div key={post.id} className="border-b border-border px-4 py-4 transition hover:bg-gray-50/40">
+            <div key={post.id} className="border-b border-border px-4 py-4 transition hover:bg-gray-50/40 dark:hover:bg-white/[0.03] dark:border-[#222]">
               <div className="flex gap-3">
                 <div className="h-10 w-10 shrink-0 rounded-full bg-gradient-to-tr from-brand-500 to-emerald-400 p-[2px]">
-                  <div className="h-full w-full rounded-full bg-white p-[1.5px]">
+                  <div className="h-full w-full rounded-full bg-white dark:bg-[#0a0a0a] p-[1.5px]">
                     <Avatar src={profile.profile_photo_url} name={profile.full_name} size="md" className="h-full w-full" />
                   </div>
                 </div>

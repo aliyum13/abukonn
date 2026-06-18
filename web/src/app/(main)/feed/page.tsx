@@ -67,13 +67,13 @@ const POST_CATEGORIES = [
 type PostCategory = typeof POST_CATEGORIES[number]['value'];
 
 const CATEGORY_COLORS: Record<string, string> = {
-  GENERAL:      'bg-gray-100 text-gray-600',
-  EXAMINATION:  'bg-red-100 text-red-700',
-  REGISTRATION: 'bg-orange-100 text-orange-700',
-  ACADEMIC:     'bg-blue-100 text-blue-700',
-  SPORTS:       'bg-yellow-100 text-yellow-700',
-  EVENTS:       'bg-purple-100 text-purple-700',
-  CAMPUS_LIFE:  'bg-brand-100 text-brand-700',
+  GENERAL:      'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300',
+  EXAMINATION:  'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400',
+  REGISTRATION: 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-400',
+  ACADEMIC:     'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
+  SPORTS:       'bg-yellow-100 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-400',
+  EVENTS:       'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-400',
+  CAMPUS_LIFE:  'bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-400',
 };
 
 interface Story {
@@ -167,11 +167,11 @@ function StoriesBar({
               ? 'bg-gradient-to-tr from-brand-500 to-emerald-400'
               : 'bg-border'
           )}>
-            <div className="h-full w-full rounded-full bg-white p-[2px]">
+            <div className="h-full w-full rounded-full bg-white dark:bg-[#0a0a0a] p-[2px]">
               <Avatar src={user.profile_photo_url} name={user.full_name} size="xl" className="h-full w-full" />
             </div>
           </div>
-          <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-brand-600 ring-2 ring-white">
+          <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-brand-600 ring-2 ring-white dark:ring-[#0a0a0a]">
             <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
@@ -184,7 +184,7 @@ function StoriesBar({
         <button key={g.user_id} type="button" onClick={() => onViewGroup(g)}
           className="flex shrink-0 flex-col items-center gap-1.5">
           <div className="h-14 w-14 rounded-full bg-gradient-to-tr from-brand-500 to-emerald-400 p-[2px]">
-            <div className="h-full w-full rounded-full bg-white p-[2px]">
+            <div className="h-full w-full rounded-full bg-white dark:bg-[#0a0a0a] p-[2px]">
               <Avatar src={g.user_photo} name={g.user_name} size="xl" className="h-full w-full" />
             </div>
           </div>
@@ -198,8 +198,8 @@ function StoriesBar({
         <>
           {[1, 2, 3].map(i => (
             <div key={i} className="flex shrink-0 flex-col items-center gap-1.5">
-              <div className="h-14 w-14 rounded-full bg-gray-100 ring-2 ring-gray-100 ring-offset-2" />
-              <div className="h-2 w-9 rounded-full bg-gray-100" />
+              <div className="h-14 w-14 rounded-full bg-gray-100 dark:bg-[#1a1a1a] ring-2 ring-gray-100 dark:ring-[#1a1a1a] ring-offset-2 dark:ring-offset-[#0a0a0a]" />
+              <div className="h-2 w-9 rounded-full bg-gray-100 dark:bg-[#1a1a1a]" />
             </div>
           ))}
           <div className="flex shrink-0 items-center pl-2">
@@ -368,7 +368,7 @@ function SidebarProfile({
               <Link
                 key={item.href}
                 href={item.href}
-                className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-body-sm font-medium text-ink-secondary transition hover:bg-brand-50 hover:text-brand-700"
+                className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-body-sm font-medium text-ink-secondary transition hover:bg-brand-50 hover:text-brand-700 dark:hover:bg-brand-950 dark:hover:text-brand-400"
               >
                 <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
@@ -387,7 +387,7 @@ function SidebarProfile({
           onClick={closeModal}
         >
           <div
-            className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-xl"
+            className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-xl dark:bg-[#111] dark:border dark:border-[#222]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-border px-5 py-4">
@@ -457,7 +457,7 @@ function FeedModalUserRow({
   const { isFollowing, loading, toggle } = useFollow(user.id, false, 0, token);
 
   return (
-    <div className="flex items-center gap-3 px-5 py-3 transition hover:bg-surface-muted">
+    <div className="flex items-center gap-3 px-5 py-3 transition hover:bg-surface-muted dark:hover:bg-[#1a1a1a]">
       <Link href={`/profile/${user.id}`} onClick={onNavigate}>
         <Avatar src={user.profile_photo_url} name={user.full_name} size="md" />
       </Link>
@@ -1109,7 +1109,7 @@ export default function FeedPage() {
         </aside>
 
         {/* Center feed — bordered timeline column */}
-        <div className="lg:col-span-6 lg:border-x lg:border-border min-h-screen">
+        <div className="lg:col-span-6 lg:border-x lg:border-border dark:lg:border-[#222] min-h-screen">
           {/* Stories bar */}
           <div className="border-b border-border px-4 py-3">
             <StoriesBar
@@ -1121,7 +1121,7 @@ export default function FeedPage() {
           </div>
 
           {/* Sticky category filter tabs */}
-          <div className="sticky top-14 z-20 border-b border-border bg-white/95 backdrop-blur-sm">
+          <div className="sticky top-14 z-20 border-b border-border bg-white/95 backdrop-blur-sm dark:bg-[#0a0a0a]/95 dark:border-[#222]">
             <div className="overflow-x-auto scrollbar-hide">
               <div className="flex min-w-max gap-0 pl-2 pr-4">
                 {[{ value: 'ALL', label: 'All' }, ...POST_CATEGORIES].map(cat => (
@@ -1222,7 +1222,7 @@ export default function FeedPage() {
               return (
               /* ── Post Card (flat, Twitter-style) ── */
               <article key={post.id} id={`post-${post.id}`} data-post-id={post.id}
-                className="border-b border-border px-4 py-4 scroll-mt-20 hover:bg-gray-50/40 transition-colors">
+                className="border-b border-border px-4 py-4 scroll-mt-20 hover:bg-gray-50/40 dark:hover:bg-white/[0.03] transition-colors dark:border-[#222]">
 
                 {/* Repost label */}
                 {post.is_repost && (
@@ -1264,7 +1264,7 @@ export default function FeedPage() {
                       {/* Follow button */}
                       {post.user_id !== user.id && !post.is_following_author && (
                         <button type="button" onClick={() => handleFollowFromCard(post.user_id)}
-                          className="shrink-0 rounded-full border border-brand-500 px-3 py-0.5 text-[12px] font-semibold text-brand-600 transition hover:bg-brand-50">
+                          className="shrink-0 rounded-full border border-brand-500 px-3 py-0.5 text-[12px] font-semibold text-brand-600 transition hover:bg-brand-50 dark:hover:bg-brand-950">
                           Follow
                         </button>
                       )}
@@ -1279,7 +1279,7 @@ export default function FeedPage() {
                           </svg>
                         </button>
                         {postMenuId === post.id && (
-                          <div className="absolute right-0 top-8 z-30 w-40 overflow-hidden rounded-xl border border-border bg-white shadow-lg">
+                          <div className="absolute right-0 top-8 z-30 w-40 overflow-hidden rounded-xl border border-border bg-white shadow-lg dark:bg-[#111] dark:border-[#222]">
                             {post.user_id === user.id && (
                               <button type="button"
                                 onClick={() => { handleDelete(post.id); setPostMenuId(null); }}
@@ -1576,8 +1576,8 @@ export default function FeedPage() {
       {showUploadStory && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
           onClick={e => { if (e.target === e.currentTarget) { setShowUploadStory(false); setStoryFile(null); setStoryPreview(null); } }}>
-          <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[#111] dark:border dark:border-[#222]">
+            <div className="flex items-center justify-between border-b border-border px-5 py-4 dark:border-[#222]">
               <h3 className="font-semibold text-ink">Add to Status</h3>
               <button type="button" onClick={() => { setShowUploadStory(false); setStoryFile(null); setStoryPreview(null); }}
                 className="rounded-lg p-1 text-ink-secondary hover:bg-surface-muted">
@@ -1623,8 +1623,8 @@ export default function FeedPage() {
       {sharePost && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-16"
           onClick={(e) => { if (e.target === e.currentTarget) setSharePost(null); }}>
-          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[#111] dark:border dark:border-[#222]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-border px-5 py-4 dark:border-[#222]">
               <h3 className="font-semibold text-ink">Share Post</h3>
               <button type="button" onClick={() => setSharePost(null)}
                 className="rounded-lg p-1 text-ink-secondary hover:bg-surface-muted">
@@ -1658,7 +1658,7 @@ export default function FeedPage() {
             <div className="px-5 py-3">
               <p className="mb-2.5 text-body-sm font-medium text-ink">Share to…</p>
               <Input value={shareSearch} onChange={(e) => setShareSearch(e.target.value)} placeholder="Search people you follow…" className="mb-2" />
-              <div className="max-h-56 overflow-y-auto rounded-xl border border-border">
+              <div className="max-h-56 overflow-y-auto rounded-xl border border-border dark:border-[#222]">
                 {shareLoading ? (
                   <div className="space-y-0 py-2">
                     {[1, 2, 3].map((i) => (
@@ -1679,7 +1679,7 @@ export default function FeedPage() {
                       const sent = shareSentIds.has(f.id);
                       const sending = shareSendingId === f.id;
                       return (
-                        <div key={f.id} className="flex items-center gap-3 px-4 py-2.5 transition hover:bg-surface-muted">
+                        <div key={f.id} className="flex items-center gap-3 px-4 py-2.5 transition hover:bg-surface-muted dark:hover:bg-[#1a1a1a]">
                           <Avatar src={f.profile_photo_url} name={f.full_name} size="sm" />
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-body-sm font-medium text-ink">{f.full_name}</p>

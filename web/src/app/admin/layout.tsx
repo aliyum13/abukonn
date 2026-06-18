@@ -32,7 +32,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (!user.is_admin) return null;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-surface-muted">
+    <div className="flex h-screen overflow-hidden bg-surface-muted dark:bg-[#0a0a0a]">
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
@@ -53,7 +53,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {/* Main content */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* Top bar */}
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-white px-4 sm:px-6">
+        <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-white dark:bg-[#111] dark:border-[#222] px-4 sm:px-6">
           <button
             type="button"
             onClick={() => setSidebarOpen(true)}

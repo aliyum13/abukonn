@@ -6,6 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Avatar, Button } from '@/components/ui';
 import { excerpt, timeAgo } from '@/lib/format';
 import { useEffect, useRef, useState, useCallback, KeyboardEvent } from 'react';
+import { useTheme } from 'next-themes';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -66,6 +67,34 @@ function XIcon({ className }: { className?: string }) {
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
     </svg>
+  );
+}
+
+function ThemeToggle() {
+  const { resolvedTheme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return <div className="h-9 w-9" />;
+  const dark = resolvedTheme === 'dark';
+  return (
+    <button
+      type="button"
+      onClick={() => setTheme(dark ? 'light' : 'dark')}
+      className="flex h-9 w-9 items-center justify-center rounded-xl text-ink-secondary transition hover:bg-surface-subtle hover:text-ink dark:hover:bg-[#1a1a1a]"
+      aria-label="Toggle dark mode"
+    >
+      {dark ? (
+        /* Sun icon */
+        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
+        </svg>
+      ) : (
+        /* Moon icon */
+        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
+        </svg>
+      )}
+    </button>
   );
 }
 
@@ -315,7 +344,7 @@ export function AppNav() {
 
   return (
     <>
-    <nav className="sticky top-0 z-50 border-b border-border bg-white/90 backdrop-blur-lg">
+    <nav className="sticky top-0 z-50 border-b border-border bg-white/90 backdrop-blur-lg dark:bg-[#0a0a0a]/90 dark:border-[#222]">
       <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:px-6 lg:px-8">
         {/* Logo — hide on mobile when search is open */}
         <Link
@@ -325,7 +354,7 @@ export function AppNav() {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-xs font-bold text-white">
             AB
           </div>
-          <span className="hidden text-lg font-bold text-ink sm:block">ABUkonn</span>
+          <span className="hidden text-lg font-bold text-ink sm:block dark:text-[#f5f5f5]">ABUkonn</span>
         </Link>
 
         {/* Desktop nav links — hide when search open */}
@@ -337,8 +366,8 @@ export function AppNav() {
                 href={link.href}
                 className={`relative rounded-xl px-3.5 py-2 text-body-sm font-medium transition ${
                   isActive(link.href)
-                    ? 'bg-brand-50 text-brand-700'
-                    : 'text-ink-secondary hover:bg-surface-subtle hover:text-ink'
+                    ? 'bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-400'
+                    : 'text-ink-secondary hover:bg-surface-subtle hover:text-ink dark:hover:bg-[#1a1a1a]'
                 }`}
               >
                 {link.label}
@@ -367,7 +396,7 @@ export function AppNav() {
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={handleInputKeyDown}
                 placeholder="Search students, posts…"
-                className="h-9 w-full rounded-xl border border-border bg-surface-muted pl-9 pr-4 text-body-sm text-ink placeholder:text-ink-muted focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                className="h-9 w-full rounded-xl border border-border bg-surface-muted pl-9 pr-4 text-body-sm text-ink placeholder:text-ink-muted focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:bg-[#1a1a1a] dark:border-[#333] dark:text-[#f5f5f5] dark:placeholder:text-[#666]"
               />
               {searching && (
                 <div className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin rounded-full border-2 border-brand-400 border-t-transparent" />
@@ -386,7 +415,7 @@ export function AppNav() {
 
           {/* Dropdown */}
           {showDropdown && (
-            <div className="absolute left-0 top-full z-[60] mt-2 w-full min-w-[320px] overflow-hidden rounded-2xl border border-border bg-white shadow-xl">
+            <div className="absolute left-0 top-full z-[60] mt-2 w-full min-w-[320px] overflow-hidden rounded-2xl border border-border bg-white shadow-xl dark:bg-[#111] dark:border-[#222]">
               {searching && !results ? (
                 <div className="flex items-center justify-center py-8 text-body-sm text-ink-muted">
                   Searching…
@@ -412,7 +441,7 @@ export function AppNav() {
                           key={u.id}
                           href={`/profile/${u.id}`}
                           onClick={closeSearch}
-                          className="flex items-center gap-3 px-4 py-2.5 transition hover:bg-surface-muted"
+                          className="flex items-center gap-3 px-4 py-2.5 transition hover:bg-surface-muted dark:hover:bg-[#1a1a1a]"
                         >
                           <Avatar
                             src={u.profile_photo_url}
@@ -448,7 +477,7 @@ export function AppNav() {
                           key={p.id}
                           href="/feed"
                           onClick={closeSearch}
-                          className="flex items-start gap-3 px-4 py-2.5 transition hover:bg-surface-muted"
+                          className="flex items-start gap-3 px-4 py-2.5 transition hover:bg-surface-muted dark:hover:bg-[#1a1a1a]"
                         >
                           <Avatar
                             src={p.author_photo}
@@ -475,7 +504,7 @@ export function AppNav() {
                   <button
                     type="button"
                     onClick={goToSearch}
-                    className="w-full border-t border-border px-4 py-3 text-center text-body-sm font-medium text-brand-600 transition hover:bg-brand-50"
+                    className="w-full border-t border-border px-4 py-3 text-center text-body-sm font-medium text-brand-600 transition hover:bg-brand-50 dark:border-[#222] dark:hover:bg-brand-950"
                   >
                     See all results for &ldquo;{query}&rdquo;
                   </button>
@@ -524,9 +553,10 @@ export function AppNav() {
                   <div className="
                     fixed left-0 right-0 top-14 z-[60] mx-0 overflow-hidden rounded-b-2xl border-b border-border bg-white shadow-xl
                     sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80 sm:rounded-2xl sm:border sm:border-border
+                    dark:bg-[#111] dark:border-[#222]
                   ">
                     {/* Header */}
-                    <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                    <div className="flex items-center justify-between border-b border-border px-4 py-3 dark:border-[#222]">
                       <h3 className="font-semibold text-ink">Notifications</h3>
                       <div className="flex items-center gap-2">
                         {unreadCount > 0 && (
@@ -554,10 +584,10 @@ export function AppNav() {
                         <div className="space-y-0">
                           {[1, 2, 3].map((i) => (
                             <div key={i} className="flex items-start gap-3 px-4 py-3">
-                              <div className="h-9 w-9 shrink-0 animate-pulse rounded-full bg-surface-muted" />
+                              <div className="h-9 w-9 shrink-0 animate-pulse rounded-full bg-surface-muted dark:bg-[#1a1a1a]" />
                               <div className="flex-1 space-y-1.5 pt-1">
-                                <div className="h-3 w-48 animate-pulse rounded bg-surface-muted" />
-                                <div className="h-2.5 w-24 animate-pulse rounded bg-surface-muted" />
+                                <div className="h-3 w-48 animate-pulse rounded bg-surface-muted dark:bg-[#1a1a1a]" />
+                                <div className="h-2.5 w-24 animate-pulse rounded bg-surface-muted dark:bg-[#1a1a1a]" />
                               </div>
                             </div>
                           ))}
@@ -575,12 +605,12 @@ export function AppNav() {
                             key={n.id}
                             type="button"
                             onClick={() => handleNotifClick(n)}
-                            className={`flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-surface-muted ${!n.is_read ? 'bg-brand-50/60' : ''}`}
+                            className={`flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-surface-muted dark:hover:bg-[#1a1a1a] ${!n.is_read ? 'bg-brand-50/60 dark:bg-brand-950/40' : ''}`}
                           >
                             <div className="relative shrink-0">
                               <Avatar src={n.sender_photo} name={n.sender_name} size="sm" />
                               {!n.is_read && (
-                                <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-brand-500 ring-2 ring-white" />
+                                <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-brand-500 ring-2 ring-white dark:ring-[#111]" />
                               )}
                             </div>
                             <div className="min-w-0 flex-1">
@@ -598,6 +628,7 @@ export function AppNav() {
               </div>
             )}
 
+            <ThemeToggle />
             {!loading && user && (
               <Link href="/profile" className="hidden items-center gap-2 sm:flex">
                 <Avatar
@@ -619,7 +650,7 @@ export function AppNav() {
     </nav>
 
     {/* Mobile bottom tab bar — fixed at screen bottom */}
-    <nav className="fixed bottom-0 left-0 right-0 z-50 flex border-t border-border bg-white/95 backdrop-blur-sm md:hidden"
+    <nav className="fixed bottom-0 left-0 right-0 z-50 flex border-t border-border bg-white/95 backdrop-blur-sm md:hidden dark:bg-[#0a0a0a]/95 dark:border-[#222]"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
       {NAV_LINKS.map((link) => (
         <Link

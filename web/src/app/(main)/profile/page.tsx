@@ -47,7 +47,7 @@ type TabType = 'posts' | 'replies';
 function ProfileSkeleton() {
   return (
     <div className="mx-auto max-w-2xl">
-      <div className="h-12 border-b border-border bg-white" />
+      <div className="h-12 border-b border-border bg-white dark:bg-[#0a0a0a] dark:border-[#222]" />
       <div className="px-4 pt-5">
         <div className="flex items-start justify-between gap-4">
           <Skeleton className="h-24 w-24 shrink-0" rounded="full" />
@@ -248,12 +248,12 @@ export default function ProfilePage() {
   const displayUsername = (user as any).username || user.email?.split('@')[0] || '';
   const roleBadge = user.is_admin
     ? { label: 'ADMIN', cls: 'bg-brand-100 text-brand-700' }
-    : { label: 'USER', cls: 'bg-gray-100 text-gray-500' };
+    : { label: 'USER', cls: 'bg-gray-100 dark:bg-[#1a1a1a] text-gray-500 dark:text-gray-400' };
 
   return (
-    <div className="mx-auto max-w-2xl bg-white min-h-screen">
+    <div className="mx-auto max-w-2xl bg-white dark:bg-[#0a0a0a] min-h-screen">
       {/* ── Top bar ── */}
-      <div className="sticky top-14 z-10 flex h-12 items-center justify-between border-b border-border bg-white/95 px-4 backdrop-blur-sm">
+      <div className="sticky top-14 z-10 flex h-12 items-center justify-between border-b border-border bg-white/95 dark:bg-[#0a0a0a]/95 dark:border-[#222] px-4 backdrop-blur-sm">
         <h2 className="font-semibold text-[15px] text-ink">{user.full_name}</h2>
         <button
           type="button"
@@ -278,7 +278,7 @@ export default function ProfilePage() {
           {/* Avatar */}
           <div className="relative shrink-0">
             <div className="h-24 w-24 rounded-full bg-gradient-to-tr from-brand-500 to-emerald-400 p-[2.5px]">
-              <div className="h-full w-full rounded-full bg-white p-[2px]">
+              <div className="h-full w-full rounded-full bg-white dark:bg-[#0a0a0a] p-[2px]">
                 <Avatar src={user.profile_photo_url} name={user.full_name} size="xl" className="h-full w-full" />
               </div>
             </div>
@@ -286,7 +286,7 @@ export default function ProfilePage() {
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
-              className="absolute bottom-0.5 right-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-brand-600 text-white shadow ring-2 ring-white transition hover:bg-brand-700 disabled:opacity-50"
+              className="absolute bottom-0.5 right-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-brand-600 text-white shadow ring-2 ring-white dark:ring-[#0a0a0a] transition hover:bg-brand-700 disabled:opacity-50"
               title="Change photo"
             >
               {uploading ? (
@@ -362,7 +362,7 @@ export default function ProfilePage() {
           {/* Dept + level pills */}
           <div className="mt-3 flex flex-wrap gap-2">
             <span className="rounded-full bg-brand-50 px-3 py-1 text-[12px] font-medium text-brand-700">{user.department}</span>
-            <span className="rounded-full bg-gray-100 px-3 py-1 text-[12px] font-medium text-gray-600">{user.level}</span>
+            <span className="rounded-full bg-gray-100 dark:bg-[#1a1a1a] px-3 py-1 text-[12px] font-medium text-gray-600 dark:text-gray-400">{user.level}</span>
           </div>
         </div>
 
@@ -393,7 +393,7 @@ export default function ProfilePage() {
                 placeholder="your_username"
                 maxLength={30}
                 className={cn(
-                  'w-full rounded-xl border border-border bg-white px-4 py-2.5 text-[14px] text-ink placeholder:text-ink-muted',
+                  'w-full rounded-xl border border-border bg-white dark:bg-[#1a1a1a] dark:border-[#333] px-4 py-2.5 text-[14px] text-ink placeholder:text-ink-muted',
                   'focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20'
                 )}
               />
@@ -408,7 +408,7 @@ export default function ProfilePage() {
                 placeholder="Tell others about yourself..."
                 maxLength={200}
                 className={cn(
-                  'w-full resize-none rounded-xl border border-border bg-white px-4 py-2.5 text-[14px] text-ink placeholder:text-ink-muted',
+                  'w-full resize-none rounded-xl border border-border bg-white dark:bg-[#1a1a1a] dark:border-[#333] px-4 py-2.5 text-[14px] text-ink placeholder:text-ink-muted',
                   'focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20'
                 )}
               />
@@ -427,7 +427,7 @@ export default function ProfilePage() {
       </div>
 
       {/* ── Tab bar ── */}
-      <div className="sticky top-[104px] z-10 flex border-b border-border bg-white">
+      <div className="sticky top-[104px] z-10 flex border-b border-border bg-white dark:bg-[#0a0a0a] dark:border-[#222]">
         {(['posts', 'replies'] as TabType[]).map(tab => (
           <button key={tab} type="button" onClick={() => setActiveTab(tab)}
             className={cn(
@@ -458,10 +458,10 @@ export default function ProfilePage() {
           </div>
         ) : (
           posts.map(post => (
-            <div key={post.id} className="border-b border-border px-4 py-4 transition hover:bg-gray-50/40">
+            <div key={post.id} className="border-b border-border px-4 py-4 transition hover:bg-gray-50/40 dark:hover:bg-white/[0.03] dark:border-[#222]">
               <div className="flex gap-3">
                 <div className="h-10 w-10 shrink-0 rounded-full bg-gradient-to-tr from-brand-500 to-emerald-400 p-[2px]">
-                  <div className="h-full w-full rounded-full bg-white p-[1.5px]">
+                  <div className="h-full w-full rounded-full bg-white dark:bg-[#0a0a0a] p-[1.5px]">
                     <Avatar src={user.profile_photo_url} name={user.full_name} size="md" className="h-full w-full" />
                   </div>
                 </div>
@@ -513,7 +513,7 @@ export default function ProfilePage() {
           onClick={() => { setModalType('none'); setModalError(''); }}
         >
           <div
-            className="w-full max-w-sm overflow-hidden rounded-t-2xl bg-white shadow-xl sm:rounded-2xl"
+            className="w-full max-w-sm overflow-hidden rounded-t-2xl bg-white dark:bg-[#111] dark:border dark:border-[#222] shadow-xl sm:rounded-2xl"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-border px-4 py-3.5">

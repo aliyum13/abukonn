@@ -74,9 +74,9 @@ export default function Home() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-white">
+    <div className="flex min-h-screen flex-col bg-white dark:bg-[#0a0a0a]">
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-border/60 bg-white/80 backdrop-blur-lg">
+      <header className="sticky top-0 z-50 border-b border-border/60 bg-white/80 dark:bg-[#0a0a0a]/90 dark:border-[#222] backdrop-blur-lg">
         <div className="mx-auto flex h-16 max-w-content items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link href="/" className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 text-sm font-bold text-white shadow-brand">
@@ -158,9 +158,9 @@ export default function Home() {
 
             {/* Hero preview card */}
             <div className="mx-auto mt-16 max-w-4xl animate-slide-up sm:mt-20">
-              <div className="rounded-2xl border border-border bg-white/60 p-2 shadow-elevated backdrop-blur-sm sm:rounded-3xl sm:p-3">
+              <div className="rounded-2xl border border-border bg-white/60 dark:bg-[#111]/60 p-2 shadow-elevated backdrop-blur-sm sm:rounded-3xl sm:p-3">
                 <div className="overflow-hidden rounded-xl border border-border bg-surface-muted sm:rounded-2xl">
-                  <div className="flex items-center gap-2 border-b border-border bg-white px-4 py-3">
+                  <div className="flex items-center gap-2 border-b border-border bg-white dark:bg-[#111] px-4 py-3">
                     <div className="flex gap-1.5">
                       <span className="h-3 w-3 rounded-full bg-red-400/80" />
                       <span className="h-3 w-3 rounded-full bg-amber-400/80" />
@@ -297,7 +297,7 @@ export default function Home() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-border bg-white">
+      <footer className="border-t border-border bg-white dark:bg-[#0a0a0a] dark:border-[#222]">
         <div className="mx-auto max-w-content px-4 py-12 sm:px-6 lg:px-8">
           <div className="flex flex-col items-center justify-between gap-6 sm:flex-row">
             <div className="flex items-center gap-2.5">

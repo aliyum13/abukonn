@@ -33,19 +33,19 @@ const CATEGORY_LABELS: Record<Category, string> = {
 };
 
 const CATEGORY_PILL: Record<string, string> = {
-  admission: 'bg-blue-50 text-blue-700 border border-blue-200',
-  examination: 'bg-orange-50 text-orange-700 border border-orange-200',
-  faculty: 'bg-purple-50 text-purple-700 border border-purple-200',
-  sports: 'bg-yellow-50 text-yellow-800 border border-yellow-200',
-  events: 'bg-pink-50 text-pink-700 border border-pink-200',
-  general: 'bg-gray-100 text-gray-700 border border-gray-200',
-  academic: 'bg-brand-50 text-brand-700 border border-brand-200',
+  admission: 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950 dark:text-blue-400 dark:border-blue-900',
+  examination: 'bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-950 dark:text-orange-400 dark:border-orange-900',
+  faculty: 'bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-950 dark:text-purple-400 dark:border-purple-900',
+  sports: 'bg-yellow-50 text-yellow-800 border border-yellow-200 dark:bg-yellow-950 dark:text-yellow-400 dark:border-yellow-900',
+  events: 'bg-pink-50 text-pink-700 border border-pink-200 dark:bg-pink-950 dark:text-pink-400 dark:border-pink-900',
+  general: 'bg-gray-100 text-gray-700 border border-gray-200 dark:bg-[#1a1a1a] dark:text-gray-400 dark:border-[#333]',
+  academic: 'bg-brand-50 text-brand-700 border border-brand-200 dark:bg-brand-950 dark:text-brand-400 dark:border-brand-900',
 };
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
 function NewsItemSkeleton() {
   return (
-    <div className="px-4 py-5 border-b border-gray-100">
+    <div className="px-4 py-5 border-b border-gray-100 dark:border-[#222]">
       <div className="flex items-center gap-3 mb-3">
         <Skeleton className="h-9 w-9 rounded-full shrink-0" />
         <div className="flex-1 space-y-1">
@@ -93,7 +93,7 @@ function NewsItem({ article }: { article: NewsArticle }) {
   }
 
   return (
-    <article className="px-4 py-5 border-b border-gray-100">
+    <article className="px-4 py-5 border-b border-gray-100 dark:border-[#222]">
       {/* Author row */}
       <div className="flex items-start justify-between gap-2 mb-3">
         <div className="flex items-center gap-2.5 min-w-0">
@@ -102,7 +102,7 @@ function NewsItem({ article }: { article: NewsArticle }) {
             {initials}
           </div>
           <div className="min-w-0">
-            <p className="text-[13px] font-semibold text-gray-900 leading-tight truncate">
+            <p className="text-[13px] font-semibold text-gray-900 dark:text-[#f5f5f5] leading-tight truncate">
               {article.author_name || 'ABUkonn News'}
             </p>
             <p className="text-[11px] text-gray-400 leading-tight">
@@ -111,7 +111,7 @@ function NewsItem({ article }: { article: NewsArticle }) {
           </div>
         </div>
         {/* Menu */}
-        <button className="p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition shrink-0">
+        <button className="p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-[#1a1a1a] transition shrink-0">
           <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
             <circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
           </svg>
@@ -120,7 +120,7 @@ function NewsItem({ article }: { article: NewsArticle }) {
 
       {/* Title */}
       <Link href={`/news/${article.id}`}>
-        <h2 className="text-[16px] font-bold text-gray-900 leading-snug mb-2 hover:text-brand-700 transition">
+        <h2 className="text-[16px] font-bold text-gray-900 dark:text-[#f5f5f5] leading-snug mb-2 hover:text-brand-700 transition">
           {article.title}
         </h2>
       </Link>
@@ -241,7 +241,7 @@ export default function NewsPage() {
       {/* ── Personalized header ─────────────────────────────────────── */}
       <div className="flex items-center justify-between px-4 pt-5 pb-3">
         <div>
-          <h1 className="text-[20px] font-bold text-gray-900 leading-tight">
+          <h1 className="text-[20px] font-bold text-gray-900 dark:text-[#f5f5f5] leading-tight">
             Hello, {greeting} 👋
           </h1>
           <p className="text-[13px] text-gray-400 mt-0.5">Explore, collaborate, achieve</p>
@@ -250,7 +250,7 @@ export default function NewsPage() {
           {/* Bell */}
           <Link
             href="/notifications"
-            className="p-2 rounded-full text-gray-500 hover:bg-gray-100 transition"
+            className="p-2 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-[#1a1a1a] transition"
             aria-label="Notifications"
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
@@ -260,7 +260,7 @@ export default function NewsPage() {
           {/* Search */}
           <Link
             href="/search"
-            className="p-2 rounded-full text-gray-500 hover:bg-gray-100 transition"
+            className="p-2 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-[#1a1a1a] transition"
             aria-label="Search"
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
@@ -272,7 +272,7 @@ export default function NewsPage() {
 
       {/* ── Sticky category tabs ─────────────────────────────────────── */}
       <div
-        className="sticky top-14 z-20 bg-white/95 backdrop-blur-sm border-b border-gray-100 px-4 py-2.5"
+        className="sticky top-14 z-20 bg-white/95 dark:bg-[#0a0a0a]/95 backdrop-blur-sm border-b border-gray-100 dark:border-[#222] px-4 py-2.5"
         ref={tabsRef}
       >
         <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-hide">
@@ -287,7 +287,7 @@ export default function NewsPage() {
                   'shrink-0 inline-flex items-center gap-1 rounded-full border px-3 py-1 text-[12px] font-medium transition',
                   active
                     ? 'border-brand-600 bg-brand-50 text-brand-700'
-                    : 'border-gray-200 bg-white text-gray-500 hover:border-brand-300 hover:text-brand-600'
+                    : 'border-gray-200 dark:border-[#333] bg-white dark:bg-[#111] text-gray-500 dark:text-[#666] hover:border-brand-300 hover:text-brand-600'
                 )}
               >
                 {active && (
@@ -318,7 +318,7 @@ export default function NewsPage() {
         </div>
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
-          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-gray-100">
+          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-gray-100 dark:bg-[#1a1a1a]">
             <svg className="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 01-2.25 2.25M16.5 7.5V18a2.25 2.25 0 002.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 002.25 2.25h13.5M6 7.5h3v3H6v-3z" />
             </svg>

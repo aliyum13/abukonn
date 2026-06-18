@@ -36,7 +36,7 @@ export function Avatar({ src, alt, name = '', size = 'md', className }: AvatarPr
     return (
       <div
         className={cn(
-          'relative shrink-0 overflow-hidden rounded-full ring-2 ring-white',
+          'relative shrink-0 overflow-hidden rounded-full ring-2 ring-surface dark:ring-[#111]',
           sizes[size],
           className
         )}
@@ -56,7 +56,8 @@ export function Avatar({ src, alt, name = '', size = 'md', className }: AvatarPr
     <div
       className={cn(
         'inline-flex shrink-0 items-center justify-center rounded-full',
-        'bg-brand-100 font-semibold text-brand-700 ring-2 ring-white',
+        'bg-brand-100 font-semibold text-brand-700 ring-2 ring-surface dark:ring-[#111]',
+        'dark:bg-brand-950 dark:text-brand-300',
         sizes[size],
         className
       )}

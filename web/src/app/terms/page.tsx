@@ -8,9 +8,9 @@ const LAST_UPDATED = 'June 17, 2026';
 
 export default function TermsPage() {
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white dark:bg-[#0a0a0a]">
       {/* Top bar */}
-      <header className="sticky top-0 z-10 border-b border-gray-100 bg-white/90 backdrop-blur-sm">
+      <header className="sticky top-0 z-10 border-b border-gray-100 dark:border-[#222] bg-white/90 dark:bg-[#0a0a0a]/90 backdrop-blur-sm">
         <div className="mx-auto flex h-14 max-w-3xl items-center justify-between px-4 sm:px-6">
           <Link href="/" className="flex items-center gap-2 text-sm font-medium text-gray-500 transition hover:text-[#16a34a]">
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -22,7 +22,7 @@ export default function TermsPage() {
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#16a34a] text-[10px] font-bold text-white">
               AB
             </div>
-            <span className="hidden text-sm font-bold text-gray-900 sm:block">ABUkonn</span>
+            <span className="hidden text-sm font-bold text-gray-900 dark:text-[#f5f5f5] sm:block">ABUkonn</span>
           </Link>
         </div>
       </header>
@@ -34,7 +34,7 @@ export default function TermsPage() {
           <p className="mb-2 text-sm font-semibold uppercase tracking-widest text-[#16a34a]">
             Legal
           </p>
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
+          <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-[#f5f5f5] sm:text-4xl">
             Terms &amp; Conditions
           </h1>
           <p className="mt-3 text-sm text-gray-500">Last updated: {LAST_UPDATED}</p>
@@ -183,8 +183,8 @@ export default function TermsPage() {
               If you have questions about these Terms &amp; Conditions, wish to report a violation, or need to
               request account deletion, please reach out to the ABUkonn team:
             </p>
-            <div className="mt-4 inline-block rounded-xl border border-gray-200 bg-gray-50 px-6 py-4">
-              <p className="font-medium text-gray-900">ABUkonn Support</p>
+            <div className="mt-4 inline-block rounded-xl border border-gray-200 dark:border-[#333] bg-gray-50 dark:bg-[#111] px-6 py-4">
+              <p className="font-medium text-gray-900 dark:text-[#f5f5f5]">ABUkonn Support</p>
               <p className="mt-1 text-sm">
                 <a
                   href="mailto:abukonn@abu.edu.ng"

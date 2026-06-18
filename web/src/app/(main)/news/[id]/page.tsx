@@ -20,7 +20,7 @@ const CATEGORY_STYLES: Record<string, string> = {
   academic: 'bg-blue-100 text-blue-700',
   sports: 'bg-orange-100 text-orange-700',
   events: 'bg-purple-100 text-purple-700',
-  general: 'bg-gray-100 text-gray-700',
+  general: 'bg-gray-100 dark:bg-[#1a1a1a] text-gray-700 dark:text-gray-400',
 };
 
 function formatDate(dateString: string) {
@@ -69,7 +69,7 @@ export default function NewsDetailPage() {
         ← Back to News
       </button>
 
-      <article className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      <article className="bg-white dark:bg-[#111] rounded-xl border border-gray-200 dark:border-[#222] shadow-sm overflow-hidden">
         {article.image_url ? (
           <img src={article.image_url} alt={article.title} className="w-full h-56 object-cover" />
         ) : (
@@ -89,7 +89,7 @@ export default function NewsDetailPage() {
             )}
           </div>
 
-          <h1 className="text-2xl font-bold text-gray-900 leading-tight">{article.title}</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-[#f5f5f5] leading-tight">{article.title}</h1>
 
           <div className="mt-6 text-gray-700 leading-relaxed whitespace-pre-wrap">
             {article.content}

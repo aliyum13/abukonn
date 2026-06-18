@@ -57,7 +57,7 @@ export function AuthSplitLayout({
       </div>
 
       {/* Form panel */}
-      <div className="flex flex-1 flex-col justify-center bg-white px-6 py-10 sm:px-10 lg:w-1/2 lg:px-14 lg:py-16">
+      <div className="flex flex-1 flex-col justify-center bg-white dark:bg-[#0a0a0a] px-6 py-10 sm:px-10 lg:w-1/2 lg:px-14 lg:py-16">
         <div className={cn('mx-auto w-full max-w-md', className)}>
           <div className="mb-8">
             <h2 className="text-display-sm text-ink">{title}</h2>

@@ -25,9 +25,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           ref={ref}
           id={inputId}
           className={cn(
-            'w-full h-10 px-3.5 rounded-xl border bg-white text-body-sm text-ink',
+            'w-full h-10 px-3.5 rounded-xl border bg-surface text-body-sm text-ink',
             'placeholder:text-ink-muted transition-colors duration-200',
             'focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500',
+            'dark:bg-[#1a1a1a] dark:border-[#333] dark:text-[#f5f5f5] dark:placeholder:text-[#666]',
             error
               ? 'border-red-300 focus:border-red-500 focus:ring-red-500/20'
               : 'border-border hover:border-border-strong',
@@ -37,7 +38,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           {...props}
         />
         {error && (
-          <p className="mt-1.5 text-caption text-red-600" role="alert">
+          <p className="mt-1.5 text-caption text-red-600 dark:text-red-400" role="alert">
             {error}
           </p>
         )}

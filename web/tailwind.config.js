@@ -3,6 +3,7 @@ module.exports = {
   content: [
     './src/**/*.{js,ts,jsx,tsx,mdx}',
   ],
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
@@ -19,20 +20,21 @@ module.exports = {
           900: '#14532d',
           950: '#052e16',
         },
+        // CSS-variable-backed tokens — auto-switch in dark mode
         surface: {
-          DEFAULT: '#ffffff',
-          muted: '#f8fafc',
-          subtle: '#f1f5f9',
+          DEFAULT: 'var(--surface)',
+          muted: 'var(--surface-muted)',
+          subtle: 'var(--surface-subtle)',
         },
         ink: {
-          DEFAULT: '#0f172a',
-          secondary: '#475569',
-          muted: '#94a3b8',
-          faint: '#cbd5e1',
+          DEFAULT: 'var(--ink)',
+          secondary: 'var(--ink-secondary)',
+          muted: 'var(--ink-muted)',
+          faint: 'var(--ink-faint)',
         },
         border: {
-          DEFAULT: '#e2e8f0',
-          strong: '#cbd5e1',
+          DEFAULT: 'var(--border)',
+          strong: 'var(--border-strong)',
         },
       },
       fontFamily: {

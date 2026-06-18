@@ -5,11 +5,11 @@ const variants = {
   primary:
     'bg-brand-600 text-white hover:bg-brand-700 shadow-brand active:bg-brand-800',
   secondary:
-    'bg-brand-50 text-brand-700 hover:bg-brand-100 active:bg-brand-200',
+    'bg-brand-50 text-brand-700 hover:bg-brand-100 active:bg-brand-200 dark:bg-brand-950 dark:text-brand-300 dark:hover:bg-brand-900',
   outline:
-    'border border-border bg-white text-ink hover:bg-surface-muted active:bg-surface-subtle',
+    'border border-border bg-surface text-ink hover:bg-surface-subtle active:bg-surface-subtle dark:border-[#333] dark:bg-[#111] dark:text-[#f5f5f5] dark:hover:bg-[#1a1a1a]',
   ghost:
-    'text-ink-secondary hover:bg-surface-subtle hover:text-ink active:bg-border',
+    'text-ink-secondary hover:bg-surface-subtle hover:text-ink active:bg-border dark:hover:bg-[#1a1a1a] dark:hover:text-[#f5f5f5]',
   danger:
     'bg-red-600 text-white hover:bg-red-700 active:bg-red-800',
 } as const;

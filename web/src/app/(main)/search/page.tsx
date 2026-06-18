@@ -257,7 +257,7 @@ function SearchResults() {
               onClick={() => setTab(t.id)}
               className={`flex-1 rounded-lg py-2 text-body-sm font-medium transition ${
                 tab === t.id
-                  ? 'bg-white text-brand-700 shadow-sm'
+                  ? 'bg-white dark:bg-[#1a1a1a] text-brand-700 shadow-sm'
                   : 'text-ink-secondary hover:text-ink'
               }`}
             >

@@ -107,7 +107,7 @@ function SharedPostCard({ data, isSent }: { data: SharedPostData; isSent: boolea
       </p>
       <div className={cn(
         'overflow-hidden rounded-xl border',
-        isSent ? 'border-brand-500/50 bg-white/10' : 'border-border bg-surface-muted'
+        isSent ? 'border-brand-500/50 bg-white/10' : 'border-border bg-surface-muted dark:bg-[#1a1a1a]'
       )}>
         {data.image_url && (
           <img
@@ -692,7 +692,7 @@ export default function MessagesPage() {
                                 <div className={cn(
                                   'min-w-0 rounded-2xl px-4 py-2.5 text-body-sm',
                                   shared ? 'max-w-[85%] w-72' : 'max-w-[75%]',
-                                  isSent ? 'rounded-br-md bg-brand-600 text-white' : 'rounded-bl-md border border-border bg-white text-ink'
+                                  isSent ? 'rounded-br-md bg-brand-600 text-white' : 'rounded-bl-md border border-border bg-white dark:bg-[#1a1a1a] dark:border-[#333] text-ink'
                                 )}>
                                   {shared
                                     ? <SharedPostCard data={shared} isSent={isSent} />
@@ -711,7 +711,7 @@ export default function MessagesPage() {
                       {typingText && (
                         <div className="flex items-end gap-2">
                           <div className="w-7 shrink-0" />
-                          <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md border border-border bg-white px-4 py-2.5">
+                          <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md border border-border bg-white dark:bg-[#1a1a1a] dark:border-[#333] px-4 py-2.5">
                             <span className="flex gap-1">{[0,1,2].map(i => <span key={i} className="h-2 w-2 animate-bounce rounded-full bg-ink-muted" style={{ animationDelay: `${i*0.15}s` }} />)}</span>
                             <span className="text-caption text-ink-muted">{typingText}</span>
                           </div>
@@ -725,7 +725,7 @@ export default function MessagesPage() {
                 <form onSubmit={handleSend} className="flex items-end gap-2 border-t border-border p-4">
                   <textarea ref={textareaRef} value={newMessage} onChange={handleTypingChange} onKeyDown={handleKeyDown}
                     placeholder="Type a message… (Enter to send)" rows={1} disabled={sending}
-                    className="flex-1 resize-none rounded-xl border border-border bg-white px-4 py-2.5 text-body-sm text-ink placeholder:text-ink-muted focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-60"
+                    className="flex-1 resize-none rounded-xl border border-border bg-white dark:bg-[#1a1a1a] dark:border-[#333] px-4 py-2.5 text-body-sm text-ink placeholder:text-ink-muted focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-60"
                     style={{ maxHeight: '120px' }} />
                   <Button type="submit" size="sm" disabled={sending || !newMessage.trim()} loading={sending} className="shrink-0">
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" /></svg>
@@ -777,7 +777,7 @@ export default function MessagesPage() {
                                   <div className={cn(
                                     'rounded-2xl px-4 py-2.5 text-body-sm',
                                     shared ? 'w-72' : '',
-                                    isSent ? 'rounded-br-md bg-brand-600 text-white' : 'rounded-bl-md border border-border bg-white text-ink'
+                                    isSent ? 'rounded-br-md bg-brand-600 text-white' : 'rounded-bl-md border border-border bg-white dark:bg-[#1a1a1a] dark:border-[#333] text-ink'
                                   )}>
                                     {shared
                                       ? <SharedPostCard data={shared} isSent={isSent} />
@@ -799,7 +799,7 @@ export default function MessagesPage() {
                 <form onSubmit={handleSend} className="flex items-end gap-2 border-t border-border p-4">
                   <textarea ref={textareaRef} value={newMessage} onChange={handleTypingChange} onKeyDown={handleKeyDown}
                     placeholder="Message group… (Enter to send)" rows={1} disabled={sending}
-                    className="flex-1 resize-none rounded-xl border border-border bg-white px-4 py-2.5 text-body-sm text-ink placeholder:text-ink-muted focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-60"
+                    className="flex-1 resize-none rounded-xl border border-border bg-white dark:bg-[#1a1a1a] dark:border-[#333] px-4 py-2.5 text-body-sm text-ink placeholder:text-ink-muted focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-60"
                     style={{ maxHeight: '120px' }} />
                   <Button type="submit" size="sm" disabled={sending || !newMessage.trim()} loading={sending} className="shrink-0">
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" /></svg>
@@ -818,8 +818,8 @@ export default function MessagesPage() {
       {/* ── Create Group Modal ─────────────────────────────────────────── */}
       {showCreateGroup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={e => { if (e.target === e.currentTarget) setShowCreateGroup(false); }}>
-          <div className="flex w-full max-w-md flex-col rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <div className="flex w-full max-w-md flex-col rounded-2xl bg-white dark:bg-[#111] dark:border dark:border-[#222] shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border dark:border-[#222] px-5 py-4">
               <h3 className="font-semibold text-ink">Create Group</h3>
               <button type="button" onClick={() => setShowCreateGroup(false)} className="rounded-lg p-1 text-ink-secondary hover:bg-surface-muted">
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
