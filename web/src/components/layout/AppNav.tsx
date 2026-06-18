@@ -42,17 +42,6 @@ interface SearchResults {
   posts: SearchPost[];
 }
 
-interface AppNotification {
-  id: number;
-  type: 'like' | 'comment' | 'follow' | 'connect_request' | 'connect_accepted';
-  post_id: number | null;
-  is_read: boolean;
-  created_at: string;
-  sender_id: number;
-  sender_name: string;
-  sender_photo: string | null;
-}
-
 function SearchIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -83,12 +72,8 @@ export function AppNav() {
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Notification state
+  // Notification unread count (badge only — full list lives on /notifications)
   const [unreadCount, setUnreadCount] = useState(0);
-  const [notifOpen, setNotifOpen] = useState(false);
-  const [notifList, setNotifList] = useState<AppNotification[]>([]);
-  const [notifLoading, setNotifLoading] = useState(false);
-  const notifRef = useRef<HTMLDivElement>(null);
 
   // Connect request count
   const [connectCount, setConnectCount] = useState(0);
@@ -167,104 +152,6 @@ export function AppNav() {
     return () => clearInterval(id);
   }, [token, fetchUnreadCount]);
 
-  const fetchNotifications = useCallback(async () => {
-    if (!token) return;
-    setNotifLoading(true);
-    try {
-      const res = await fetch(`${API_URL}/api/notifications`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        // Merge: preserve any optimistic is_read=true we already applied locally
-        // so that a re-fetch doesn't un-mark notifications the user just clicked
-        setNotifList(prev => {
-          const localReadIds = new Set(prev.filter(n => n.is_read).map(n => n.id));
-          return (data.notifications as AppNotification[]).map(n => ({
-            ...n,
-            is_read: n.is_read || localReadIds.has(n.id),
-          }));
-        });
-      }
-    } catch {
-      // silent
-    } finally {
-      setNotifLoading(false);
-    }
-  }, [token]);
-
-  const handleBellClick = () => {
-    if (!notifOpen) fetchNotifications();
-    setNotifOpen((prev) => !prev);
-  };
-
-  const handleMarkAllRead = async () => {
-    if (!token) return;
-    // Optimistic: clear everything immediately so the UI responds instantly
-    setNotifList((prev) => prev.map((n) => ({ ...n, is_read: true })));
-    setUnreadCount(0);
-    try {
-      const res = await fetch(`${API_URL}/api/notifications/read-all`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        // Refresh actual count from server on failure
-        fetchUnreadCount();
-      }
-    } catch {
-      fetchUnreadCount();
-    }
-  };
-
-  const handleNotifClick = async (notif: AppNotification) => {
-    if (!token) return;
-    if (!notif.is_read) {
-      // Optimistic: mark read and decrement badge right away
-      setNotifList((prev) =>
-        prev.map((n) => (n.id === notif.id ? { ...n, is_read: true } : n))
-      );
-      setUnreadCount((c) => Math.max(0, c - 1));
-      // API call — fire and don't await so navigation isn't delayed
-      fetch(`${API_URL}/api/notifications/${notif.id}/read`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}` },
-      }).catch(() => {
-        // On network failure, the optimistic update stays for this session.
-        // The next poll will correct the server-side count.
-      });
-    }
-    setNotifOpen(false);
-    if (notif.type === 'follow' || notif.type === 'connect_accepted') {
-      router.push(`/profile/${notif.sender_id}`);
-    } else if (notif.type === 'connect_request') {
-      router.push('/connect/requests');
-    } else if (notif.type === 'comment' && notif.post_id) {
-      router.push(`/feed?openComments=${notif.post_id}`);
-    } else {
-      router.push('/feed');
-    }
-  };
-
-  const notifMessage = (n: AppNotification) => {
-    if (n.type === 'follow') return `${n.sender_name} started following you`;
-    if (n.type === 'like') return `${n.sender_name} liked your post`;
-    if (n.type === 'connect_request') return `${n.sender_name} sent you a connect request`;
-    if (n.type === 'connect_accepted') return `${n.sender_name} accepted your connect request`;
-    return `${n.sender_name} commented on your post`;
-  };
-
-  // Close notification panel on click outside
-  useEffect(() => {
-    function handleDown(e: MouseEvent) {
-      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
-        setNotifOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleDown);
-    return () => document.removeEventListener('mousedown', handleDown);
-  }, []);
-
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);
 
@@ -328,12 +215,11 @@ export function AppNav() {
     return () => document.removeEventListener('mousedown', handleDown);
   }, []);
 
-  // Close search / notification panel on Escape
+  // Close search on Escape
   useEffect(() => {
     function handleKey(e: globalThis.KeyboardEvent) {
       if (e.key === 'Escape') {
         closeSearch();
-        setNotifOpen(false);
       }
     }
     document.addEventListener('keydown', handleKey);
@@ -545,125 +431,22 @@ export function AppNav() {
         {/* Right side: bell + avatar + logout */}
         {!searchOpen && (
           <div className="flex shrink-0 items-center gap-2">
-            {/* Notification bell */}
+            {/* Notification bell → /notifications */}
             {!loading && user && (
-              <div ref={notifRef} className="relative">
-                <button
-                  type="button"
-                  onClick={handleBellClick}
-                  aria-label="Notifications"
-                  className="relative flex h-9 w-9 items-center justify-center rounded-xl text-ink-secondary transition hover:bg-surface-subtle hover:text-ink"
-                >
-                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
-                  </svg>
-                  {(unreadCount + connectCount) > 0 && (
-                    <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-                      {(unreadCount + connectCount) > 9 ? '9+' : (unreadCount + connectCount)}
-                    </span>
-                  )}
-                </button>
-
-                {/* Notification dropdown */}
-                {notifOpen && (
-                  <div className="
-                    fixed left-0 right-0 top-14 z-[60] mx-0 overflow-hidden rounded-b-2xl border-b border-border bg-white shadow-xl
-                    sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80 sm:rounded-2xl sm:border sm:border-border
-                    dark:bg-[#111] dark:border-[#222]
-                  ">
-                    {/* Header */}
-                    <div className="flex items-center justify-between border-b border-border px-4 py-3 dark:border-[#222]">
-                      <h3 className="font-semibold text-ink">Notifications</h3>
-                      <div className="flex items-center gap-2">
-                        {unreadCount > 0 && (
-                          <button
-                            type="button"
-                            onClick={handleMarkAllRead}
-                            className="text-caption font-medium text-brand-600 hover:text-brand-700"
-                          >
-                            Mark all read
-                          </button>
-                        )}
-                        <Link
-                          href="/notifications"
-                          onClick={() => setNotifOpen(false)}
-                          className="text-caption font-medium text-ink-muted hover:text-ink"
-                        >
-                          See all
-                        </Link>
-                      </div>
-                    </div>
-
-                    {/* Connect Requests Banner */}
-                    {connectCount > 0 && (
-                      <Link
-                        href="/connect/requests"
-                        onClick={() => setNotifOpen(false)}
-                        className="flex items-center gap-3 border-b border-border px-4 py-3 bg-brand-50 dark:bg-brand-950/30 dark:border-[#222] hover:bg-brand-100 dark:hover:bg-brand-950/50 transition"
-                      >
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white">
-                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
-                          </svg>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[13px] font-semibold text-brand-700 dark:text-brand-400">
-                            {connectCount} pending connect request{connectCount > 1 ? 's' : ''}
-                          </p>
-                          <p className="text-[12px] text-brand-600/70 dark:text-brand-500">Tap to review</p>
-                        </div>
-                        <span className="rounded-full bg-brand-600 px-2 py-0.5 text-[11px] font-bold text-white">{connectCount}</span>
-                      </Link>
-                    )}
-
-                    {/* Body */}
-                    <div className="max-h-[70vh] overflow-y-auto sm:max-h-[380px]">
-                      {notifLoading ? (
-                        <div className="space-y-0">
-                          {[1, 2, 3].map((i) => (
-                            <div key={i} className="flex items-start gap-3 px-4 py-3">
-                              <div className="h-9 w-9 shrink-0 animate-pulse rounded-full bg-surface-muted dark:bg-[#1a1a1a]" />
-                              <div className="flex-1 space-y-1.5 pt-1">
-                                <div className="h-3 w-48 animate-pulse rounded bg-surface-muted dark:bg-[#1a1a1a]" />
-                                <div className="h-2.5 w-24 animate-pulse rounded bg-surface-muted dark:bg-[#1a1a1a]" />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : notifList.length === 0 ? (
-                        <div className="flex flex-col items-center py-10 text-center">
-                          <svg className="mb-2 h-8 w-8 text-ink-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
-                          </svg>
-                          <p className="text-body-sm text-ink-muted">No notifications yet</p>
-                        </div>
-                      ) : (
-                        notifList.map((n) => (
-                          <button
-                            key={n.id}
-                            type="button"
-                            onClick={() => handleNotifClick(n)}
-                            className={`flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-surface-muted dark:hover:bg-[#1a1a1a] ${!n.is_read ? 'bg-brand-50/60 dark:bg-brand-950/40' : ''}`}
-                          >
-                            <div className="relative shrink-0">
-                              <Avatar src={n.sender_photo} name={n.sender_name} size="sm" />
-                              {!n.is_read && (
-                                <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-brand-500 ring-2 ring-white dark:ring-[#111]" />
-                              )}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="text-body-sm text-ink leading-snug">
-                                {notifMessage(n)}
-                              </p>
-                              <p className="mt-0.5 text-caption text-ink-muted">{timeAgo(n.created_at)}</p>
-                            </div>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  </div>
+              <Link
+                href="/notifications"
+                aria-label="Notifications"
+                className="relative flex h-9 w-9 items-center justify-center rounded-xl text-ink-secondary transition hover:bg-surface-subtle hover:text-ink"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                </svg>
+                {(unreadCount + connectCount) > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                    {(unreadCount + connectCount) > 9 ? '9+' : (unreadCount + connectCount)}
+                  </span>
                 )}
-              </div>
+              </Link>
             )}
 
             {!loading && user && (
