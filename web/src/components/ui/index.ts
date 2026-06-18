@@ -30,3 +30,5 @@ export type { SelectProps } from './Select';
 
 export { RoleBadge, usesFollowSystem } from './RoleBadge';
 export type { UserRole } from './RoleBadge';
+
+export { PostContent } from './PostContent';

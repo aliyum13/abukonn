@@ -7,7 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { timeAgo } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { useFollow } from '@/hooks/useFollow';
-import { Avatar, Button, Skeleton, RoleBadge, usesFollowSystem } from '@/components/ui';
+import { Avatar, Button, Skeleton, RoleBadge, usesFollowSystem, PostContent } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -452,7 +452,9 @@ export default function UserProfilePage() {
                     <RoleBadge role={profileRole} iconOnly />
                     <span className="text-[12px] text-ink-muted">{timeAgo(post.created_at)}</span>
                   </div>
-                  <p className="mt-1.5 whitespace-pre-wrap text-[15px] leading-relaxed text-ink">{post.content}</p>
+                  <p className="mt-1.5 text-[15px] leading-relaxed text-ink">
+                    <PostContent content={post.content} />
+                  </p>
                   {post.image_url && (
                     <img src={post.image_url} alt="Post" className="mt-3 max-h-72 w-full rounded-2xl border border-border/60 object-cover" />
                   )}

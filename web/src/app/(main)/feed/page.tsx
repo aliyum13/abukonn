@@ -17,6 +17,7 @@ import {
   Input,
   Skeleton,
   RoleBadge,
+  PostContent,
 } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
@@ -48,12 +49,10 @@ interface FollowUser {
 
 type FollowModalType = 'none' | 'followers' | 'following';
 
-const TRENDING = [
-  { tag: '#ABUFreshers', posts: '128 posts' },
-  { tag: '#ExamSeason', posts: '94 posts' },
-  { tag: '#ZariaLife', posts: '76 posts' },
-  { tag: '#ABUSports', posts: '52 posts' },
-];
+interface TrendingHashtag {
+  tag: string;
+  post_count: number;
+}
 
 const POST_CATEGORIES = [
   { value: 'GENERAL',      label: 'General' },
@@ -1049,6 +1048,7 @@ export default function FeedPage() {
   const userPostCount = posts.filter((p) => p.user_id === user?.id).length;
 
   const [suggestions, setSuggestions] = useState<SuggestedUser[]>([]);
+  const [trendingHashtags, setTrendingHashtags] = useState<TrendingHashtag[]>([]);
   const [myFollowersCount, setMyFollowersCount] = useState(0);
   const [myFollowingCount, setMyFollowingCount] = useState(0);
 
@@ -1059,6 +1059,16 @@ export default function FeedPage() {
     })
       .then((r) => r.json())
       .then((d) => setSuggestions(d.suggestions ?? []))
+      .catch(() => {});
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${API_URL}/api/hashtags/trending?limit=8`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then(d => setTrendingHashtags(d.hashtags ?? []))
       .catch(() => {});
   }, [token]);
 
@@ -1303,8 +1313,8 @@ export default function FeedPage() {
 
                     {/* Content with show more/less */}
                     <div className="mt-2">
-                      <p className={cn('whitespace-pre-wrap text-[15px] text-ink leading-[1.6]', !isExpanded && longContent && 'line-clamp-3')}>
-                        {post.content}
+                      <p className={cn('text-[15px] text-ink leading-[1.6]', !isExpanded && longContent && 'line-clamp-3')}>
+                        <PostContent content={post.content} />
                       </p>
                       {longContent && (
                         <button type="button"
@@ -1548,15 +1558,30 @@ export default function FeedPage() {
             <Card>
               <CardContent className="p-5">
                 <h3 className="font-semibold text-ink">Trending on campus</h3>
-                <div className="mt-4 space-y-3">
-                  {TRENDING.map((topic) => (
-                    <div key={topic.tag} className="group cursor-pointer rounded-xl px-2 py-1.5 transition hover:bg-surface-muted">
-                      <p className="text-body-sm font-medium text-brand-600 group-hover:text-brand-700">
-                        {topic.tag}
-                      </p>
-                      <p className="text-caption text-ink-muted">{topic.posts}</p>
-                    </div>
-                  ))}
+                <div className="mt-4 space-y-1">
+                  {trendingHashtags.length === 0 ? (
+                    <p className="text-caption text-ink-muted py-2">No trending hashtags yet.</p>
+                  ) : (
+                    trendingHashtags.map((topic) => (
+                      <Link
+                        key={topic.tag}
+                        href={`/hashtag/${topic.tag}`}
+                        className="group flex items-center justify-between rounded-xl px-2 py-1.5 transition hover:bg-surface-muted dark:hover:bg-[#1a1a1a]"
+                      >
+                        <div>
+                          <p className="text-body-sm font-semibold text-brand-600 group-hover:text-brand-700 dark:text-brand-400 dark:group-hover:text-brand-300">
+                            #{topic.tag}
+                          </p>
+                          <p className="text-caption text-ink-muted">
+                            {topic.post_count} post{topic.post_count !== 1 ? 's' : ''}
+                          </p>
+                        </div>
+                        <svg className="h-4 w-4 text-ink-muted opacity-0 group-hover:opacity-100 transition" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                        </svg>
+                      </Link>
+                    ))
+                  )}
                 </div>
               </CardContent>
             </Card>

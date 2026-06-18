@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { timeAgo } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { useFollow } from '@/hooks/useFollow';
 import {
   Avatar,
@@ -14,11 +15,12 @@ import {
   CardContent,
   EmptyState,
   Skeleton,
+  PostContent,
 } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
-type Tab = 'all' | 'users' | 'posts';
+type Tab = 'all' | 'users' | 'posts' | 'hashtags';
 
 interface SearchUser {
   id: number;
@@ -43,16 +45,24 @@ interface SearchPost {
   author_matric: string;
 }
 
+interface SearchHashtag {
+  tag: string;
+  post_count: number;
+}
+
 interface SearchResults {
   users: SearchUser[];
   posts: SearchPost[];
 }
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'users', label: 'Students' },
-  { id: 'posts', label: 'Posts' },
+  { id: 'all',      label: 'All' },
+  { id: 'users',    label: 'Students' },
+  { id: 'posts',    label: 'Posts' },
+  { id: 'hashtags', label: 'Hashtags' },
 ];
+
+// ── Skeletons ─────────────────────────────────────────────────────────────────
 
 function UserCardSkeleton() {
   return (
@@ -62,7 +72,6 @@ function UserCardSkeleton() {
         <div className="flex-1 space-y-2">
           <Skeleton className="h-4 w-40" />
           <Skeleton className="h-3 w-28" />
-          <Skeleton className="h-3 w-52" />
         </div>
         <Skeleton className="h-8 w-20 rounded-xl" />
       </CardContent>
@@ -87,25 +96,33 @@ function PostCardSkeleton() {
   );
 }
 
-function UserCard({ user, token }: { user: SearchUser; token: string | null }) {
-  const { isFollowing, loading, toggle } = useFollow(
-    user.id,
-    user.is_following,
-    0,
-    token
+function HashtagSkeleton() {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-border px-4 py-3">
+      <Skeleton className="h-9 w-9 rounded-full" />
+      <div className="flex-1 space-y-1.5">
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-3 w-16" />
+      </div>
+      <Skeleton className="h-8 w-20 rounded-full" />
+    </div>
   );
+}
+
+// ── Result cards ──────────────────────────────────────────────────────────────
+
+function UserCard({ user, token }: { user: SearchUser; token: string | null }) {
+  const { isFollowing, loading, toggle } = useFollow(user.id, user.is_following, 0, token);
+  const [hovered, setHovered] = useState(false);
 
   return (
-    <Card className="transition hover:shadow-md">
+    <Card className="transition hover:shadow-md dark:hover:shadow-none dark:hover:border-[#333]">
       <CardContent className="flex items-center gap-4 p-5">
         <Link href={`/profile/${user.id}`}>
           <Avatar src={user.profile_photo_url} name={user.full_name} size="lg" />
         </Link>
         <div className="min-w-0 flex-1">
-          <Link
-            href={`/profile/${user.id}`}
-            className="font-semibold text-ink transition hover:text-brand-600"
-          >
+          <Link href={`/profile/${user.id}`} className="font-semibold text-ink transition hover:text-brand-600">
             {user.full_name}
           </Link>
           <div className="mt-1 flex flex-wrap gap-1.5">
@@ -125,11 +142,16 @@ function UserCard({ user, token }: { user: SearchUser; token: string | null }) {
           <Button
             variant={isFollowing ? 'outline' : 'primary'}
             size="sm"
-            className={`min-w-[80px] ${isFollowing ? 'hover:border-red-300 hover:text-red-600' : ''}`}
+            className={cn(
+              'min-w-[80px]',
+              isFollowing && hovered ? 'border-red-300 text-red-600' : ''
+            )}
             onClick={toggle}
             loading={loading}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
           >
-            {isFollowing ? 'Following' : 'Follow'}
+            {isFollowing ? (hovered ? 'Unfollow' : 'Following') : 'Follow'}
           </Button>
         </div>
       </CardContent>
@@ -142,16 +164,20 @@ function PostCard({ post }: { post: SearchPost }) {
     <Card className="overflow-hidden">
       <CardContent className="p-5">
         <div className="flex gap-3">
-          <Avatar src={post.author_photo} name={post.author_name} size="md" />
+          <Link href={`/profile/${post.user_id}`}>
+            <Avatar src={post.author_photo} name={post.author_name} size="md" />
+          </Link>
           <div className="min-w-0 flex-1">
-            <div className="flex items-baseline gap-2">
-              <p className="font-semibold text-ink">{post.author_name}</p>
-              <p className="text-caption text-ink-muted">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <Link href={`/profile/${post.user_id}`} className="font-semibold text-ink hover:text-brand-600 hover:underline">
+                {post.author_name}
+              </Link>
+              <span className="text-caption text-ink-muted">
                 {post.author_department} · {timeAgo(post.created_at)}
-              </p>
+              </span>
             </div>
-            <p className="mt-2 whitespace-pre-wrap text-body-sm text-ink leading-relaxed">
-              {post.content}
+            <p className="mt-2 text-body-sm text-ink leading-relaxed">
+              <PostContent content={post.content} />
             </p>
             <div className="mt-3 flex items-center gap-5 text-caption text-ink-muted">
               <span className="flex items-center gap-1">
@@ -174,6 +200,31 @@ function PostCard({ post }: { post: SearchPost }) {
   );
 }
 
+function HashtagCard({ hashtag }: { hashtag: SearchHashtag }) {
+  return (
+    <Link href={`/hashtag/${hashtag.tag}`}>
+      <div className="flex items-center gap-3 rounded-2xl border border-border dark:border-[#222] px-4 py-3.5 transition hover:bg-surface-muted dark:hover:bg-[#1a1a1a] hover:border-brand-200 dark:hover:border-brand-800 group">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 text-[18px] font-bold">
+          #
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-[15px] text-ink group-hover:text-brand-600 dark:group-hover:text-brand-400 transition">
+            #{hashtag.tag}
+          </p>
+          <p className="text-[13px] text-ink-muted">
+            {hashtag.post_count.toLocaleString()} post{hashtag.post_count !== 1 ? 's' : ''}
+          </p>
+        </div>
+        <svg className="h-4 w-4 text-ink-muted opacity-0 group-hover:opacity-100 transition" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+        </svg>
+      </div>
+    </Link>
+  );
+}
+
+// ── Main search component ─────────────────────────────────────────────────────
+
 function SearchResults() {
   const { token, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -182,6 +233,7 @@ function SearchResults() {
 
   const [tab, setTab] = useState<Tab>('all');
   const [results, setResults] = useState<SearchResults | null>(null);
+  const [hashtags, setHashtags] = useState<SearchHashtag[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -189,17 +241,26 @@ function SearchResults() {
   }, [authLoading, token, router]);
 
   const fetchResults = useCallback(
-    async (query: string, type: Tab) => {
+    async (query: string) => {
       if (!query.trim() || !token) return;
       setLoading(true);
       try {
-        const res = await fetch(
-          `${API_URL}/api/search?q=${encodeURIComponent(query)}&type=${type}`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        if (res.ok) {
-          const data = await res.json();
+        const [searchRes, hashtagRes] = await Promise.all([
+          fetch(`${API_URL}/api/search?q=${encodeURIComponent(query)}&type=all`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch(`${API_URL}/api/hashtags/search?q=${encodeURIComponent(query)}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
+
+        if (searchRes.ok) {
+          const data = await searchRes.json();
           setResults(data);
+        }
+        if (hashtagRes.ok) {
+          const data = await hashtagRes.json();
+          setHashtags(data.hashtags ?? []);
         }
       } catch {
         // silent
@@ -211,18 +272,27 @@ function SearchResults() {
   );
 
   useEffect(() => {
-    if (q && token) fetchResults(q, tab);
-  }, [q, tab, token, fetchResults]);
+    if (q && token) fetchResults(q);
+  }, [q, token, fetchResults]);
 
   const users = results?.users ?? [];
   const posts = results?.posts ?? [];
-  const totalCount = users.length + posts.length;
 
-  const showUsers = tab === 'all' || tab === 'users';
-  const showPosts = tab === 'all' || tab === 'posts';
-  const filteredUsers = showUsers ? users : [];
-  const filteredPosts = showPosts ? posts : [];
-  const filteredTotal = filteredUsers.length + filteredPosts.length;
+  const showUsers    = tab === 'all' || tab === 'users';
+  const showPosts    = tab === 'all' || tab === 'posts';
+  const showHashtags = tab === 'all' || tab === 'hashtags';
+
+  const filteredUsers    = showUsers    ? users    : [];
+  const filteredPosts    = showPosts    ? posts    : [];
+  const filteredHashtags = showHashtags ? hashtags : [];
+  const filteredTotal    = filteredUsers.length + filteredPosts.length + filteredHashtags.length;
+
+  const tabCount = (t: Tab) => {
+    if (t === 'users')    return users.length;
+    if (t === 'posts')    return posts.length;
+    if (t === 'hashtags') return hashtags.length;
+    return users.length + posts.length + hashtags.length;
+  };
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 lg:px-8">
@@ -230,42 +300,34 @@ function SearchResults() {
       <div className="mb-6">
         <h1 className="text-xl font-bold text-ink">
           {q ? (
-            <>
-              Results for{' '}
-              <span className="text-brand-600">&ldquo;{q}&rdquo;</span>
-            </>
-          ) : (
-            'Search'
-          )}
+            <>Results for <span className="text-brand-600">&ldquo;{q}&rdquo;</span></>
+          ) : 'Search'}
         </h1>
-        {!loading && results && q && (
+        {!loading && (results || hashtags.length > 0) && q && (
           <p className="mt-1 text-body-sm text-ink-muted">
-            {totalCount === 0
-              ? 'No results found'
-              : `${totalCount} result${totalCount !== 1 ? 's' : ''}`}
+            {filteredTotal === 0 ? 'No results' : `${filteredTotal} result${filteredTotal !== 1 ? 's' : ''}`}
           </p>
         )}
       </div>
 
       {/* Tabs */}
       {q && (
-        <div className="mb-5 flex gap-1 rounded-xl bg-surface-muted p-1">
+        <div className="mb-5 flex gap-1 rounded-xl bg-surface-muted dark:bg-[#1a1a1a] p-1">
           {TABS.map((t) => (
             <button
               key={t.id}
               type="button"
               onClick={() => setTab(t.id)}
-              className={`flex-1 rounded-lg py-2 text-body-sm font-medium transition ${
+              className={cn(
+                'flex-1 rounded-lg py-2 text-body-sm font-medium transition',
                 tab === t.id
-                  ? 'bg-white dark:bg-[#1a1a1a] text-brand-700 shadow-sm'
+                  ? 'bg-white dark:bg-[#111] text-brand-700 dark:text-brand-400 shadow-sm'
                   : 'text-ink-secondary hover:text-ink'
-              }`}
+              )}
             >
               {t.label}
               {!loading && results && t.id !== 'all' && (
-                <span className="ml-1.5 text-caption text-ink-muted">
-                  ({t.id === 'users' ? users.length : posts.length})
-                </span>
+                <span className="ml-1 text-caption text-ink-muted">({tabCount(t.id)})</span>
               )}
             </button>
           ))}
@@ -277,7 +339,7 @@ function SearchResults() {
         <Card>
           <EmptyState
             title="Search ABUkonn"
-            description="Find students by name or department, or search through posts."
+            description="Find students, posts, or hashtags."
             icon={
               <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
@@ -287,28 +349,17 @@ function SearchResults() {
         </Card>
       )}
 
-      {/* Loading skeletons */}
+      {/* Loading */}
       {loading && q && (
         <div className="space-y-4">
-          {showUsers && (
-            <>
-              <Skeleton className="h-4 w-20" />
-              <UserCardSkeleton />
-              <UserCardSkeleton />
-            </>
-          )}
-          {showPosts && (
-            <>
-              <Skeleton className="h-4 w-16 mt-2" />
-              <PostCardSkeleton />
-              <PostCardSkeleton />
-            </>
-          )}
+          {showUsers    && <><Skeleton className="h-4 w-20" /><UserCardSkeleton /><UserCardSkeleton /></>}
+          {showPosts    && <><Skeleton className="h-4 w-16 mt-2" /><PostCardSkeleton /><PostCardSkeleton /></>}
+          {showHashtags && <><Skeleton className="h-4 w-20 mt-2" /><HashtagSkeleton /><HashtagSkeleton /></>}
         </div>
       )}
 
       {/* Results */}
-      {!loading && results && q && (
+      {!loading && (results || hashtags.length > 0) && q && (
         <>
           {filteredTotal === 0 ? (
             <Card>
@@ -324,7 +375,23 @@ function SearchResults() {
             </Card>
           ) : (
             <div className="space-y-6">
-              {/* Students section */}
+              {/* Hashtags */}
+              {filteredHashtags.length > 0 && (
+                <section>
+                  {tab === 'all' && (
+                    <h2 className="mb-3 text-body-sm font-semibold uppercase tracking-wider text-ink-muted">
+                      Hashtags ({hashtags.length})
+                    </h2>
+                  )}
+                  <div className="space-y-2">
+                    {filteredHashtags.map(h => (
+                      <HashtagCard key={h.tag} hashtag={h} />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* Students */}
               {filteredUsers.length > 0 && (
                 <section>
                   {tab === 'all' && (
@@ -333,14 +400,14 @@ function SearchResults() {
                     </h2>
                   )}
                   <div className="space-y-3">
-                    {filteredUsers.map((u) => (
+                    {filteredUsers.map(u => (
                       <UserCard key={u.id} user={u} token={token} />
                     ))}
                   </div>
                 </section>
               )}
 
-              {/* Posts section */}
+              {/* Posts */}
               {filteredPosts.length > 0 && (
                 <section>
                   {tab === 'all' && (
@@ -349,7 +416,7 @@ function SearchResults() {
                     </h2>
                   )}
                   <div className="space-y-3">
-                    {filteredPosts.map((p) => (
+                    {filteredPosts.map(p => (
                       <PostCard key={p.id} post={p} />
                     ))}
                   </div>
@@ -373,14 +440,12 @@ export default function SearchPage() {
             <Skeleton className="h-4 w-24" />
           </div>
           <div className="mb-5 flex gap-1 rounded-xl bg-surface-muted p-1">
-            {[1, 2, 3].map((i) => (
-              <Skeleton key={i} className="h-9 flex-1 rounded-lg" />
-            ))}
+            {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-9 flex-1 rounded-lg" />)}
           </div>
           <div className="space-y-3">
             <UserCardSkeleton />
-            <UserCardSkeleton />
             <PostCardSkeleton />
+            <HashtagSkeleton />
           </div>
         </div>
       }

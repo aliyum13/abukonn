@@ -2,6 +2,7 @@ const Post = require('../models/Post');
 const Comment = require('../models/Comment');
 const Reply = require('../models/Reply');
 const Notification = require('../models/Notification');
+const Hashtag = require('../models/Hashtag');
 const cloudinary = require('../config/cloudinary');
 
 async function uploadBufferToCloudinary(buffer, mimetype) {
@@ -33,6 +34,11 @@ async function createPost(req, res) {
       imageUrl,
       category,
     });
+
+    // Index hashtags (fire-and-forget — don't fail the request on hashtag errors)
+    Hashtag.indexPostHashtags(post.id, content.trim()).catch(err =>
+      console.error('Hashtag indexing error:', err.message)
+    );
 
     const fullPost = await Post.getPostById(post.id);
     res.status(201).json({ message: 'Post created', post: fullPost });
@@ -144,6 +150,8 @@ async function deletePost(req, res) {
       return res.status(403).json({ message: 'You can only delete your own posts' });
     }
 
+    // Decrement hashtag counts before deleting
+    await Hashtag.removePostHashtags(postId).catch(() => {});
     await Post.deletePost(postId);
     res.json({ message: 'Post deleted' });
   } catch (err) {
