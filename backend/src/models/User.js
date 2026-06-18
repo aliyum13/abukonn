@@ -30,7 +30,17 @@ BEGIN
   END IF;
 END $$;
 
--- Back-fill usernames for existing rows (use email prefix + id to guarantee uniqueness)
+-- Back-fill step 1: set base username where it's unique
+UPDATE abukonn.users u
+SET username = LOWER(REGEXP_REPLACE(SPLIT_PART(email, '@', 1), '[^a-zA-Z0-9_]', '_', 'g'))
+WHERE username IS NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM abukonn.users other
+    WHERE other.id <> u.id
+      AND other.username = LOWER(REGEXP_REPLACE(SPLIT_PART(u.email, '@', 1), '[^a-zA-Z0-9_]', '_', 'g'))
+  );
+
+-- Back-fill step 2: for any remaining conflicts, append the row id
 UPDATE abukonn.users
 SET username = LOWER(REGEXP_REPLACE(SPLIT_PART(email, '@', 1), '[^a-zA-Z0-9_]', '_', 'g')) || '_' || id::text
 WHERE username IS NULL;
@@ -63,6 +73,14 @@ async function findByEmail(email) {
   const result = await pool.query(
     'SELECT * FROM abukonn.users WHERE email = $1',
     [email]
+  );
+  return result.rows[0] || null;
+}
+
+async function findByUsername(username) {
+  const result = await pool.query(
+    'SELECT id FROM abukonn.users WHERE username = $1',
+    [username]
   );
   return result.rows[0] || null;
 }
@@ -140,6 +158,7 @@ module.exports = {
   createUsersTable,
   findByMatricNumber,
   findByEmail,
+  findByUsername,
   findById,
   updateProfile,
   updateProfilePhoto,

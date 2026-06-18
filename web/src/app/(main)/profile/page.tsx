@@ -133,6 +133,7 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState({ bio: '', department: '', level: '', username: '' });
+  const [matricNumber, setMatricNumber] = useState('');
   const [uploading, setUploading] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('posts');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -161,6 +162,7 @@ export default function ProfilePage() {
             level: data.user.level || '',
             username: data.user.username || '',
           });
+          setMatricNumber(data.user.matric_number || '');
           setPosts(data.posts || []);
         }
       })
@@ -344,15 +346,15 @@ export default function ProfilePage() {
                 <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5" />
                 </svg>
-                Joined {new Date((user as { created_at?: string }).created_at!).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
+                Joined {new Date(String((user as { created_at?: string }).created_at)).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
               </span>
             )}
-            {(user as { matric_number?: string }).matric_number && (
+            {matricNumber && (
               <span className="flex items-center gap-1.5">
                 <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 9h3.75M15 12h3.75M15 15h3.75M4.5 19.5h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5zm6-10.125a1.875 1.875 0 11-3.75 0 1.875 1.875 0 013.75 0zm1.294 6.336a6.721 6.721 0 01-3.17.789 6.721 6.721 0 01-3.168-.789 3.376 3.376 0 016.338 0z" />
                 </svg>
-                {(user as { matric_number?: string }).matric_number}
+                {matricNumber}
               </span>
             )}
           </div>
