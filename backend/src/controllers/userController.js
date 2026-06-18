@@ -71,9 +71,16 @@ async function getUserById(req, res) {
 
 async function updateProfile(req, res) {
   try {
-    const { bio, department, level } = req.body;
+    const { bio, department, level, username } = req.body;
 
-    const user = await User.updateProfile(req.user.id, { bio, department, level });
+    // Validate username: only letters, numbers, underscores, max 30 chars
+    if (username !== undefined && username !== null && username !== '') {
+      if (!/^[a-zA-Z0-9_]{1,30}$/.test(username)) {
+        return res.status(400).json({ message: 'Username may only contain letters, numbers, and underscores (max 30 characters).' });
+      }
+    }
+
+    const user = await User.updateProfile(req.user.id, { bio, department, level, username });
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' });

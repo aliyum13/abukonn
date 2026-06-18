@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS abukonn.users (
 );
 
 ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS username VARCHAR(100);
 
 DO $$
 BEGIN
@@ -26,6 +27,21 @@ BEGIN
     WHERE conname = 'users_email_unique' AND conrelid = 'abukonn.users'::regclass
   ) THEN
     ALTER TABLE abukonn.users ADD CONSTRAINT users_email_unique UNIQUE (email);
+  END IF;
+END $$;
+
+-- Back-fill usernames for existing rows (use email prefix + id to guarantee uniqueness)
+UPDATE abukonn.users
+SET username = LOWER(REGEXP_REPLACE(SPLIT_PART(email, '@', 1), '[^a-zA-Z0-9_]', '_', 'g')) || '_' || id::text
+WHERE username IS NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'users_username_unique' AND conrelid = 'abukonn.users'::regclass
+  ) THEN
+    ALTER TABLE abukonn.users ADD CONSTRAINT users_username_unique UNIQUE (username);
   END IF;
 END $$;
 `;
@@ -51,24 +67,26 @@ async function findByEmail(email) {
   return result.rows[0] || null;
 }
 
+const COLS = 'id, username, matric_number, full_name, email, department, level, profile_photo_url, bio, is_admin, created_at';
+
 async function findById(id) {
   const result = await pool.query(
-    `SELECT id, matric_number, full_name, email, department, level, profile_photo_url, bio, is_admin, created_at
-     FROM abukonn.users WHERE id = $1`,
+    `SELECT ${COLS} FROM abukonn.users WHERE id = $1`,
     [id]
   );
   return result.rows[0] || null;
 }
 
-async function updateProfile(id, { bio, department, level }) {
+async function updateProfile(id, { bio, department, level, username }) {
   const result = await pool.query(
     `UPDATE abukonn.users
-     SET bio = COALESCE($2, bio),
+     SET bio        = COALESCE($2, bio),
          department = COALESCE($3, department),
-         level = COALESCE($4, level)
+         level      = COALESCE($4, level),
+         username   = COALESCE($5, username)
      WHERE id = $1
-     RETURNING id, matric_number, full_name, email, department, level, profile_photo_url, bio, is_admin, created_at`,
-    [id, bio ?? null, department ?? null, level ?? null]
+     RETURNING ${COLS}`,
+    [id, bio ?? null, department ?? null, level ?? null, username ?? null]
   );
   return result.rows[0] || null;
 }
@@ -77,18 +95,18 @@ async function updateProfilePhoto(id, photoUrl) {
   const result = await pool.query(
     `UPDATE abukonn.users SET profile_photo_url = $2
      WHERE id = $1
-     RETURNING id, matric_number, full_name, email, department, level, profile_photo_url, bio, is_admin, created_at`,
+     RETURNING ${COLS}`,
     [id, photoUrl]
   );
   return result.rows[0] || null;
 }
 
-async function createUser({ matricNumber, fullName, email, department, level, passwordHash }) {
+async function createUser({ matricNumber, fullName, email, department, level, passwordHash, username }) {
   const result = await pool.query(
-    `INSERT INTO abukonn.users (matric_number, full_name, email, department, level, password_hash)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id, matric_number, full_name, email, department, level, profile_photo_url, bio, is_admin, created_at`,
-    [matricNumber, fullName, email, department, level, passwordHash]
+    `INSERT INTO abukonn.users (matric_number, full_name, email, department, level, password_hash, username)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING ${COLS}`,
+    [matricNumber, fullName, email, department, level, passwordHash, username ?? null]
   );
   return result.rows[0];
 }
@@ -96,6 +114,7 @@ async function createUser({ matricNumber, fullName, email, department, level, pa
 function toPublicUser(user) {
   return {
     id: user.id,
+    username: user.username,
     // matric_number excluded by default — added back only for own profile or admin views
     full_name: user.full_name,
     email: user.email,

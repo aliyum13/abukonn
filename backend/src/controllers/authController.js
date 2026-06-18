@@ -47,6 +47,10 @@ async function register(req, res) {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
+
+    // Auto-generate username from email prefix (lowercase, replace non-alphanumeric with _)
+    const baseUsername = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '_');
+
     const user = await User.createUser({
       matricNumber: matric_number,
       fullName: full_name,
@@ -54,6 +58,7 @@ async function register(req, res) {
       department,
       level,
       passwordHash,
+      username: baseUsername,
     });
 
     const token = generateToken(user);
