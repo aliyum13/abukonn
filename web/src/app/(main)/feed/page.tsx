@@ -79,8 +79,11 @@ const CATEGORY_COLORS: Record<string, string> = {
 interface Story {
   id: number;
   user_id: number;
-  media_url: string;
-  media_type: 'image' | 'video';
+  media_url: string | null;
+  media_type: 'image' | 'video' | null;
+  story_type: 'image' | 'video' | 'text';
+  text_content: string | null;
+  bg_color: string | null;
   created_at: string;
   expires_at: string;
 }
@@ -248,12 +251,22 @@ function StoryViewer({
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
         </button>
       </div>
-      {/* Media */}
+      {/* Media / Text */}
       <div className="flex h-full w-full max-w-sm items-center justify-center" onClick={e => e.stopPropagation()}>
-        {story.media_type === 'video' ? (
-          <video src={story.media_url} autoPlay muted loop className="max-h-full w-full object-contain" />
+        {story.story_type === 'text' ? (
+          <div className="flex h-full w-full items-center justify-center px-8"
+            style={{ backgroundColor: story.bg_color || '#16a34a' }}>
+            <p className={cn(
+              'text-center font-bold leading-tight text-white break-words w-full',
+              (story.text_content?.length ?? 0) > 100 ? 'text-xl' : (story.text_content?.length ?? 0) > 50 ? 'text-2xl' : 'text-3xl'
+            )}>
+              {story.text_content}
+            </p>
+          </div>
+        ) : story.media_type === 'video' ? (
+          <video src={story.media_url!} autoPlay muted loop className="max-h-full w-full object-contain" />
         ) : (
-          <img src={story.media_url} alt="Story" className="max-h-full w-full object-contain" />
+          <img src={story.media_url!} alt="Story" className="max-h-full w-full object-contain" />
         )}
       </div>
       {/* Tap zones */}
@@ -525,6 +538,9 @@ export default function FeedPage() {
   const [storyFile, setStoryFile] = useState<File | null>(null);
   const [storyPreview, setStoryPreview] = useState<string | null>(null);
   const [uploadingStory, setUploadingStory] = useState(false);
+  const [storyTab, setStoryTab] = useState<'media' | 'text'>('media');
+  const [storyText, setStoryText] = useState('');
+  const [storyBgColor, setStoryBgColor] = useState('#16a34a');
 
   // Category filter
   const [categoryFilter, setCategoryFilter] = useState<PostCategory | 'ALL'>('ALL');
@@ -846,19 +862,28 @@ export default function FeedPage() {
   };
 
   const handleUploadStory = async () => {
-    if (!storyFile || !token) return;
+    if (!token) return;
     setUploadingStory(true);
     try {
-      const formData = new FormData();
-      formData.append('media', storyFile);
-      const res = await fetch(`${API_URL}/api/stories`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
+      let res: Response;
+      if (storyTab === 'text') {
+        res = await fetch(`${API_URL}/api/stories`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ story_type: 'text', text_content: storyText, bg_color: storyBgColor }),
+        });
+      } else {
+        if (!storyFile) return;
+        const formData = new FormData();
+        formData.append('media', storyFile);
+        res = await fetch(`${API_URL}/api/stories`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        });
+      }
       if (!res.ok) throw new Error('Upload failed');
       const data = await res.json();
-      // Add own story group or prepend story to existing own group
       setStoryGroups(prev => {
         const ownIdx = prev.findIndex(g => g.is_own);
         if (ownIdx >= 0) {
@@ -871,6 +896,9 @@ export default function FeedPage() {
       setShowUploadStory(false);
       setStoryFile(null);
       setStoryPreview(null);
+      setStoryText('');
+      setStoryBgColor('#16a34a');
+      setStoryTab('media');
     } catch { /* silent */ }
     finally { setUploadingStory(false); }
   };
@@ -1601,51 +1629,109 @@ export default function FeedPage() {
       )}
 
       {/* Story Upload modal */}
-      {showUploadStory && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-          onClick={e => { if (e.target === e.currentTarget) { setShowUploadStory(false); setStoryFile(null); setStoryPreview(null); } }}>
-          <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[#111] dark:border dark:border-[#222]">
-            <div className="flex items-center justify-between border-b border-border px-5 py-4 dark:border-[#222]">
-              <h3 className="font-semibold text-ink">Add to Status</h3>
-              <button type="button" onClick={() => { setShowUploadStory(false); setStoryFile(null); setStoryPreview(null); }}
-                className="rounded-lg p-1 text-ink-secondary hover:bg-surface-muted">
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <div className="p-5">
-              {storyPreview ? (
-                <div className="relative mb-4">
-                  {storyFile?.type.startsWith('video') ? (
-                    <video src={storyPreview} className="max-h-64 w-full rounded-xl object-cover" controls />
-                  ) : (
-                    <img src={storyPreview} alt="Preview" className="max-h-64 w-full rounded-xl object-cover" />
-                  )}
-                  <button type="button" onClick={() => { setStoryFile(null); setStoryPreview(null); }}
-                    className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80">
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-                  </button>
-                </div>
-              ) : (
-                <button type="button" onClick={() => storyInputRef.current?.click()}
-                  className="mb-4 flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border py-10 text-ink-muted transition hover:border-brand-400 hover:text-brand-600">
-                  <svg className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                  </svg>
-                  <p className="text-body-sm font-medium">Tap to add photo or video</p>
-                  <p className="text-caption">Story disappears after 24 hours</p>
+      {showUploadStory && (() => {
+        const BG_PRESETS = ['#16a34a','#1d4ed8','#7c3aed','#dc2626','#ea580c','#0891b2','#111827','#be185d'];
+        const closeModal = () => { setShowUploadStory(false); setStoryFile(null); setStoryPreview(null); setStoryText(''); setStoryBgColor('#16a34a'); setStoryTab('media'); };
+        const canShare = storyTab === 'text' ? storyText.trim().length > 0 : !!storyFile;
+        const textLen = storyText.length;
+        const textSize = textLen > 100 ? 'text-xl' : textLen > 50 ? 'text-2xl' : 'text-3xl';
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+            onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
+            <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[#111] dark:border dark:border-[#222]">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-border px-5 py-4 dark:border-[#222]">
+                <h3 className="font-semibold text-ink">Add to Status</h3>
+                <button type="button" onClick={closeModal}
+                  className="rounded-lg p-1 text-ink-secondary hover:bg-surface-muted">
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
-              )}
-              <input ref={storyInputRef} type="file" accept="image/*,video/*" onChange={handleStoryFileSelect} className="hidden" />
-              <div className="flex gap-3">
-                <Button variant="outline" className="flex-1" onClick={() => { setShowUploadStory(false); setStoryFile(null); setStoryPreview(null); }}>Cancel</Button>
-                <Button className="flex-1" disabled={!storyFile || uploadingStory} loading={uploadingStory} onClick={handleUploadStory}>
-                  Share Story
-                </Button>
+              </div>
+              {/* Tabs */}
+              <div className="flex border-b border-border dark:border-[#222]">
+                <button type="button"
+                  onClick={() => setStoryTab('media')}
+                  className={cn('flex-1 py-2.5 text-sm font-medium transition-colors',
+                    storyTab === 'media' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-ink-muted hover:text-ink')}>
+                  Photo / Video
+                </button>
+                <button type="button"
+                  onClick={() => setStoryTab('text')}
+                  className={cn('flex-1 py-2.5 text-sm font-medium transition-colors',
+                    storyTab === 'text' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-ink-muted hover:text-ink')}>
+                  Text
+                </button>
+              </div>
+              <div className="p-5">
+                {storyTab === 'media' ? (
+                  <>
+                    {storyPreview ? (
+                      <div className="relative mb-4">
+                        {storyFile?.type.startsWith('video') ? (
+                          <video src={storyPreview} className="max-h-64 w-full rounded-xl object-cover" controls />
+                        ) : (
+                          <img src={storyPreview} alt="Preview" className="max-h-64 w-full rounded-xl object-cover" />
+                        )}
+                        <button type="button" onClick={() => { setStoryFile(null); setStoryPreview(null); }}
+                          className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80">
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      </div>
+                    ) : (
+                      <button type="button" onClick={() => storyInputRef.current?.click()}
+                        className="mb-4 flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border py-10 text-ink-muted transition hover:border-brand-400 hover:text-brand-600">
+                        <svg className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                        </svg>
+                        <p className="text-body-sm font-medium">Tap to add photo or video</p>
+                        <p className="text-caption">Story disappears after 24 hours</p>
+                      </button>
+                    )}
+                    <input ref={storyInputRef} type="file" accept="image/*,video/*" onChange={handleStoryFileSelect} className="hidden" />
+                  </>
+                ) : (
+                  <>
+                    {/* Live preview */}
+                    <div className="mb-4 flex h-44 w-full items-center justify-center rounded-xl px-4"
+                      style={{ backgroundColor: storyBgColor }}>
+                      <p className={cn('text-center font-bold leading-tight text-white break-words w-full', textSize)}>
+                        {storyText || <span className="opacity-40">Your text here…</span>}
+                      </p>
+                    </div>
+                    {/* Textarea */}
+                    <textarea
+                      value={storyText}
+                      onChange={e => setStoryText(e.target.value)}
+                      maxLength={280}
+                      rows={3}
+                      placeholder="Write something…"
+                      className="mb-3 w-full resize-none rounded-xl border border-border bg-surface-muted px-3 py-2.5 text-sm text-ink placeholder:text-ink-muted focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:bg-[#1a1a1a] dark:border-[#333]"
+                    />
+                    {/* Color picker */}
+                    <div className="mb-4 flex gap-2">
+                      {BG_PRESETS.map(c => (
+                        <button key={c} type="button"
+                          onClick={() => setStoryBgColor(c)}
+                          className={cn('h-7 w-7 flex-shrink-0 rounded-full transition-transform hover:scale-110',
+                            storyBgColor === c ? 'ring-2 ring-offset-2 ring-brand-500 scale-110' : '')}
+                          style={{ backgroundColor: c }}
+                          aria-label={c}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+                <div className="flex gap-3">
+                  <Button variant="outline" className="flex-1" onClick={closeModal}>Cancel</Button>
+                  <Button className="flex-1" disabled={!canShare || uploadingStory} loading={uploadingStory} onClick={handleUploadStory}>
+                    Share Story
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Share Post modal */}
       {sharePost && (
