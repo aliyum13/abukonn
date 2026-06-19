@@ -56,26 +56,28 @@ async function isFollowing(followerId, followingId) {
   return result.rows.length > 0;
 }
 
-async function getFollowers(userId) {
+async function getFollowers(userId, currentUserId) {
   const result = await pool.query(
-    `SELECT u.id, u.full_name, u.matric_number, u.department, u.level, u.profile_photo_url
+    `SELECT u.id, u.full_name, u.matric_number, u.username, u.department, u.level, u.profile_photo_url,
+            EXISTS(SELECT 1 FROM abukonn.follows cf WHERE cf.follower_id = $2 AND cf.following_id = u.id) AS is_following
      FROM abukonn.follows f
      JOIN abukonn.users u ON f.follower_id = u.id
      WHERE f.following_id = $1
      ORDER BY f.created_at DESC`,
-    [userId]
+    [userId, currentUserId]
   );
   return result.rows;
 }
 
-async function getFollowing(userId) {
+async function getFollowing(userId, currentUserId) {
   const result = await pool.query(
-    `SELECT u.id, u.full_name, u.matric_number, u.department, u.level, u.profile_photo_url
+    `SELECT u.id, u.full_name, u.matric_number, u.username, u.department, u.level, u.profile_photo_url,
+            EXISTS(SELECT 1 FROM abukonn.follows cf WHERE cf.follower_id = $2 AND cf.following_id = u.id) AS is_following
      FROM abukonn.follows f
      JOIN abukonn.users u ON f.following_id = u.id
      WHERE f.follower_id = $1
      ORDER BY f.created_at DESC`,
-    [userId]
+    [userId, currentUserId]
   );
   return result.rows;
 }

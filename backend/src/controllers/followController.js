@@ -67,7 +67,7 @@ async function checkIsFollowing(req, res) {
 async function getUserFollowers(req, res) {
   try {
     const userId = parseInt(req.params.userId, 10);
-    const followers = await Follow.getFollowers(userId);
+    const followers = await Follow.getFollowers(userId, req.user.id);
     res.json({ followers });
   } catch (err) {
     console.error('Get followers error:', err.message);
@@ -78,7 +78,7 @@ async function getUserFollowers(req, res) {
 async function getUserFollowing(req, res) {
   try {
     const userId = parseInt(req.params.userId, 10);
-    const following = await Follow.getFollowing(userId);
+    const following = await Follow.getFollowing(userId, req.user.id);
     res.json({ following });
   } catch (err) {
     console.error('Get following error:', err.message);
@@ -88,7 +88,7 @@ async function getUserFollowing(req, res) {
 
 async function getMyFollowers(req, res) {
   try {
-    const followers = await Follow.getFollowers(req.user.id);
+    const followers = await Follow.getFollowers(req.user.id, req.user.id);
     res.json({ followers });
   } catch (err) {
     console.error('Get my followers error:', err.message);
@@ -98,7 +98,7 @@ async function getMyFollowers(req, res) {
 
 async function getMyFollowing(req, res) {
   try {
-    const following = await Follow.getFollowing(req.user.id);
+    const following = await Follow.getFollowing(req.user.id, req.user.id);
     res.json({ following });
   } catch (err) {
     console.error('Get my following error:', err.message);

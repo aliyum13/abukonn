@@ -26,6 +26,7 @@ interface FollowUser {
   username?: string;
   department: string;
   profile_photo_url: string | null;
+  is_following?: boolean;
 }
 
 type ModalType = 'none' | 'followers' | 'following';
@@ -82,7 +83,7 @@ function ModalUserRow({
   token: string | null;
   onNavigate: () => void;
 }) {
-  const { isFollowing, loading, toggle } = useFollow(user.id, false, 0, token);
+  const { isFollowing, loading, toggle } = useFollow(user.id, user.is_following ?? false, 0, token);
   return (
     <div className="flex items-center gap-3 px-4 py-3 transition hover:bg-surface-muted">
       <Link href={`/profile/${user.id}`} onClick={onNavigate}>

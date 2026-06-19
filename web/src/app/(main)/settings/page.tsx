@@ -191,13 +191,12 @@ export default function SettingsPage() {
         email: u.email || '',
       });
       setSettings(data.settings);
-      updateUser(u);
     } catch {
       showToast('Failed to load settings', true);
     } finally {
       setLoading(false);
     }
-  }, [token, updateUser, showToast]);
+  }, [token, showToast]);
 
   useEffect(() => {
     if (!authLoading && !token) router.push('/login');
