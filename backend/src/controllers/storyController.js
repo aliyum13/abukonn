@@ -1,4 +1,5 @@
 const Story = require('../models/Story');
+const { findOrCreateConversation, sendMessage } = require('../models/Message');
 const cloudinary = require('../config/cloudinary');
 
 async function uploadToCloudinary(buffer, mimetype) {
@@ -81,4 +82,60 @@ async function deleteStory(req, res) {
   }
 }
 
-module.exports = { createStory, getStories, deleteStory };
+async function reactToStory(req, res) {
+  try {
+    const storyId = parseInt(req.params.id, 10);
+    const result = await Story.toggleStoryReaction(storyId, req.user.id);
+    res.json(result);
+  } catch (err) {
+    console.error('React to story error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function getReactionsHandler(req, res) {
+  try {
+    const storyId = parseInt(req.params.id, 10);
+    const result = await Story.getStoryReactions(storyId, req.user.id);
+    res.json(result);
+  } catch (err) {
+    console.error('Get story reactions error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function replyToStory(req, res) {
+  try {
+    const storyId = parseInt(req.params.id, 10);
+    const content = (req.body?.content || '').trim();
+    if (!content) return res.status(400).json({ message: 'Reply content is required' });
+
+    const story = await Story.getStoryById(storyId);
+    if (!story) return res.status(404).json({ message: 'Story not found' });
+
+    const reply = await Story.createStoryReply(storyId, req.user.id, content);
+
+    if (story.user_id !== req.user.id) {
+      const conv = await findOrCreateConversation(req.user.id, story.user_id);
+      await sendMessage({ conversationId: conv.id, senderId: req.user.id, content });
+    }
+
+    res.status(201).json({ reply });
+  } catch (err) {
+    console.error('Reply to story error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function getStoryRepliesHandler(req, res) {
+  try {
+    const storyId = parseInt(req.params.id, 10);
+    const replies = await Story.getStoryReplies(storyId);
+    res.json({ replies });
+  } catch (err) {
+    console.error('Get story replies error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+module.exports = { createStory, getStories, deleteStory, reactToStory, getReactionsHandler, replyToStory, getStoryRepliesHandler };

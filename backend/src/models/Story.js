@@ -62,4 +62,112 @@ async function deleteStory(storyId, userId) {
   return result.rows[0] || null;
 }
 
-module.exports = { createStoriesTable, createStory, getActiveStoriesForUser, deleteStory };
+async function getStoryById(storyId) {
+  const result = await pool.query(`SELECT * FROM abukonn.stories WHERE id = $1`, [storyId]);
+  return result.rows[0] || null;
+}
+
+// ── Story reactions ──────────────────────────────────────────────────────────
+
+const CREATE_STORY_REACTIONS_TABLE = `
+CREATE TABLE IF NOT EXISTS abukonn.story_reactions (
+  id SERIAL PRIMARY KEY,
+  story_id INTEGER NOT NULL REFERENCES abukonn.stories(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES abukonn.users(id) ON DELETE CASCADE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(story_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_story_reactions_story ON abukonn.story_reactions(story_id);`;
+
+async function createStoryReactionsTable() {
+  await pool.query(CREATE_STORY_REACTIONS_TABLE);
+  console.log('Story reactions table ready');
+}
+
+async function toggleStoryReaction(storyId, userId) {
+  const del = await pool.query(
+    `DELETE FROM abukonn.story_reactions WHERE story_id=$1 AND user_id=$2 RETURNING id`,
+    [storyId, userId]
+  );
+  if (del.rowCount > 0) {
+    const cnt = await pool.query(`SELECT COUNT(*) FROM abukonn.story_reactions WHERE story_id=$1`, [storyId]);
+    return { liked: false, count: parseInt(cnt.rows[0].count, 10) };
+  }
+  await pool.query(
+    `INSERT INTO abukonn.story_reactions (story_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+    [storyId, userId]
+  );
+  const cnt = await pool.query(`SELECT COUNT(*) FROM abukonn.story_reactions WHERE story_id=$1`, [storyId]);
+  return { liked: true, count: parseInt(cnt.rows[0].count, 10) };
+}
+
+async function getStoryReactions(storyId, userId) {
+  const cnt = await pool.query(`SELECT COUNT(*) FROM abukonn.story_reactions WHERE story_id=$1`, [storyId]);
+  const liked = await pool.query(
+    `SELECT 1 FROM abukonn.story_reactions WHERE story_id=$1 AND user_id=$2`, [storyId, userId]
+  );
+  const likers = await pool.query(
+    `SELECT r.user_id, u.full_name AS user_name, u.profile_photo_url AS user_photo
+     FROM abukonn.story_reactions r
+     JOIN abukonn.users u ON r.user_id = u.id
+     WHERE r.story_id = $1
+     ORDER BY r.created_at DESC`,
+    [storyId]
+  );
+  return {
+    count: parseInt(cnt.rows[0].count, 10),
+    is_liked: liked.rows.length > 0,
+    likers: likers.rows,
+  };
+}
+
+// ── Story replies ────────────────────────────────────────────────────────────
+
+const CREATE_STORY_REPLIES_TABLE = `
+CREATE TABLE IF NOT EXISTS abukonn.story_replies (
+  id SERIAL PRIMARY KEY,
+  story_id INTEGER NOT NULL REFERENCES abukonn.stories(id) ON DELETE CASCADE,
+  sender_id INTEGER NOT NULL REFERENCES abukonn.users(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_story_replies_story ON abukonn.story_replies(story_id);`;
+
+async function createStoryRepliesTable() {
+  await pool.query(CREATE_STORY_REPLIES_TABLE);
+  console.log('Story replies table ready');
+}
+
+async function createStoryReply(storyId, senderId, content) {
+  const result = await pool.query(
+    `INSERT INTO abukonn.story_replies (story_id, sender_id, content) VALUES ($1, $2, $3) RETURNING *`,
+    [storyId, senderId, content]
+  );
+  return result.rows[0];
+}
+
+async function getStoryReplies(storyId) {
+  const result = await pool.query(
+    `SELECT r.*, u.full_name AS sender_name, u.profile_photo_url AS sender_photo
+     FROM abukonn.story_replies r
+     JOIN abukonn.users u ON r.sender_id = u.id
+     WHERE r.story_id = $1
+     ORDER BY r.created_at ASC`,
+    [storyId]
+  );
+  return result.rows;
+}
+
+module.exports = {
+  createStoriesTable,
+  createStory,
+  getActiveStoriesForUser,
+  deleteStory,
+  getStoryById,
+  createStoryReactionsTable,
+  toggleStoryReaction,
+  getStoryReactions,
+  createStoryRepliesTable,
+  createStoryReply,
+  getStoryReplies,
+};

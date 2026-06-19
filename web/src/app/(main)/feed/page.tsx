@@ -263,6 +263,8 @@ function StoriesBar({
 
 function StoryViewer({
   group, index, onClose, onPrev, onNext, onDelete, onAddStory,
+  reactions, onReact, showReplyInput, onToggleReply, replyText, onReplyChange, onSendReply, replySending,
+  likers,
 }: {
   group: StoryGroup;
   index: number;
@@ -271,6 +273,15 @@ function StoryViewer({
   onNext: () => void;
   onDelete?: (storyId: number) => void;
   onAddStory?: () => void;
+  reactions?: { count: number; is_liked: boolean };
+  onReact?: () => void;
+  showReplyInput?: boolean;
+  onToggleReply?: () => void;
+  replyText?: string;
+  onReplyChange?: (v: string) => void;
+  onSendReply?: () => void;
+  replySending?: boolean;
+  likers?: Array<{ user_id: number; user_name: string; user_photo: string | null }>;
 }) {
   const story = group.stories[index];
   if (!story) return null;
@@ -337,6 +348,78 @@ function StoryViewer({
       {/* Tap zones */}
       <button type="button" className="absolute left-0 top-0 z-10 h-full w-1/3" onClick={onPrev} aria-label="Previous" />
       <button type="button" className="absolute right-0 top-0 z-10 h-full w-1/3" onClick={onNext} aria-label="Next" />
+
+      {/* Bottom bar — others' story: react + reply */}
+      {!group.is_own && (
+        <div className="absolute bottom-0 left-0 right-0 z-20 flex flex-col gap-2 px-4 pb-8">
+          {showReplyInput && (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={replyText ?? ''}
+                onChange={e => onReplyChange?.(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !replySending && replyText?.trim()) onSendReply?.(); }}
+                placeholder="Reply to story…"
+                autoFocus
+                className="flex-1 rounded-full bg-white/20 px-4 py-2 text-sm text-white placeholder:text-white/50 outline-none backdrop-blur-sm"
+              />
+              <button
+                type="button"
+                onClick={onSendReply}
+                disabled={replySending || !replyText?.trim()}
+                className="rounded-full bg-white/20 p-2 text-white backdrop-blur-sm disabled:opacity-40"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                </svg>
+              </button>
+            </div>
+          )}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onReact}
+              className="flex items-center gap-1.5 rounded-full bg-black/30 px-3 py-1.5 text-white backdrop-blur-sm"
+            >
+              <svg className="h-5 w-5" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                fill={reactions?.is_liked ? '#ef4444' : 'none'}
+                style={{ color: reactions?.is_liked ? '#ef4444' : 'white' }}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
+              </svg>
+              <span className="text-sm font-medium">{reactions?.count ?? 0}</span>
+            </button>
+            <button
+              type="button"
+              onClick={onToggleReply}
+              className="flex items-center gap-1.5 rounded-full bg-black/30 px-3 py-1.5 text-white backdrop-blur-sm"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.586 1.641a4.483 4.483 0 01-.923 1.785A5.969 5.969 0 006 21c1.282 0 2.47-.402 3.445-1.087.81.22 1.668.337 2.555.337z" />
+              </svg>
+              <span className="text-sm font-medium">Reply</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom bar — own story: who liked it */}
+      {group.is_own && likers && likers.length > 0 && (
+        <div className="absolute bottom-0 left-0 right-0 z-20 px-4 pb-8">
+          <div className="rounded-xl bg-black/40 px-4 py-3 backdrop-blur-sm">
+            <p className="mb-2 text-xs font-medium text-white/60">
+              ❤ {likers.length} {likers.length === 1 ? 'like' : 'likes'}
+            </p>
+            <div className="flex max-h-24 flex-col gap-1.5 overflow-y-auto">
+              {likers.map(l => (
+                <div key={l.user_id} className="flex items-center gap-2">
+                  <Avatar src={l.user_photo} name={l.user_name} size="xs" />
+                  <span className="text-xs text-white">{l.user_name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -607,6 +690,12 @@ export default function FeedPage() {
   const [storyText, setStoryText] = useState('');
   const [storyBgColor, setStoryBgColor] = useState('#16a34a');
   const [viewedStoryIds, setViewedStoryIds] = useState<Set<number>>(new Set());
+  // Story reactions & replies
+  const [storyReactions, setStoryReactions] = useState<Record<number, { count: number; is_liked: boolean }>>({});
+  const [storyLikers, setStoryLikers] = useState<Array<{ user_id: number; user_name: string; user_photo: string | null }>>([]);
+  const [showStoryReply, setShowStoryReply] = useState(false);
+  const [storyReplyText, setStoryReplyText] = useState('');
+  const [storyReplySending, setStoryReplySending] = useState(false);
 
   // Category filter
   const [categoryFilter, setCategoryFilter] = useState<PostCategory | 'ALL'>('ALL');
@@ -676,9 +765,27 @@ export default function FeedPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, loading, posts.length]);
 
-  // Auto-advance story viewer (paused while upload modal is open)
+  // Fetch reactions for the currently viewed story
   useEffect(() => {
-    if (!viewingGroup || showUploadStory) { if (storyTimerRef.current) clearTimeout(storyTimerRef.current); return; }
+    if (!viewingGroup || !token) return;
+    const story = viewingGroup.stories[viewingIdx];
+    if (!story) return;
+    setShowStoryReply(false);
+    setStoryReplyText('');
+    fetch(`${API_URL}/api/stories/${story.id}/reactions`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then(d => {
+        setStoryReactions(prev => ({ ...prev, [story.id]: { count: d.count, is_liked: d.is_liked } }));
+        if (viewingGroup.is_own) setStoryLikers(d.likers || []);
+      })
+      .catch(() => {});
+  }, [viewingGroup, viewingIdx, token]);
+
+  // Auto-advance story viewer (paused while upload modal or reply input is open)
+  useEffect(() => {
+    if (!viewingGroup || showUploadStory || showStoryReply) { if (storyTimerRef.current) clearTimeout(storyTimerRef.current); return; }
     storyTimerRef.current = setTimeout(() => {
       if (viewingIdx < viewingGroup.stories.length - 1) {
         setViewingIdx(i => i + 1);
@@ -687,7 +794,7 @@ export default function FeedPage() {
       }
     }, 5000);
     return () => { if (storyTimerRef.current) clearTimeout(storyTimerRef.current); };
-  }, [viewingGroup, viewingIdx, showUploadStory]);
+  }, [viewingGroup, viewingIdx, showUploadStory, showStoryReply]);
 
   // Load viewed story IDs from localStorage on mount; purge entries older than 24 h
   useEffect(() => {
@@ -1032,6 +1139,39 @@ export default function FeedPage() {
         setViewingIdx(i => Math.min(i, remaining.length - 1));
       }
     } catch { /* silent */ }
+  };
+
+  const handleToggleReaction = async (storyId: number) => {
+    if (!token) return;
+    setStoryReactions(prev => {
+      const curr = prev[storyId] || { count: 0, is_liked: false };
+      return { ...prev, [storyId]: { count: curr.is_liked ? curr.count - 1 : curr.count + 1, is_liked: !curr.is_liked } };
+    });
+    try {
+      const res = await fetch(`${API_URL}/api/stories/${storyId}/react`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const d = await res.json();
+        setStoryReactions(prev => ({ ...prev, [storyId]: { count: d.count, is_liked: d.liked } }));
+      }
+    } catch { /* keep optimistic */ }
+  };
+
+  const handleSendStoryReply = async (storyId: number) => {
+    if (!token || !storyReplyText.trim() || storyReplySending) return;
+    setStoryReplySending(true);
+    try {
+      await fetch(`${API_URL}/api/stories/${storyId}/reply`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: storyReplyText.trim() }),
+      });
+      setStoryReplyText('');
+      setShowStoryReply(false);
+    } catch { /* silent */ }
+    finally { setStoryReplySending(false); }
   };
 
   // ── Repost ───────────────────────────────────────────────────────────────────
@@ -1759,6 +1899,15 @@ export default function FeedPage() {
           onNext={() => viewingIdx < viewingGroup.stories.length - 1 ? setViewingIdx(i => i + 1) : setViewingGroup(null)}
           onDelete={handleDeleteStory}
           onAddStory={() => setShowUploadStory(true)}
+          reactions={storyReactions[viewingGroup.stories[viewingIdx]?.id]}
+          onReact={() => viewingGroup.stories[viewingIdx] && handleToggleReaction(viewingGroup.stories[viewingIdx].id)}
+          showReplyInput={showStoryReply}
+          onToggleReply={() => setShowStoryReply(v => !v)}
+          replyText={storyReplyText}
+          onReplyChange={setStoryReplyText}
+          onSendReply={() => viewingGroup.stories[viewingIdx] && handleSendStoryReply(viewingGroup.stories[viewingIdx].id)}
+          replySending={storyReplySending}
+          likers={storyLikers}
         />
       )}
 
