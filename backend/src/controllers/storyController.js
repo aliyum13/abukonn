@@ -117,7 +117,16 @@ async function replyToStory(req, res) {
 
     if (story.user_id !== req.user.id) {
       const conv = await findOrCreateConversation(req.user.id, story.user_id);
-      await sendMessage({ conversationId: conv.id, senderId: req.user.id, content });
+      const dmContent = JSON.stringify({
+        type: 'story_reply',
+        story_id: story.id,
+        story_type: story.story_type,
+        media_url: story.media_url || null,
+        text_content: story.text_content || null,
+        bg_color: story.bg_color || null,
+        reply: content,
+      });
+      await sendMessage({ conversationId: conv.id, senderId: req.user.id, content: dmContent });
     }
 
     res.status(201).json({ reply });

@@ -91,11 +91,31 @@ function parseSharedPost(content: string): SharedPostData | null {
   return null;
 }
 
+interface StoryReplyData {
+  type: 'story_reply';
+  story_id: number;
+  story_type: 'image' | 'video' | 'text';
+  media_url: string | null;
+  text_content: string | null;
+  bg_color: string | null;
+  reply: string;
+}
+
+function parseStoryReply(content: string): StoryReplyData | null {
+  try {
+    const data = JSON.parse(content);
+    if (data?.type === 'story_reply') return data as StoryReplyData;
+  } catch { /* not JSON */ }
+  return null;
+}
+
 /** Returns a friendly preview string for the conversation list. */
 function friendlyPreview(content: string | null): string {
   if (!content) return 'No messages yet';
   const shared = parseSharedPost(content);
   if (shared) return `📌 Shared a post`;
+  const storyReply = parseStoryReply(content);
+  if (storyReply) return `↩ ${storyReply.reply}`;
   return content;
 }
 
@@ -135,6 +155,41 @@ function SharedPostCard({ data, isSent }: { data: SharedPostData; isSent: boolea
               <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
             </svg>
           </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StoryReplyCard({ data, isSent }: { data: StoryReplyData; isSent: boolean }) {
+  return (
+    <div className="w-full">
+      <p className={cn('mb-2 text-[11px] font-medium', isSent ? 'text-brand-200' : 'text-ink-muted')}>
+        ↩ Replied to a story
+      </p>
+      <div className={cn(
+        'overflow-hidden rounded-xl border',
+        isSent ? 'border-brand-500/50 bg-white/10' : 'border-border bg-surface-muted dark:bg-[#1a1a1a]'
+      )}>
+        {data.story_type === 'image' && data.media_url && (
+          <img src={data.media_url} alt="Story" className="h-24 w-full object-cover" />
+        )}
+        {data.story_type === 'video' && data.media_url && (
+          <div className="flex h-24 items-center justify-center bg-black/60">
+            <svg className="h-8 w-8 text-white/80" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          </div>
+        )}
+        {data.story_type === 'text' && data.text_content && (
+          <div className="flex h-16 items-center justify-center px-3" style={{ backgroundColor: data.bg_color || '#16a34a' }}>
+            <p className="line-clamp-2 text-center text-xs font-semibold text-white">{data.text_content}</p>
+          </div>
+        )}
+        <div className="px-3 py-2">
+          <p className={cn('text-[13px] leading-relaxed', isSent ? 'text-white/90' : 'text-ink')}>
+            {data.reply}
+          </p>
         </div>
       </div>
     </div>
@@ -688,14 +743,18 @@ export default function MessagesPage() {
                             {!isSent && <div className="w-7 shrink-0">{showAvatar && <Avatar src={activeConversation.other_user_photo} name={activeConversation.other_user_name} size="sm" className="h-7 w-7" />}</div>}
                             {(() => {
                               const shared = parseSharedPost(msg.content);
+                              const storyReply = !shared ? parseStoryReply(msg.content) : null;
+                              const isCard = shared || storyReply;
                               return (
                                 <div className={cn(
                                   'min-w-0 rounded-2xl px-4 py-2.5 text-body-sm',
-                                  shared ? 'max-w-[85%] w-72' : 'max-w-[75%]',
+                                  isCard ? 'max-w-[85%] w-72' : 'max-w-[75%]',
                                   isSent ? 'rounded-br-md bg-brand-600 text-white' : 'rounded-bl-md border border-border bg-white dark:bg-[#1a1a1a] dark:border-[#333] text-ink'
                                 )}>
                                   {shared
                                     ? <SharedPostCard data={shared} isSent={isSent} />
+                                    : storyReply
+                                    ? <StoryReplyCard data={storyReply} isSent={isSent} />
                                     : <p className="whitespace-pre-wrap break-words">{msg.content}</p>
                                   }
                                   <div className={cn('mt-1 flex items-center gap-2', isSent ? 'justify-end' : 'justify-start')}>
@@ -773,14 +832,18 @@ export default function MessagesPage() {
                               )}
                               {(() => {
                                 const shared = parseSharedPost(msg.content);
+                                const storyReply = !shared ? parseStoryReply(msg.content) : null;
+                                const isCard = shared || storyReply;
                                 return (
                                   <div className={cn(
                                     'rounded-2xl px-4 py-2.5 text-body-sm',
-                                    shared ? 'w-72' : '',
+                                    isCard ? 'w-72' : '',
                                     isSent ? 'rounded-br-md bg-brand-600 text-white' : 'rounded-bl-md border border-border bg-white dark:bg-[#1a1a1a] dark:border-[#333] text-ink'
                                   )}>
                                     {shared
                                       ? <SharedPostCard data={shared} isSent={isSent} />
+                                      : storyReply
+                                      ? <StoryReplyCard data={storyReply} isSent={isSent} />
                                       : <p className="whitespace-pre-wrap break-words">{msg.content}</p>
                                     }
                                     <p className={cn('mt-1 text-caption', isSent ? 'text-brand-200 text-right' : 'text-ink-muted')}>{formatTime(msg.created_at)}</p>
