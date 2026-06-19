@@ -268,10 +268,16 @@ function StoriesBar({
   );
 }
 
+function storyFormatTime(secs: number) {
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 function StoryViewer({
   group, index, onClose, onPrev, onNext, onDelete, onAddStory,
   reactions, onReact, showReplyInput, onToggleReply, replyText, onReplyChange, onSendReply, replySending,
-  likers, viewCount,
+  likers, viewCount, isPaused, onPauseToggle,
 }: {
   group: StoryGroup;
   index: number;
@@ -290,19 +296,61 @@ function StoryViewer({
   replySending?: boolean;
   likers?: Array<{ user_id: number; user_name: string; user_photo: string | null }>;
   viewCount?: number;
+  isPaused: boolean;
+  onPauseToggle: () => void;
 }) {
   const story = group.stories[index];
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [showPauseIcon, setShowPauseIcon] = useState(false);
+  const [videoProgress, setVideoProgress] = useState(0);
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [videoCurrentTime, setVideoCurrentTime] = useState(0);
+  const pauseIconTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!videoRef.current) return;
+    if (isPaused) {
+      videoRef.current.pause();
+    } else {
+      videoRef.current.play().catch(() => {});
+    }
+  }, [isPaused]);
+
+  useEffect(() => {
+    setVideoProgress(0);
+    setVideoCurrentTime(0);
+    setVideoDuration(0);
+  }, [story?.id]);
+
   if (!story) return null;
+
+  const handleCenterTap = () => {
+    onPauseToggle();
+    setShowPauseIcon(true);
+    if (pauseIconTimerRef.current) clearTimeout(pauseIconTimerRef.current);
+    pauseIconTimerRef.current = setTimeout(() => setShowPauseIcon(false), 1000);
+  };
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
       {/* Backdrop — dedicated element so content clicks never bubble here */}
       <div className="absolute inset-0 bg-black" onClick={onClose} />
       {/* Progress bars */}
       <div className="absolute top-0 left-0 right-0 z-10 flex gap-1 p-3">
-        {group.stories.map((_, i) => (
+        {group.stories.map((s, i) => (
           <div key={i} className="h-0.5 flex-1 rounded-full bg-white/30">
-            <div className={cn('h-full rounded-full bg-white transition-all',
-              i < index ? 'w-full' : i === index ? 'animate-[story-progress_5s_linear_forwards]' : 'w-0')} />
+            {i < index ? (
+              <div className="h-full w-full rounded-full bg-white" />
+            ) : i === index ? (
+              s.story_type === 'video' ? (
+                <div className="h-full rounded-full bg-white" style={{ width: `${videoProgress * 100}%`, transition: 'width 0.1s linear' }} />
+              ) : (
+                <div className="h-full rounded-full bg-white animate-[story-progress_5s_linear_forwards]"
+                  style={{ animationPlayState: isPaused ? 'paused' : 'running' }} />
+              )
+            ) : (
+              <div className="h-full w-0 rounded-full bg-white" />
+            )}
           </div>
         ))}
       </div>
@@ -312,6 +360,9 @@ function StoryViewer({
           <Avatar src={group.user_photo} name={group.user_name} size="sm" />
           <span className="text-sm font-medium text-white">{group.user_name}</span>
           <span className="text-xs text-white/60">{new Date(story.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+          {story.story_type === 'video' && videoDuration > 0 && (
+            <span className="text-xs text-white/60">{storyFormatTime(videoCurrentTime)} / {storyFormatTime(videoDuration)}</span>
+          )}
           <span className={cn('flex items-center gap-1', group.is_own ? 'text-white/80 text-xs font-medium' : 'text-white/40 text-[11px]')}>
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
@@ -355,14 +406,50 @@ function StoryViewer({
             </p>
           </div>
         ) : story.story_type === 'video' ? (
-          <video src={story.media_url!} autoPlay muted={false} controls={false} playsInline className="max-h-full w-full object-contain" />
+          <video
+            ref={videoRef}
+            src={story.media_url!}
+            autoPlay
+            muted={false}
+            controls={false}
+            playsInline
+            className="max-h-full w-full object-contain"
+            onTimeUpdate={(e) => {
+              const vid = e.currentTarget;
+              if (vid.duration && !isNaN(vid.duration)) {
+                setVideoProgress(vid.currentTime / vid.duration);
+                setVideoCurrentTime(vid.currentTime);
+              }
+            }}
+            onLoadedMetadata={(e) => {
+              setVideoDuration(e.currentTarget.duration);
+            }}
+            onEnded={() => onNext()}
+          />
         ) : (
           <img src={story.media_url!} alt="Story" className="max-h-full w-full object-contain" />
         )}
       </div>
       {/* Tap zones */}
       <button type="button" className="absolute left-0 top-0 z-10 h-full w-1/3" onClick={onPrev} aria-label="Previous" />
+      <button type="button" className="absolute left-1/3 right-1/3 top-0 z-10 h-full" onClick={handleCenterTap} aria-label="Pause/Resume" />
       <button type="button" className="absolute right-0 top-0 z-10 h-full w-1/3" onClick={onNext} aria-label="Next" />
+      {/* Pause/play icon — brief overlay feedback */}
+      {showPauseIcon && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
+          <div className="rounded-full bg-black/50 p-4">
+            {isPaused ? (
+              <svg className="h-10 w-10 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+              </svg>
+            ) : (
+              <svg className="h-10 w-10 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Bottom bar — others' story: react + reply */}
       {!group.is_own && (
@@ -741,6 +828,7 @@ export default function FeedPage() {
   const [showStoryReply, setShowStoryReply] = useState(false);
   const [storyReplyText, setStoryReplyText] = useState('');
   const [storyReplySending, setStoryReplySending] = useState(false);
+  const [storyPaused, setStoryPaused] = useState(false);
 
   // Category filter
   const [categoryFilter, setCategoryFilter] = useState<PostCategory | 'ALL'>('ALL');
@@ -829,9 +917,13 @@ export default function FeedPage() {
       .catch(() => {});
   }, [viewingGroup, viewingIdx, token]);
 
-  // Auto-advance story viewer (paused while upload modal or reply input is open)
+  // Auto-advance story viewer (image/text only; video advances via onEnded)
   useEffect(() => {
-    if (!viewingGroup || showUploadStory || showStoryReply) { if (storyTimerRef.current) clearTimeout(storyTimerRef.current); return; }
+    const isVideo = viewingGroup?.stories[viewingIdx]?.story_type === 'video';
+    if (!viewingGroup || showUploadStory || showStoryReply || storyPaused || isVideo) {
+      if (storyTimerRef.current) clearTimeout(storyTimerRef.current);
+      return;
+    }
     storyTimerRef.current = setTimeout(() => {
       if (viewingIdx < viewingGroup.stories.length - 1) {
         setViewingIdx(i => i + 1);
@@ -840,7 +932,12 @@ export default function FeedPage() {
       }
     }, 5000);
     return () => { if (storyTimerRef.current) clearTimeout(storyTimerRef.current); };
-  }, [viewingGroup, viewingIdx, showUploadStory, showStoryReply]);
+  }, [viewingGroup, viewingIdx, showUploadStory, showStoryReply, storyPaused]);
+
+  // Reset pause state when navigating to a different story
+  useEffect(() => {
+    setStoryPaused(false);
+  }, [viewingGroup?.user_id, viewingIdx]);
 
   // Load viewed story IDs from localStorage on mount; purge entries older than 24 h
   useEffect(() => {
@@ -1974,6 +2071,8 @@ export default function FeedPage() {
           replySending={storyReplySending}
           likers={storyLikers}
           viewCount={viewingGroup.stories[viewingIdx]?.view_count ?? 0}
+          isPaused={storyPaused}
+          onPauseToggle={() => setStoryPaused(p => !p)}
         />
       )}
 
