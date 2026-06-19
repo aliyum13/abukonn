@@ -65,6 +65,21 @@ async function deleteStory(storyId, userId) {
   return result.rows[0] || null;
 }
 
+async function getMyActiveStories(userId) {
+  const result = await pool.query(
+    `SELECT s.id, s.user_id, s.media_url, s.media_type, s.story_type, s.text_content, s.bg_color,
+            s.created_at, s.expires_at,
+            COUNT(sv.id)::int AS view_count
+     FROM abukonn.stories s
+     LEFT JOIN abukonn.story_views sv ON sv.story_id = s.id
+     WHERE s.user_id = $1 AND s.expires_at > NOW()
+     GROUP BY s.id
+     ORDER BY s.created_at DESC`,
+    [userId]
+  );
+  return result.rows;
+}
+
 async function getStoryById(storyId) {
   const result = await pool.query(`SELECT * FROM abukonn.stories WHERE id = $1`, [storyId]);
   return result.rows[0] || null;
@@ -189,6 +204,7 @@ module.exports = {
   createStoriesTable,
   createStory,
   getActiveStoriesForUser,
+  getMyActiveStories,
   deleteStory,
   getStoryById,
   createStoryViewsTable,

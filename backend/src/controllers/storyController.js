@@ -70,6 +70,16 @@ async function getStories(req, res) {
   }
 }
 
+async function getMyStories(req, res) {
+  try {
+    const stories = await Story.getMyActiveStories(req.user.id);
+    res.json({ stories });
+  } catch (err) {
+    console.error('Get my stories error:', err.message);
+    res.status(500).json({ message: 'Server error fetching stories' });
+  }
+}
+
 async function deleteStory(req, res) {
   try {
     const storyId = parseInt(req.params.id, 10);
@@ -162,4 +172,4 @@ async function recordView(req, res) {
   }
 }
 
-module.exports = { createStory, getStories, deleteStory, reactToStory, getReactionsHandler, replyToStory, getStoryRepliesHandler, recordView };
+module.exports = { createStory, getStories, getMyStories, deleteStory, reactToStory, getReactionsHandler, replyToStory, getStoryRepliesHandler, recordView };

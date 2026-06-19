@@ -226,7 +226,13 @@ function StoriesBar({
             </svg>
           </button>
         </div>
-        <span className="max-w-[54px] truncate text-[11px] font-medium text-ink-muted">My Status</span>
+        {ownGroup ? (
+          <Link href="/mystories" className="max-w-[54px] truncate text-[11px] font-medium text-brand-600 hover:text-brand-700" onClick={e => e.stopPropagation()}>
+            My Stories
+          </Link>
+        ) : (
+          <span className="max-w-[54px] truncate text-[11px] font-medium text-ink-muted">My Status</span>
+        )}
       </div>
       {/* Others */}
       {others.map(g => (
