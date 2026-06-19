@@ -275,10 +275,11 @@ function StoryViewer({
   const story = group.stories[index];
   if (!story) return null;
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black"
-      onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center">
+      {/* Backdrop — dedicated element so content clicks never bubble here */}
+      <div className="absolute inset-0 bg-black" onClick={onClose} />
       {/* Progress bars */}
-      <div className="absolute top-0 left-0 right-0 flex gap-1 p-3">
+      <div className="absolute top-0 left-0 right-0 z-10 flex gap-1 p-3">
         {group.stories.map((_, i) => (
           <div key={i} className="h-0.5 flex-1 rounded-full bg-white/30">
             <div className={cn('h-full rounded-full bg-white transition-all',
@@ -287,7 +288,7 @@ function StoryViewer({
         ))}
       </div>
       {/* Header */}
-      <div className="absolute top-6 left-0 right-0 flex items-center justify-between px-4" onClick={e => e.stopPropagation()}>
+      <div className="absolute top-6 left-0 right-0 z-10 flex items-center justify-between px-4">
         <div className="flex items-center gap-2">
           <Avatar src={group.user_photo} name={group.user_name} size="sm" />
           <span className="text-sm font-medium text-white">{group.user_name}</span>
@@ -295,7 +296,7 @@ function StoryViewer({
         </div>
         <div className="flex items-center gap-2">
           {group.is_own && onAddStory && (
-            <button type="button" onClick={e => { e.stopPropagation(); onAddStory(); }}
+            <button type="button" onClick={onAddStory}
               className="rounded-full bg-black/30 p-1.5 text-white hover:bg-black/50" title="Add to story">
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -316,7 +317,7 @@ function StoryViewer({
         </div>
       </div>
       {/* Media / Text */}
-      <div className="flex h-full w-full max-w-sm items-center justify-center" onClick={e => e.stopPropagation()}>
+      <div className="relative z-10 flex h-full w-full max-w-sm items-center justify-center">
         {story.story_type === 'text' ? (
           <div className="flex h-full w-full items-center justify-center px-8"
             style={{ backgroundColor: story.bg_color || '#16a34a' }}>
@@ -327,15 +328,15 @@ function StoryViewer({
               {story.text_content}
             </p>
           </div>
-        ) : story.media_type === 'video' ? (
-          <video src={story.media_url!} autoPlay muted loop className="max-h-full w-full object-contain" />
+        ) : story.story_type === 'video' ? (
+          <video src={story.media_url!} autoPlay muted={false} controls={false} playsInline className="max-h-full w-full object-contain" />
         ) : (
           <img src={story.media_url!} alt="Story" className="max-h-full w-full object-contain" />
         )}
       </div>
       {/* Tap zones */}
-      <button type="button" className="absolute left-0 top-0 h-full w-1/3" onClick={e => { e.stopPropagation(); onPrev(); }} aria-label="Previous" />
-      <button type="button" className="absolute right-0 top-0 h-full w-1/3" onClick={e => { e.stopPropagation(); onNext(); }} aria-label="Next" />
+      <button type="button" className="absolute left-0 top-0 z-10 h-full w-1/3" onClick={onPrev} aria-label="Previous" />
+      <button type="button" className="absolute right-0 top-0 z-10 h-full w-1/3" onClick={onNext} aria-label="Next" />
     </div>
   );
 }
@@ -688,11 +689,35 @@ export default function FeedPage() {
     return () => { if (storyTimerRef.current) clearTimeout(storyTimerRef.current); };
   }, [viewingGroup, viewingIdx, showUploadStory]);
 
-  // Mark current story as viewed
+  // Load viewed story IDs from localStorage on mount; purge entries older than 24 h
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('viewed_stories');
+      if (!stored) return;
+      const parsed: Record<string, number> = JSON.parse(stored);
+      const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+      const ids = new Set<number>();
+      const valid: Record<string, number> = {};
+      for (const [id, ts] of Object.entries(parsed)) {
+        if (ts > cutoff) { valid[id] = ts; ids.add(Number(id)); }
+      }
+      localStorage.setItem('viewed_stories', JSON.stringify(valid));
+      setViewedStoryIds(ids);
+    } catch {}
+  }, []);
+
+  // Mark current story as viewed and persist to localStorage
   useEffect(() => {
     if (!viewingGroup) return;
     const story = viewingGroup.stories[viewingIdx];
-    if (story) setViewedStoryIds(prev => new Set([...prev, story.id]));
+    if (!story) return;
+    setViewedStoryIds(prev => new Set([...prev, story.id]));
+    try {
+      const stored = localStorage.getItem('viewed_stories');
+      const parsed: Record<string, number> = stored ? JSON.parse(stored) : {};
+      parsed[String(story.id)] = Date.now();
+      localStorage.setItem('viewed_stories', JSON.stringify(parsed));
+    } catch {}
   }, [viewingGroup, viewingIdx]);
 
   // Close post context menu on outside click
