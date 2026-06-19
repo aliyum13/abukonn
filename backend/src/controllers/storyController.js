@@ -12,6 +12,23 @@ async function uploadToCloudinary(buffer, mimetype) {
 
 async function createStory(req, res) {
   try {
+    const storyType = req.body?.story_type;
+
+    if (storyType === 'text') {
+      const textContent = (req.body?.text_content || '').trim();
+      const bgColor = req.body?.bg_color || '#16a34a';
+      if (!textContent) return res.status(400).json({ message: 'Text content is required' });
+      const story = await Story.createStory({
+        userId: req.user.id,
+        mediaUrl: null,
+        mediaType: null,
+        storyType: 'text',
+        textContent,
+        bgColor,
+      });
+      return res.status(201).json({ story });
+    }
+
     if (!req.file) return res.status(400).json({ message: 'Media file is required' });
     const result = await uploadToCloudinary(req.file.buffer, req.file.mimetype);
     const mediaType = req.file.mimetype.startsWith('video') ? 'video' : 'image';
@@ -19,6 +36,7 @@ async function createStory(req, res) {
       userId: req.user.id,
       mediaUrl: result.secure_url,
       mediaType,
+      storyType: mediaType,
     });
     res.status(201).json({ story });
   } catch (err) {
