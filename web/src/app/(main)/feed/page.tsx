@@ -293,7 +293,7 @@ function StoryViewer({
         </div>
         <div className="flex items-center gap-2">
           {group.is_own && onAddStory && (
-            <button type="button" onClick={onAddStory}
+            <button type="button" onClick={e => { e.stopPropagation(); onAddStory(); }}
               className="rounded-full bg-black/30 p-1.5 text-white hover:bg-black/50" title="Add to story">
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -628,14 +628,20 @@ export default function FeedPage() {
     if (!authLoading && !token) router.push('/login');
   }, [authLoading, token, router]);
 
-  // Close lightbox/story viewer on Escape
+  // Close lightbox/story viewer on Escape; if upload modal is open, close that first
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setLightboxUrl(null); setViewingGroup(null); }
+      if (e.key !== 'Escape') return;
+      if (showUploadStory) {
+        setShowUploadStory(false);
+        setStoryFile(null); setStoryPreview(null); setStoryText(''); setStoryBgColor('#16a34a'); setStoryTab('media');
+      } else {
+        setLightboxUrl(null); setViewingGroup(null);
+      }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, []);
+  }, [showUploadStory]);
 
   // Fetch stories
   useEffect(() => {
@@ -667,9 +673,9 @@ export default function FeedPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, loading, posts.length]);
 
-  // Auto-advance story viewer
+  // Auto-advance story viewer (paused while upload modal is open)
   useEffect(() => {
-    if (!viewingGroup) { if (storyTimerRef.current) clearTimeout(storyTimerRef.current); return; }
+    if (!viewingGroup || showUploadStory) { if (storyTimerRef.current) clearTimeout(storyTimerRef.current); return; }
     storyTimerRef.current = setTimeout(() => {
       if (viewingIdx < viewingGroup.stories.length - 1) {
         setViewingIdx(i => i + 1);
@@ -678,7 +684,7 @@ export default function FeedPage() {
       }
     }, 5000);
     return () => { if (storyTimerRef.current) clearTimeout(storyTimerRef.current); };
-  }, [viewingGroup, viewingIdx]);
+  }, [viewingGroup, viewingIdx, showUploadStory]);
 
   // Mark current story as viewed
   useEffect(() => {
@@ -987,12 +993,16 @@ export default function FeedPage() {
         prev.map(g => g.is_own ? { ...g, stories: g.stories.filter(s => s.id !== storyId) } : g)
           .filter(g => g.stories.length > 0)
       );
-      const newStories = viewingGroup.stories.filter(s => s.id !== storyId);
-      if (newStories.length === 0) {
-        setViewingGroup(null);
-      } else {
-        setViewingGroup({ ...viewingGroup, stories: newStories });
-        setViewingIdx(i => Math.min(i, newStories.length - 1));
+      // Use functional updater so we always read the latest viewingGroup state
+      setViewingGroup(prev => {
+        if (!prev) return null;
+        const remaining = prev.stories.filter(s => s.id !== storyId);
+        return remaining.length === 0 ? null : { ...prev, stories: remaining };
+      });
+      // Clamp index after stories shrink (safe even if viewer is closing)
+      const remaining = viewingGroup.stories.filter(s => s.id !== storyId);
+      if (remaining.length > 0) {
+        setViewingIdx(i => Math.min(i, remaining.length - 1));
       }
     } catch { /* silent */ }
   };
