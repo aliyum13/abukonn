@@ -829,6 +829,8 @@ export default function FeedPage() {
   const [storyReplyText, setStoryReplyText] = useState('');
   const [storyReplySending, setStoryReplySending] = useState(false);
   const [storyPaused, setStoryPaused] = useState(false);
+  const [storyUploadProgress, setStoryUploadProgress] = useState<number | null>(null);
+  const [storyUploadError, setStoryUploadError] = useState('');
 
   // Category filter
   const [categoryFilter, setCategoryFilter] = useState<PostCategory | 'ALL'>('ALL');
@@ -860,7 +862,7 @@ export default function FeedPage() {
       if (e.key !== 'Escape') return;
       if (showUploadStory) {
         setShowUploadStory(false);
-        setStoryFile(null); setStoryPreview(null); setStoryText(''); setStoryBgColor('#16a34a'); setStoryTab('media');
+        setStoryFile(null); setStoryPreview(null); setStoryText(''); setStoryBgColor('#16a34a'); setStoryTab('media'); setStoryUploadError(''); setStoryUploadProgress(null);
       } else {
         setLightboxUrl(null); setViewingGroup(null);
       }
@@ -1226,6 +1228,12 @@ export default function FeedPage() {
   const handleStoryFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setStoryUploadError('');
+    if (file.type.startsWith('video/') && file.size > 50 * 1024 * 1024) {
+      setStoryUploadError('Video must be under 50MB');
+      e.target.value = '';
+      return;
+    }
     setStoryFile(file);
     const reader = new FileReader();
     reader.onloadend = () => setStoryPreview(reader.result as string);
@@ -1236,45 +1244,80 @@ export default function FeedPage() {
   const handleUploadStory = async () => {
     if (!token) return;
     setUploadingStory(true);
-    try {
-      let res: Response;
-      if (storyTab === 'text') {
-        res = await fetch(`${API_URL}/api/stories`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ story_type: 'text', text_content: storyText, bg_color: storyBgColor }),
-        });
-      } else {
-        if (!storyFile) return;
-        const formData = new FormData();
-        formData.append('media', storyFile);
-        res = await fetch(`${API_URL}/api/stories`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-          body: formData,
-        });
-      }
-      if (!res.ok) throw new Error('Upload failed');
-      const data = await res.json();
+    setStoryUploadError('');
+    setStoryUploadProgress(null);
+
+    const onSuccess = (story: Story) => {
       setStoryGroups(prev => {
         const ownIdx = prev.findIndex(g => g.is_own);
         if (ownIdx >= 0) {
           const updated = [...prev];
-          updated[ownIdx] = { ...updated[ownIdx], stories: [...updated[ownIdx].stories, data.story] };
+          updated[ownIdx] = { ...updated[ownIdx], stories: [...updated[ownIdx].stories, story] };
           return updated;
         }
-        return [{ user_id: user!.id, user_name: user!.full_name, user_photo: user!.profile_photo_url, is_own: true, stories: [data.story] }, ...prev];
+        return [{ user_id: user!.id, user_name: user!.full_name, user_photo: user!.profile_photo_url, is_own: true, stories: [story] }, ...prev];
       });
-      // Sync new story into viewer if it's open on own group
-      setViewingGroup(prev => prev?.is_own ? { ...prev, stories: [...prev.stories, data.story] } : prev);
+      setViewingGroup(prev => prev?.is_own ? { ...prev, stories: [...prev.stories, story] } : prev);
       setShowUploadStory(false);
       setStoryFile(null);
       setStoryPreview(null);
       setStoryText('');
       setStoryBgColor('#16a34a');
       setStoryTab('media');
-    } catch { /* silent */ }
-    finally { setUploadingStory(false); }
+    };
+
+    try {
+      if (storyTab === 'text') {
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), 60000);
+        const res = await fetch(`${API_URL}/api/stories`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ story_type: 'text', text_content: storyText, bg_color: storyBgColor }),
+          signal: controller.signal,
+        }).finally(() => clearTimeout(tid));
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({})) as { message?: string };
+          throw new Error(d.message || 'Upload failed');
+        }
+        onSuccess(((await res.json()) as { story: Story }).story);
+      } else {
+        if (!storyFile) return;
+        const story = await new Promise<Story>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          const tid = setTimeout(() => xhr.abort(), 60000);
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) setStoryUploadProgress(Math.round((e.loaded / e.total) * 100));
+          };
+          xhr.onload = () => {
+            clearTimeout(tid);
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try { resolve((JSON.parse(xhr.responseText) as { story: Story }).story); }
+              catch { reject(new Error('Invalid server response')); }
+            } else {
+              try { reject(new Error((JSON.parse(xhr.responseText) as { message?: string }).message || 'Upload failed')); }
+              catch { reject(new Error('Upload failed')); }
+            }
+          };
+          xhr.onerror = () => { clearTimeout(tid); reject(new Error('Network error — check your connection')); };
+          xhr.onabort = () => { clearTimeout(tid); reject(new Error('Upload timed out — try a shorter video')); };
+          const fd = new FormData();
+          fd.append('media', storyFile);
+          xhr.open('POST', `${API_URL}/api/stories`);
+          xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+          xhr.send(fd);
+        });
+        onSuccess(story);
+      }
+    } catch (err) {
+      const msg = err instanceof DOMException && err.name === 'AbortError'
+        ? 'Upload timed out — please try again'
+        : err instanceof Error ? err.message : 'Upload failed. Please try again.';
+      setStoryUploadError(msg);
+    } finally {
+      setUploadingStory(false);
+      setStoryUploadProgress(null);
+    }
   };
 
   const handleDeleteStory = async (storyId: number) => {
@@ -2079,7 +2122,7 @@ export default function FeedPage() {
       {/* Story Upload modal */}
       {showUploadStory && (() => {
         const BG_PRESETS = ['#16a34a','#1d4ed8','#7c3aed','#dc2626','#ea580c','#0891b2','#111827','#be185d'];
-        const closeModal = () => { setShowUploadStory(false); setStoryFile(null); setStoryPreview(null); setStoryText(''); setStoryBgColor('#16a34a'); setStoryTab('media'); };
+        const closeModal = () => { setShowUploadStory(false); setStoryFile(null); setStoryPreview(null); setStoryText(''); setStoryBgColor('#16a34a'); setStoryTab('media'); setStoryUploadError(''); setStoryUploadProgress(null); };
         const canShare = storyTab === 'text' ? storyText.trim().length > 0 : !!storyFile;
         const textLen = storyText.length;
         const textSize = textLen > 100 ? 'text-xl' : textLen > 50 ? 'text-2xl' : 'text-3xl';
@@ -2168,6 +2211,25 @@ export default function FeedPage() {
                       ))}
                     </div>
                   </>
+                )}
+                {storyUploadError && (
+                  <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 dark:bg-red-950/50 dark:text-red-400">
+                    {storyUploadError}
+                  </p>
+                )}
+                {uploadingStory && storyUploadProgress !== null && (
+                  <div className="mb-3">
+                    <div className="mb-1 flex items-center justify-between text-xs text-ink-muted">
+                      <span>Uploading…</span>
+                      <span>{storyUploadProgress}%</span>
+                    </div>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                      <div
+                        className="h-full rounded-full bg-brand-600 transition-all duration-300"
+                        style={{ width: `${storyUploadProgress}%` }}
+                      />
+                    </div>
+                  </div>
                 )}
                 <div className="flex gap-3">
                   <Button variant="outline" className="flex-1" onClick={closeModal}>Cancel</Button>

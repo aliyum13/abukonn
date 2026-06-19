@@ -2,13 +2,19 @@ const Story = require('../models/Story');
 const { findOrCreateConversation, sendMessage } = require('../models/Message');
 const cloudinary = require('../config/cloudinary');
 
+const CLOUDINARY_TIMEOUT_MS = 90000;
+
 async function uploadToCloudinary(buffer, mimetype) {
   const dataUri = `data:${mimetype};base64,${buffer.toString('base64')}`;
-  const resourceType = mimetype.startsWith('video') ? 'video' : 'image';
-  return cloudinary.uploader.upload(dataUri, {
+  const resourceType = mimetype.startsWith('video/') ? 'video' : 'image';
+  const uploadPromise = cloudinary.uploader.upload(dataUri, {
     folder: 'abukonn/stories',
     resource_type: resourceType,
   });
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Cloudinary upload timed out')), CLOUDINARY_TIMEOUT_MS)
+  );
+  return Promise.race([uploadPromise, timeoutPromise]);
 }
 
 async function createStory(req, res) {
@@ -31,8 +37,24 @@ async function createStory(req, res) {
     }
 
     if (!req.file) return res.status(400).json({ message: 'Media file is required' });
-    const result = await uploadToCloudinary(req.file.buffer, req.file.mimetype);
-    const mediaType = req.file.mimetype.startsWith('video') ? 'video' : 'image';
+
+    const isVideo = req.file.mimetype.startsWith('video/');
+    if (isVideo && req.file.size > 50 * 1024 * 1024) {
+      return res.status(400).json({ message: 'Video must be under 50MB' });
+    }
+
+    let result;
+    try {
+      result = await uploadToCloudinary(req.file.buffer, req.file.mimetype);
+    } catch (uploadErr) {
+      console.error('Cloudinary upload error:', uploadErr.message);
+      const msg = uploadErr.message === 'Cloudinary upload timed out'
+        ? 'Upload timed out — try a shorter video'
+        : 'Failed to upload media';
+      return res.status(500).json({ message: msg });
+    }
+
+    const mediaType = isVideo ? 'video' : 'image';
     const story = await Story.createStory({
       userId: req.user.id,
       mediaUrl: result.secure_url,
