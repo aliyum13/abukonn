@@ -88,6 +88,7 @@ interface Story {
   bg_color: string | null;
   created_at: string;
   expires_at: string;
+  view_count: number;
 }
 
 interface StoryGroup {
@@ -264,7 +265,7 @@ function StoriesBar({
 function StoryViewer({
   group, index, onClose, onPrev, onNext, onDelete, onAddStory,
   reactions, onReact, showReplyInput, onToggleReply, replyText, onReplyChange, onSendReply, replySending,
-  likers,
+  likers, viewCount,
 }: {
   group: StoryGroup;
   index: number;
@@ -282,6 +283,7 @@ function StoryViewer({
   onSendReply?: () => void;
   replySending?: boolean;
   likers?: Array<{ user_id: number; user_name: string; user_photo: string | null }>;
+  viewCount?: number;
 }) {
   const story = group.stories[index];
   if (!story) return null;
@@ -304,6 +306,13 @@ function StoryViewer({
           <Avatar src={group.user_photo} name={group.user_name} size="sm" />
           <span className="text-sm font-medium text-white">{group.user_name}</span>
           <span className="text-xs text-white/60">{new Date(story.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+          <span className={cn('flex items-center gap-1', group.is_own ? 'text-white/80 text-xs font-medium' : 'text-white/40 text-[11px]')}>
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            {viewCount ?? 0}
+          </span>
         </div>
         <div className="flex items-center gap-2">
           {group.is_own && onAddStory && (
@@ -421,21 +430,32 @@ function StoryViewer({
         </div>
       )}
 
-      {/* Bottom bar — own story: who liked it */}
-      {group.is_own && likers && likers.length > 0 && (
+      {/* Bottom bar — own story: views + who liked it */}
+      {group.is_own && ((viewCount ?? 0) > 0 || (likers && likers.length > 0)) && (
         <div className="absolute bottom-0 left-0 right-0 z-20 px-4 pb-8">
           <div className="rounded-xl bg-black/40 px-4 py-3 backdrop-blur-sm">
-            <p className="mb-2 text-xs font-medium text-white/60">
-              ❤ {likers.length} {likers.length === 1 ? 'like' : 'likes'}
+            <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-white">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              {viewCount ?? 0} {(viewCount ?? 0) === 1 ? 'view' : 'views'}
             </p>
-            <div className="flex max-h-24 flex-col gap-1.5 overflow-y-auto">
-              {likers.map(l => (
-                <div key={l.user_id} className="flex items-center gap-2">
-                  <Avatar src={l.user_photo} name={l.user_name} size="xs" />
-                  <span className="text-xs text-white">{l.user_name}</span>
+            {likers && likers.length > 0 && (
+              <>
+                <p className="mb-2 text-xs font-medium text-white/60">
+                  ❤ {likers.length} {likers.length === 1 ? 'like' : 'likes'}
+                </p>
+                <div className="flex max-h-24 flex-col gap-1.5 overflow-y-auto">
+                  {likers.map(l => (
+                    <div key={l.user_id} className="flex items-center gap-2">
+                      <Avatar src={l.user_photo} name={l.user_name} size="xs" />
+                      <span className="text-xs text-white">{l.user_name}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -732,6 +752,7 @@ export default function FeedPage() {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const storyInputRef = useRef<HTMLInputElement>(null);
   const viewedPostsRef = useRef<Set<number>>(new Set());
+  const viewedStoryApiCallsRef = useRef<Set<number>>(new Set());
   const storyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const postMenuRef = useRef<HTMLDivElement>(null);
 
@@ -832,7 +853,7 @@ export default function FeedPage() {
     } catch {}
   }, []);
 
-  // Mark current story as viewed and persist to localStorage
+  // Mark current story as viewed (localStorage) and record view via API
   useEffect(() => {
     if (!viewingGroup) return;
     const story = viewingGroup.stories[viewingIdx];
@@ -844,6 +865,25 @@ export default function FeedPage() {
       parsed[String(story.id)] = Date.now();
       localStorage.setItem('viewed_stories', JSON.stringify(parsed));
     } catch {}
+    // Record view via API once per session, skip own stories
+    if (token && !viewingGroup.is_own && !viewedStoryApiCallsRef.current.has(story.id)) {
+      viewedStoryApiCallsRef.current.add(story.id);
+      const storyId = story.id;
+      fetch(`${API_URL}/api/stories/${storyId}/view`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then(r => {
+          if (r.ok) {
+            setViewingGroup(prev => prev ? {
+              ...prev,
+              stories: prev.stories.map(s => s.id === storyId ? { ...s, view_count: (s.view_count ?? 0) + 1 } : s),
+            } : null);
+          }
+        })
+        .catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewingGroup, viewingIdx]);
 
   // Close post context menu on outside click
@@ -1927,6 +1967,7 @@ export default function FeedPage() {
           onSendReply={() => viewingGroup.stories[viewingIdx] && handleSendStoryReply(viewingGroup.stories[viewingIdx].id)}
           replySending={storyReplySending}
           likers={storyLikers}
+          viewCount={viewingGroup.stories[viewingIdx]?.view_count ?? 0}
         />
       )}
 

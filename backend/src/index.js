@@ -25,7 +25,7 @@ const { createFollowsTable } = require('./models/Follow');
 const { createNotificationsTable } = require('./models/Notification');
 const { createGroupTables } = require('./models/Group');
 const { createRepliesTable } = require('./models/Reply');
-const { createStoriesTable, createStoryReactionsTable, createStoryRepliesTable } = require('./models/Story');
+const { createStoriesTable, createStoryViewsTable, createStoryReactionsTable, createStoryRepliesTable } = require('./models/Story');
 const { createConnectTables } = require('./models/Connect');
 const { createHashtagTables } = require('./models/Hashtag');
 const { createUserSettingsTable } = require('./models/UserSettings');
@@ -188,6 +188,7 @@ createUsersTable()
   .then(() => createGroupTables())
   .then(() => createRepliesTable())
   .then(() => createStoriesTable())
+  .then(() => createStoryViewsTable())
   .then(() => createStoryReactionsTable())
   .then(() => createStoryRepliesTable())
   .then(() => createConnectTables())

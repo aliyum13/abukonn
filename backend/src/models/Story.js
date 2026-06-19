@@ -40,14 +40,17 @@ async function getActiveStoriesForUser(userId) {
   const result = await pool.query(
     `SELECT s.id, s.user_id, s.media_url, s.media_type, s.story_type, s.text_content, s.bg_color,
             s.created_at, s.expires_at,
-            u.full_name AS user_name, u.profile_photo_url AS user_photo
+            u.full_name AS user_name, u.profile_photo_url AS user_photo,
+            COUNT(sv.id)::int AS view_count
      FROM abukonn.stories s
      JOIN abukonn.users u ON s.user_id = u.id
+     LEFT JOIN abukonn.story_views sv ON sv.story_id = s.id
      WHERE s.expires_at > NOW()
        AND (
          s.user_id = $1
          OR s.user_id IN (SELECT following_id FROM abukonn.follows WHERE follower_id = $1)
        )
+     GROUP BY s.id, u.full_name, u.profile_photo_url
      ORDER BY s.user_id = $1 DESC, s.user_id, s.created_at ASC`,
     [userId]
   );
@@ -65,6 +68,30 @@ async function deleteStory(storyId, userId) {
 async function getStoryById(storyId) {
   const result = await pool.query(`SELECT * FROM abukonn.stories WHERE id = $1`, [storyId]);
   return result.rows[0] || null;
+}
+
+// ── Story views ──────────────────────────────────────────────────────────────
+
+const CREATE_STORY_VIEWS_TABLE = `
+CREATE TABLE IF NOT EXISTS abukonn.story_views (
+  id SERIAL PRIMARY KEY,
+  story_id INTEGER NOT NULL REFERENCES abukonn.stories(id) ON DELETE CASCADE,
+  viewer_id INTEGER NOT NULL REFERENCES abukonn.users(id) ON DELETE CASCADE,
+  viewed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(story_id, viewer_id)
+);
+CREATE INDEX IF NOT EXISTS idx_story_views_story ON abukonn.story_views(story_id);`;
+
+async function createStoryViewsTable() {
+  await pool.query(CREATE_STORY_VIEWS_TABLE);
+  console.log('Story views table ready');
+}
+
+async function recordStoryView(storyId, viewerId) {
+  await pool.query(
+    `INSERT INTO abukonn.story_views (story_id, viewer_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+    [storyId, viewerId]
+  );
 }
 
 // ── Story reactions ──────────────────────────────────────────────────────────
@@ -164,6 +191,8 @@ module.exports = {
   getActiveStoriesForUser,
   deleteStory,
   getStoryById,
+  createStoryViewsTable,
+  recordStoryView,
   createStoryReactionsTable,
   toggleStoryReaction,
   getStoryReactions,

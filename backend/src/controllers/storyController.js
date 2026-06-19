@@ -147,4 +147,19 @@ async function getStoryRepliesHandler(req, res) {
   }
 }
 
-module.exports = { createStory, getStories, deleteStory, reactToStory, getReactionsHandler, replyToStory, getStoryRepliesHandler };
+async function recordView(req, res) {
+  try {
+    const storyId = parseInt(req.params.id, 10);
+    const story = await Story.getStoryById(storyId);
+    if (!story) return res.status(404).json({ message: 'Story not found' });
+    if (story.user_id !== req.user.id) {
+      await Story.recordStoryView(storyId, req.user.id);
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Record story view error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+module.exports = { createStory, getStories, deleteStory, reactToStory, getReactionsHandler, replyToStory, getStoryRepliesHandler, recordView };
