@@ -149,40 +149,82 @@ interface ShareFollower {
 
 // ── Stories components ───────────────────────────────────────────────────────
 
+function SegmentedRing({ stories, viewedIds }: { stories: Story[]; viewedIds: Set<number> }) {
+  const count = stories.length;
+  if (count === 0) return null;
+  const size = 62;
+  const cx = size / 2;
+  const cy = size / 2;
+  const strokeW = 2.5;
+  const r = cx - strokeW / 2 - 1;
+  const gapDeg = count > 1 ? 6 : 0;
+  const segDeg = (360 - count * gapDeg) / count;
+  const toXY = (deg: number) => {
+    const rad = ((deg - 90) * Math.PI) / 180;
+    return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)] as [number, number];
+  };
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}
+      className="absolute pointer-events-none" style={{ top: -3, left: -3 }}>
+      {stories.map((story, i) => {
+        const start = i * (segDeg + gapDeg);
+        const end = start + segDeg;
+        const [sx, sy] = toXY(start);
+        const [ex, ey] = toXY(end);
+        const large = segDeg > 180 ? 1 : 0;
+        return (
+          <path key={story.id}
+            d={`M ${sx.toFixed(2)} ${sy.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 ${large} 1 ${ex.toFixed(2)} ${ey.toFixed(2)}`}
+            fill="none"
+            stroke={viewedIds.has(story.id) ? '#9ca3af' : '#16a34a'}
+            strokeWidth={strokeW}
+            strokeLinecap="round"
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
 function StoriesBar({
-  groups, user, onAddStory, onViewGroup,
+  groups, user, onAddStory, onViewGroup, viewedStoryIds,
 }: {
   groups: StoryGroup[];
   user: NonNullable<ReturnType<typeof useAuth>['user']>;
   onAddStory: () => void;
   onViewGroup: (g: StoryGroup) => void;
+  viewedStoryIds: Set<number>;
 }) {
   const ownGroup = groups.find(g => g.is_own);
   const others = groups.filter(g => !g.is_own);
   return (
     <div className="flex gap-5 overflow-x-auto scrollbar-hide">
       {/* My Status */}
-      <button type="button" onClick={() => ownGroup ? onViewGroup(ownGroup) : onAddStory()}
-        className="flex shrink-0 flex-col items-center gap-1.5 group">
+      <div className="flex shrink-0 flex-col items-center gap-1.5">
         <div className="relative">
-          <div className={cn(
-            'h-14 w-14 rounded-full p-[2px]',
-            ownGroup
-              ? 'bg-gradient-to-tr from-brand-500 to-emerald-400'
-              : 'bg-border'
-          )}>
-            <div className="h-full w-full rounded-full bg-white dark:bg-[#0a0a0a] p-[2px]">
-              <Avatar src={user.profile_photo_url} name={user.full_name} size="xl" className="h-full w-full" />
+          <button type="button" onClick={() => ownGroup ? onViewGroup(ownGroup) : onAddStory()}
+            className="relative h-14 w-14 rounded-full">
+            {ownGroup
+              ? <SegmentedRing stories={ownGroup.stories} viewedIds={viewedStoryIds} />
+              : null}
+            <div className={cn(
+              'h-full w-full rounded-full p-[2px]',
+              !ownGroup && 'ring-2 ring-gray-200 dark:ring-gray-700'
+            )}>
+              <div className="h-full w-full rounded-full bg-white dark:bg-[#0a0a0a] p-[1px]">
+                <Avatar src={user.profile_photo_url} name={user.full_name} size="xl" className="h-full w-full" />
+              </div>
             </div>
-          </div>
-          <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-brand-600 ring-2 ring-white dark:ring-[#0a0a0a]">
+          </button>
+          <button type="button" onClick={onAddStory}
+            className="absolute -bottom-0.5 -right-0.5 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-brand-600 ring-2 ring-white dark:ring-[#0a0a0a]">
             <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
-          </span>
+          </button>
         </div>
         <span className="max-w-[54px] truncate text-[11px] font-medium text-ink-muted">My Status</span>
-      </button>
+      </div>
       {/* Others */}
       {others.map(g => (
         <button key={g.user_id} type="button" onClick={() => onViewGroup(g)}
@@ -218,13 +260,15 @@ function StoriesBar({
 }
 
 function StoryViewer({
-  group, index, onClose, onPrev, onNext,
+  group, index, onClose, onPrev, onNext, onDelete, onAddStory,
 }: {
   group: StoryGroup;
   index: number;
   onClose: () => void;
   onPrev: () => void;
   onNext: () => void;
+  onDelete?: (storyId: number) => void;
+  onAddStory?: () => void;
 }) {
   const story = group.stories[index];
   if (!story) return null;
@@ -247,9 +291,27 @@ function StoryViewer({
           <span className="text-sm font-medium text-white">{group.user_name}</span>
           <span className="text-xs text-white/60">{new Date(story.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
         </div>
-        <button type="button" onClick={onClose} className="rounded-full bg-black/30 p-1.5 text-white hover:bg-black/50">
-          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-        </button>
+        <div className="flex items-center gap-2">
+          {group.is_own && onAddStory && (
+            <button type="button" onClick={onAddStory}
+              className="rounded-full bg-black/30 p-1.5 text-white hover:bg-black/50" title="Add to story">
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+            </button>
+          )}
+          {group.is_own && onDelete && (
+            <button type="button" onClick={() => onDelete(story.id)}
+              className="rounded-full bg-black/30 p-1.5 text-white hover:bg-red-500/80" title="Delete story">
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+              </svg>
+            </button>
+          )}
+          <button type="button" onClick={onClose} className="rounded-full bg-black/30 p-1.5 text-white hover:bg-black/50">
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
       </div>
       {/* Media / Text */}
       <div className="flex h-full w-full max-w-sm items-center justify-center" onClick={e => e.stopPropagation()}>
@@ -541,6 +603,7 @@ export default function FeedPage() {
   const [storyTab, setStoryTab] = useState<'media' | 'text'>('media');
   const [storyText, setStoryText] = useState('');
   const [storyBgColor, setStoryBgColor] = useState('#16a34a');
+  const [viewedStoryIds, setViewedStoryIds] = useState<Set<number>>(new Set());
 
   // Category filter
   const [categoryFilter, setCategoryFilter] = useState<PostCategory | 'ALL'>('ALL');
@@ -615,6 +678,13 @@ export default function FeedPage() {
       }
     }, 5000);
     return () => { if (storyTimerRef.current) clearTimeout(storyTimerRef.current); };
+  }, [viewingGroup, viewingIdx]);
+
+  // Mark current story as viewed
+  useEffect(() => {
+    if (!viewingGroup) return;
+    const story = viewingGroup.stories[viewingIdx];
+    if (story) setViewedStoryIds(prev => new Set([...prev, story.id]));
   }, [viewingGroup, viewingIdx]);
 
   // Close post context menu on outside click
@@ -893,6 +963,8 @@ export default function FeedPage() {
         }
         return [{ user_id: user!.id, user_name: user!.full_name, user_photo: user!.profile_photo_url, is_own: true, stories: [data.story] }, ...prev];
       });
+      // Sync new story into viewer if it's open on own group
+      setViewingGroup(prev => prev?.is_own ? { ...prev, stories: [...prev.stories, data.story] } : prev);
       setShowUploadStory(false);
       setStoryFile(null);
       setStoryPreview(null);
@@ -901,6 +973,28 @@ export default function FeedPage() {
       setStoryTab('media');
     } catch { /* silent */ }
     finally { setUploadingStory(false); }
+  };
+
+  const handleDeleteStory = async (storyId: number) => {
+    if (!token || !viewingGroup) return;
+    try {
+      const res = await fetch(`${API_URL}/api/stories/${storyId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      setStoryGroups(prev =>
+        prev.map(g => g.is_own ? { ...g, stories: g.stories.filter(s => s.id !== storyId) } : g)
+          .filter(g => g.stories.length > 0)
+      );
+      const newStories = viewingGroup.stories.filter(s => s.id !== storyId);
+      if (newStories.length === 0) {
+        setViewingGroup(null);
+      } else {
+        setViewingGroup({ ...viewingGroup, stories: newStories });
+        setViewingIdx(i => Math.min(i, newStories.length - 1));
+      }
+    } catch { /* silent */ }
   };
 
   // ── Repost ───────────────────────────────────────────────────────────────────
@@ -1157,6 +1251,7 @@ export default function FeedPage() {
               user={user}
               onAddStory={() => setShowUploadStory(true)}
               onViewGroup={(g) => { setViewingGroup(g); setViewingIdx(0); }}
+              viewedStoryIds={viewedStoryIds}
             />
           </div>
 
@@ -1625,6 +1720,8 @@ export default function FeedPage() {
           onClose={() => setViewingGroup(null)}
           onPrev={() => viewingIdx > 0 ? setViewingIdx(i => i - 1) : setViewingGroup(null)}
           onNext={() => viewingIdx < viewingGroup.stories.length - 1 ? setViewingIdx(i => i + 1) : setViewingGroup(null)}
+          onDelete={handleDeleteStory}
+          onAddStory={() => setShowUploadStory(true)}
         />
       )}
 
@@ -1636,7 +1733,7 @@ export default function FeedPage() {
         const textLen = storyText.length;
         const textSize = textLen > 100 ? 'text-xl' : textLen > 50 ? 'text-2xl' : 'text-3xl';
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4"
             onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
             <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[#111] dark:border dark:border-[#222]">
               {/* Header */}
