@@ -24,6 +24,27 @@ async function uploadToCloudinary(buffer, mimetype) {
   });
 }
 
+async function getUploadSignature(req, res) {
+  try {
+    const timestamp = Math.round(Date.now() / 1000);
+    const folder = 'abukonn/stories';
+    const signature = cloudinary.utils.api_sign_request(
+      { folder, timestamp },
+      process.env.CLOUDINARY_API_SECRET
+    );
+    res.json({
+      signature,
+      timestamp,
+      api_key: process.env.CLOUDINARY_API_KEY,
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+      folder,
+    });
+  } catch (err) {
+    console.error('Signature error:', err.message);
+    res.status(500).json({ message: 'Failed to generate upload signature' });
+  }
+}
+
 async function createStory(req, res) {
   try {
     const storyType = req.body?.story_type;
@@ -39,6 +60,19 @@ async function createStory(req, res) {
         storyType: 'text',
         textContent,
         bgColor,
+      });
+      return res.status(201).json({ story });
+    }
+
+    // Direct upload: video was uploaded straight to Cloudinary from the browser
+    if (req.body?.direct_upload) {
+      const mediaUrl = req.body?.media_url;
+      if (!mediaUrl) return res.status(400).json({ message: 'media_url is required for direct upload' });
+      const story = await Story.createStory({
+        userId: req.user.id,
+        mediaUrl,
+        mediaType: 'video',
+        storyType: 'video',
       });
       return res.status(201).json({ story });
     }
@@ -208,4 +242,4 @@ async function recordView(req, res) {
   }
 }
 
-module.exports = { createStory, getStories, getMyStories, deleteStory, reactToStory, getReactionsHandler, replyToStory, getStoryRepliesHandler, recordView };
+module.exports = { getUploadSignature, createStory, getStories, getMyStories, deleteStory, reactToStory, getReactionsHandler, replyToStory, getStoryRepliesHandler, recordView };

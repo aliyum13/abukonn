@@ -1283,32 +1283,83 @@ export default function FeedPage() {
         onSuccess(((await res.json()) as { story: Story }).story);
       } else {
         if (!storyFile) return;
-        const story = await new Promise<Story>((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          const isVideo = storyFile.type.startsWith('video/');
-          const tid = setTimeout(() => xhr.abort(), isVideo ? 120000 : 30000);
-          xhr.upload.onprogress = (e) => {
-            if (e.lengthComputable) setStoryUploadProgress(Math.round((e.loaded / e.total) * 100));
+        const isVideo = storyFile.type.startsWith('video/');
+
+        if (isVideo) {
+          // Direct-to-Cloudinary upload to bypass Railway's 30s proxy timeout
+          const sigRes = await fetch(`${API_URL}/api/stories/upload-signature`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (!sigRes.ok) throw new Error('Failed to get upload signature');
+          const { signature, timestamp, api_key, cloud_name, folder } = await sigRes.json() as {
+            signature: string; timestamp: number; api_key: string; cloud_name: string; folder: string;
           };
-          xhr.onload = () => {
-            clearTimeout(tid);
-            if (xhr.status >= 200 && xhr.status < 300) {
-              try { resolve((JSON.parse(xhr.responseText) as { story: Story }).story); }
-              catch { reject(new Error('Invalid server response')); }
-            } else {
-              try { reject(new Error((JSON.parse(xhr.responseText) as { message?: string }).message || 'Upload failed')); }
-              catch { reject(new Error('Upload failed')); }
-            }
-          };
-          xhr.onerror = () => { clearTimeout(tid); reject(new Error('Network error — check your connection')); };
-          xhr.onabort = () => { clearTimeout(tid); reject(new Error('Upload timed out — try a shorter video')); };
-          const fd = new FormData();
-          fd.append('media', storyFile);
-          xhr.open('POST', `${API_URL}/api/stories`);
-          xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-          xhr.send(fd);
-        });
-        onSuccess(story);
+
+          const cloudinaryUrl = await new Promise<string>((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            const tid = setTimeout(() => xhr.abort(), 300000);
+            xhr.upload.onprogress = (e) => {
+              if (e.lengthComputable) setStoryUploadProgress(Math.round((e.loaded / e.total) * 100));
+            };
+            xhr.onload = () => {
+              clearTimeout(tid);
+              if (xhr.status >= 200 && xhr.status < 300) {
+                try { resolve((JSON.parse(xhr.responseText) as { secure_url: string }).secure_url); }
+                catch { reject(new Error('Invalid Cloudinary response')); }
+              } else {
+                try { reject(new Error((JSON.parse(xhr.responseText) as { error?: { message: string } }).error?.message || 'Cloudinary upload failed')); }
+                catch { reject(new Error('Cloudinary upload failed')); }
+              }
+            };
+            xhr.onerror = () => { clearTimeout(tid); reject(new Error('Network error — check your connection')); };
+            xhr.onabort = () => { clearTimeout(tid); reject(new Error('Upload timed out')); };
+            const fd = new FormData();
+            fd.append('file', storyFile);
+            fd.append('api_key', api_key);
+            fd.append('timestamp', String(timestamp));
+            fd.append('signature', signature);
+            fd.append('folder', folder);
+            xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloud_name}/video/upload`);
+            xhr.send(fd);
+          });
+
+          const saveRes = await fetch(`${API_URL}/api/stories`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ story_type: 'video', media_url: cloudinaryUrl, direct_upload: true }),
+          });
+          if (!saveRes.ok) {
+            const d = await saveRes.json().catch(() => ({})) as { message?: string };
+            throw new Error(d.message || 'Failed to save story');
+          }
+          onSuccess(((await saveRes.json()) as { story: Story }).story);
+        } else {
+          const story = await new Promise<Story>((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            const tid = setTimeout(() => xhr.abort(), 30000);
+            xhr.upload.onprogress = (e) => {
+              if (e.lengthComputable) setStoryUploadProgress(Math.round((e.loaded / e.total) * 100));
+            };
+            xhr.onload = () => {
+              clearTimeout(tid);
+              if (xhr.status >= 200 && xhr.status < 300) {
+                try { resolve((JSON.parse(xhr.responseText) as { story: Story }).story); }
+                catch { reject(new Error('Invalid server response')); }
+              } else {
+                try { reject(new Error((JSON.parse(xhr.responseText) as { message?: string }).message || 'Upload failed')); }
+                catch { reject(new Error('Upload failed')); }
+              }
+            };
+            xhr.onerror = () => { clearTimeout(tid); reject(new Error('Network error — check your connection')); };
+            xhr.onabort = () => { clearTimeout(tid); reject(new Error('Upload timed out')); };
+            const fd = new FormData();
+            fd.append('media', storyFile);
+            xhr.open('POST', `${API_URL}/api/stories`);
+            xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+            xhr.send(fd);
+          });
+          onSuccess(story);
+        }
       }
     } catch (err) {
       const msg = err instanceof DOMException && err.name === 'AbortError'
