@@ -4,17 +4,24 @@ const cloudinary = require('../config/cloudinary');
 
 const CLOUDINARY_TIMEOUT_MS = 90000;
 
+function streamUpload(buffer, options) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(options, (error, result) => {
+      if (error) reject(error);
+      else resolve(result);
+    });
+    stream.end(buffer);
+  });
+}
+
 async function uploadToCloudinary(buffer, mimetype) {
-  const dataUri = `data:${mimetype};base64,${buffer.toString('base64')}`;
   const resourceType = mimetype.startsWith('video/') ? 'video' : 'image';
-  const uploadPromise = cloudinary.uploader.upload(dataUri, {
+  console.log('[Cloudinary] uploading via stream', { mimetype, resourceType, bufferLength: buffer.length });
+  return streamUpload(buffer, {
     folder: 'abukonn/stories',
     resource_type: resourceType,
+    timeout: CLOUDINARY_TIMEOUT_MS,
   });
-  const timeoutPromise = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('Cloudinary upload timed out')), CLOUDINARY_TIMEOUT_MS)
-  );
-  return Promise.race([uploadPromise, timeoutPromise]);
 }
 
 async function createStory(req, res) {
@@ -36,6 +43,12 @@ async function createStory(req, res) {
       return res.status(201).json({ story });
     }
 
+    console.log('[createStory] file received:', {
+      mimetype: req.file?.mimetype,
+      size: req.file?.size,
+      bufferLength: req.file?.buffer?.length,
+    });
+
     if (!req.file) return res.status(400).json({ message: 'Media file is required' });
 
     const isVideo = req.file.mimetype.startsWith('video/');
@@ -46,9 +59,10 @@ async function createStory(req, res) {
     let result;
     try {
       result = await uploadToCloudinary(req.file.buffer, req.file.mimetype);
+      console.log('[Cloudinary] upload success:', { public_id: result.public_id, url: result.secure_url });
     } catch (uploadErr) {
-      console.error('Cloudinary upload error:', uploadErr.message);
-      const msg = uploadErr.message === 'Cloudinary upload timed out'
+      console.error('[Cloudinary] upload error:', uploadErr);
+      const msg = uploadErr.message?.includes('timed out') || uploadErr.http_code === 499
         ? 'Upload timed out — try a shorter video'
         : 'Failed to upload media';
       return res.status(500).json({ message: msg });
