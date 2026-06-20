@@ -195,6 +195,8 @@ createUsersTable()
   .then(() => createHashtagTables())
   .then(() => createUserSettingsTable())
   .then(() => {
+    server.timeout = 120000;
+    server.keepAliveTimeout = 120000;
     server.listen(PORT, () => {
       console.log(`ABUkonn server running on port ${PORT}`);
     });

@@ -2,7 +2,7 @@ const Story = require('../models/Story');
 const { findOrCreateConversation, sendMessage } = require('../models/Message');
 const cloudinary = require('../config/cloudinary');
 
-const CLOUDINARY_TIMEOUT_MS = 90000;
+const CLOUDINARY_TIMEOUT_MS = 120000;
 
 function streamUpload(buffer, options) {
   return new Promise((resolve, reject) => {

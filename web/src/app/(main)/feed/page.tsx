@@ -1285,7 +1285,8 @@ export default function FeedPage() {
         if (!storyFile) return;
         const story = await new Promise<Story>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
-          const tid = setTimeout(() => xhr.abort(), 60000);
+          const isVideo = storyFile.type.startsWith('video/');
+          const tid = setTimeout(() => xhr.abort(), isVideo ? 120000 : 30000);
           xhr.upload.onprogress = (e) => {
             if (e.lengthComputable) setStoryUploadProgress(Math.round((e.loaded / e.total) * 100));
           };
