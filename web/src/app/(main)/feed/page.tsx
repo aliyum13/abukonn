@@ -150,6 +150,55 @@ interface ShareFollower {
   department: string;
 }
 
+interface Highlight {
+  id: number;
+  title: string;
+  description: string | null;
+  type: 'announcement' | 'exam' | 'deadline' | 'event';
+  start_date: string | null;
+  end_date: string | null;
+  priority: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+const HIGHLIGHT_CONFIG: Record<string, { icon: string; bg: string; titleColor: string; badgeCls: string }> = {
+  announcement: {
+    icon: '📢',
+    bg: 'bg-blue-50 dark:bg-blue-950/40',
+    titleColor: 'text-blue-800 dark:text-blue-200',
+    badgeCls: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
+  },
+  exam: {
+    icon: '📝',
+    bg: 'bg-red-50 dark:bg-red-950/40',
+    titleColor: 'text-red-800 dark:text-red-200',
+    badgeCls: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
+  },
+  deadline: {
+    icon: '⏰',
+    bg: 'bg-orange-50 dark:bg-orange-950/40',
+    titleColor: 'text-orange-800 dark:text-orange-200',
+    badgeCls: 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300',
+  },
+  event: {
+    icon: '🎉',
+    bg: 'bg-green-50 dark:bg-green-950/40',
+    titleColor: 'text-green-800 dark:text-green-200',
+    badgeCls: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
+  },
+};
+
+function highlightCountdown(startDate: string | null): string {
+  if (!startDate) return '';
+  const diffMs = new Date(startDate).getTime() - Date.now();
+  const diffDays = Math.ceil(diffMs / 86400000);
+  if (diffDays < 0) return 'Ongoing';
+  if (diffDays === 0) return 'Today!';
+  if (diffDays === 1) return 'Tomorrow';
+  return `in ${diffDays} days`;
+}
+
 // ── Stories components ───────────────────────────────────────────────────────
 
 function SegmentedRing({ stories, viewedIds }: { stories: Story[]; viewedIds: Set<number> }) {
@@ -832,6 +881,9 @@ export default function FeedPage() {
   const [storyUploadProgress, setStoryUploadProgress] = useState<number | null>(null);
   const [storyUploadError, setStoryUploadError] = useState('');
 
+  // Highlights
+  const [highlights, setHighlights] = useState<Highlight[]>([]);
+
   // Category filter
   const [categoryFilter, setCategoryFilter] = useState<PostCategory | 'ALL'>('ALL');
   const [newPostCategory, setNewPostCategory] = useState<PostCategory>('GENERAL');
@@ -877,6 +929,15 @@ export default function FeedPage() {
     fetch(`${API_URL}/api/stories`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(d => setStoryGroups(d.groups || []))
+      .catch(() => {});
+  }, [token]);
+
+  // Fetch highlights
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${API_URL}/api/highlights`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => setHighlights(d.highlights || []))
       .catch(() => {});
   }, [token]);
 
@@ -1688,6 +1749,40 @@ export default function FeedPage() {
               viewedStoryIds={viewedStoryIds}
             />
           </div>
+
+          {/* Today's Highlights */}
+          {highlights.length > 0 && (
+            <div className="border-b border-border px-4 py-3">
+              <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
+                Today&apos;s Highlights
+              </p>
+              <div className="flex gap-3 overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none' }}>
+                {highlights.map((h) => {
+                  const cfg = HIGHLIGHT_CONFIG[h.type] ?? HIGHLIGHT_CONFIG.announcement;
+                  const countdown = highlightCountdown(h.start_date);
+                  return (
+                    <div
+                      key={h.id}
+                      className={cn('flex min-w-[200px] max-w-[240px] shrink-0 flex-col gap-1.5 rounded-2xl p-3.5', cfg.bg)}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xl leading-none">{cfg.icon}</span>
+                        {countdown && (
+                          <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold', cfg.badgeCls)}>
+                            {countdown}
+                          </span>
+                        )}
+                      </div>
+                      <p className={cn('text-[13px] font-semibold leading-snug', cfg.titleColor)}>{h.title}</p>
+                      {h.description && (
+                        <p className="line-clamp-2 text-[11px] leading-relaxed text-ink-muted">{h.description}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Sticky category filter tabs */}
           <div className="sticky top-14 z-20 border-b border-border bg-white/95 backdrop-blur-sm dark:bg-[#0a0a0a]/95 dark:border-[#222]">
