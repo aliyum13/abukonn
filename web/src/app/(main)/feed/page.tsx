@@ -1229,8 +1229,8 @@ export default function FeedPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     setStoryUploadError('');
-    if (file.type.startsWith('video/') && file.size > 50 * 1024 * 1024) {
-      setStoryUploadError('Video must be under 50MB');
+    if (file.type.startsWith('video/') && file.size > 10 * 1024 * 1024) {
+      setStoryUploadError('Video must be under 10MB');
       e.target.value = '';
       return;
     }

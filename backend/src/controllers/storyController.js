@@ -39,8 +39,8 @@ async function createStory(req, res) {
     if (!req.file) return res.status(400).json({ message: 'Media file is required' });
 
     const isVideo = req.file.mimetype.startsWith('video/');
-    if (isVideo && req.file.size > 50 * 1024 * 1024) {
-      return res.status(400).json({ message: 'Video must be under 50MB' });
+    if (isVideo && req.file.size > 10 * 1024 * 1024) {
+      return res.status(400).json({ message: 'Video must be under 10MB' });
     }
 
     let result;
