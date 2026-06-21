@@ -114,6 +114,8 @@ interface Post {
   original_post_id: number | null;
   original_author_name: string | null;
   is_following_author: boolean;
+  post_subtype: 'post' | 'discussion';
+  discussion_title: string | null;
   created_at: string;
   author_name: string;
   author_department: string;
@@ -832,6 +834,8 @@ export default function FeedPage() {
   const router = useRouter();
   const [posts, setPosts] = useState<Post[]>([]);
   const [newPost, setNewPost] = useState('');
+  const [composerMode, setComposerMode] = useState<'post' | 'discussion'>('post');
+  const [discussionTitle, setDiscussionTitle] = useState('');
   const [loading, setLoading] = useState(true);
   const [posting, setPosting] = useState(false);
   const [commentingId, setCommentingId] = useState<number | null>(null);
@@ -1127,24 +1131,31 @@ export default function FeedPage() {
 
   const handleCreatePost = async (e: FormEvent) => {
     e.preventDefault();
-    if (!newPost.trim() || !token) return;
+    if (!token) return;
+    if (composerMode === 'discussion' && !discussionTitle.trim()) return;
+    if (composerMode === 'post' && !newPost.trim()) return;
     setPosting(true);
     setError('');
     try {
       const formData = new FormData();
       formData.append('content', newPost.trim());
       formData.append('category', newPostCategory);
+      if (composerMode === 'discussion') {
+        formData.append('post_subtype', 'discussion');
+        formData.append('discussion_title', discussionTitle.trim());
+      }
       if (imageFile) formData.append('image', imageFile);
 
       const res = await fetch(`${API_URL}/api/posts`, {
         method: 'POST',
-        // No Content-Type header — browser sets multipart boundary automatically
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
       if (!res.ok) throw new Error('Failed to create post');
       setNewPost('');
       setNewPostCategory('GENERAL');
+      setComposerMode('post');
+      setDiscussionTitle('');
       setImageFile(null);
       setImagePreview(null);
       await fetchPosts();
@@ -1681,12 +1692,15 @@ export default function FeedPage() {
 
   useEffect(() => {
     if (!token) return;
-    fetch(`${API_URL}/api/hashtags/trending?limit=8`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(r => r.json())
-      .then(d => setTrendingHashtags(d.hashtags ?? []))
-      .catch(() => {});
+    const refreshTrending = () => {
+      fetch(`${API_URL}/api/hashtags/trending?limit=8`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(d => setTrendingHashtags(d.hashtags ?? []))
+        .catch(() => {});
+    };
+    refreshTrending();
+    const tid = setInterval(refreshTrending, 300000);
+    return () => clearInterval(tid);
   }, [token]);
 
   // Fetch own follower/following counts for the left sidebar
@@ -1816,10 +1830,20 @@ export default function FeedPage() {
               <div className="flex gap-3">
                 <Avatar src={user.profile_photo_url} name={user.full_name} size="md" className="mt-0.5 shrink-0" />
                 <div className="min-w-0 flex-1">
+                  {composerMode === 'discussion' && (
+                    <input
+                      type="text"
+                      value={discussionTitle}
+                      onChange={(e) => setDiscussionTitle(e.target.value.slice(0, 100))}
+                      placeholder="Discussion title (required)"
+                      maxLength={100}
+                      className="mb-2 w-full border-b border-border bg-transparent pb-2 text-[16px] font-semibold text-ink placeholder:text-ink-muted focus:outline-none"
+                    />
+                  )}
                   <textarea
                     value={newPost}
                     onChange={(e) => { setNewPost(e.target.value); const t = e.target; t.style.height = 'auto'; t.style.height = `${t.scrollHeight}px`; }}
-                    placeholder="What's happening on campus?"
+                    placeholder={composerMode === 'discussion' ? 'Add context or details (optional)…' : "What's happening on campus?"}
                     rows={1}
                     className="w-full resize-none bg-transparent text-[15px] text-ink placeholder:text-ink-muted focus:outline-none leading-relaxed"
                     style={{ minHeight: '28px', maxHeight: '200px', overflow: 'hidden' }}
@@ -1845,6 +1869,17 @@ export default function FeedPage() {
                           <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
                         </svg>
                       </button>
+                      <button type="button"
+                        onClick={() => { setComposerMode(m => m === 'discussion' ? 'post' : 'discussion'); setDiscussionTitle(''); }}
+                        title="Start a discussion"
+                        className={cn(
+                          'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[17px] transition',
+                          composerMode === 'discussion'
+                            ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300'
+                            : 'text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950/40'
+                        )}>
+                        💬
+                      </button>
                       <select
                         value={newPostCategory}
                         onChange={e => setNewPostCategory(e.target.value as PostCategory)}
@@ -1853,9 +1888,11 @@ export default function FeedPage() {
                         {POST_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                       </select>
                     </div>
-                    <Button type="submit" size="sm" disabled={posting || !newPost.trim()} loading={posting}
-                      className="shrink-0 rounded-full px-5">
-                      Post
+                    <Button type="submit" size="sm"
+                      disabled={posting || (composerMode === 'discussion' ? !discussionTitle.trim() : !newPost.trim())}
+                      loading={posting}
+                      className={cn('shrink-0 rounded-full px-5', composerMode === 'discussion' && 'bg-purple-600 hover:bg-purple-700')}>
+                      {composerMode === 'discussion' ? 'Discuss' : 'Post'}
                     </Button>
                   </div>
 
@@ -1920,6 +1957,11 @@ export default function FeedPage() {
                               {POST_CATEGORIES.find(c => c.value === post.category)?.label}
                             </span>
                           )}
+                          {post.post_subtype === 'discussion' && (
+                            <span className="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-semibold text-purple-700 dark:bg-purple-950 dark:text-purple-300">
+                              💬 Discussion
+                            </span>
+                          )}
                         </div>
                         <p className="text-[13px] text-ink-muted">
                           {post.author_department} · {timeAgo(post.created_at)}
@@ -1965,7 +2007,10 @@ export default function FeedPage() {
 
                     {/* Content with show more/less */}
                     <div className="mt-2">
-                      <p className={cn('text-[15px] text-ink leading-[1.6]', !isExpanded && longContent && 'line-clamp-3')}>
+                      {post.post_subtype === 'discussion' && post.discussion_title && (
+                        <p className="mb-1 text-[16px] font-bold text-ink leading-snug">{post.discussion_title}</p>
+                      )}
+                      <p className={cn('text-[15px] text-ink leading-[1.6]', !isExpanded && longContent && 'line-clamp-3', post.post_subtype === 'discussion' && !post.content && 'hidden')}>
                         <PostContent content={post.content} />
                       </p>
                       {longContent && (
@@ -2009,7 +2054,9 @@ export default function FeedPage() {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.74 1.676v2.954a.75.75 0 01-1.088.67L6.19 21.1a.75.75 0 01-.365-.633v-1.44C3.512 17.962 3 15.075 3 12z" />
                           </svg>
                         </span>
-                        {post.comments_count > 0 && <span>{post.comments_count}</span>}
+                        {post.comments_count > 0 && (
+                          <span>{post.comments_count}{post.post_subtype === 'discussion' && <span className="ml-0.5 text-[11px]"> replies</span>}</span>
+                        )}
                       </button>
 
                       {/* Repost */}
@@ -2209,31 +2256,41 @@ export default function FeedPage() {
 
             <Card>
               <CardContent className="p-5">
-                <h3 className="font-semibold text-ink">Trending on campus</h3>
-                <div className="mt-4 space-y-1">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-ink">Trending on campus</h3>
+                  <span className="text-caption text-ink-muted">↻ 5 min</span>
+                </div>
+                <div className="mt-3 space-y-0.5">
                   {trendingHashtags.length === 0 ? (
-                    <p className="text-caption text-ink-muted py-2">No trending hashtags yet.</p>
-                  ) : (
-                    trendingHashtags.map((topic) => (
+                    <p className="py-2 text-caption text-ink-muted">No trending hashtags yet.</p>
+                  ) : (() => {
+                    const maxCount = trendingHashtags[0]?.post_count ?? 1;
+                    return trendingHashtags.map((topic, idx) => (
                       <Link
                         key={topic.tag}
                         href={`/hashtag/${topic.tag}`}
-                        className="group flex items-center justify-between rounded-xl px-2 py-1.5 transition hover:bg-surface-muted dark:hover:bg-[#1a1a1a]"
+                        className="group flex items-center gap-2 rounded-xl px-2 py-2 transition hover:bg-surface-muted dark:hover:bg-[#1a1a1a]"
                       >
-                        <div>
-                          <p className="text-body-sm font-semibold text-brand-600 group-hover:text-brand-700 dark:text-brand-400 dark:group-hover:text-brand-300">
-                            #{topic.tag}
-                          </p>
-                          <p className="text-caption text-ink-muted">
-                            {topic.post_count} post{topic.post_count !== 1 ? 's' : ''}
-                          </p>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <p className="truncate text-[13px] font-semibold text-brand-600 group-hover:text-brand-700 dark:text-brand-400 dark:group-hover:text-brand-300">
+                              #{topic.tag}
+                            </p>
+                            {idx < 3 && <span className="text-[11px] leading-none">🔥</span>}
+                          </div>
+                          <div className="mt-1 flex items-center gap-2">
+                            <div className="h-1 flex-1 overflow-hidden rounded-full bg-border">
+                              <div
+                                className="h-full rounded-full bg-brand-400/70 transition-all"
+                                style={{ width: `${Math.max(8, (topic.post_count / maxCount) * 100)}%` }}
+                              />
+                            </div>
+                            <span className="shrink-0 text-[11px] text-ink-muted">{topic.post_count}</span>
+                          </div>
                         </div>
-                        <svg className="h-4 w-4 text-ink-muted opacity-0 group-hover:opacity-100 transition" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-                        </svg>
                       </Link>
-                    ))
-                  )}
+                    ));
+                  })()}
                 </div>
               </CardContent>
             </Card>

@@ -15,10 +15,14 @@ async function uploadBufferToCloudinary(buffer, mimetype) {
 
 async function createPost(req, res) {
   try {
-    const content = req.body.content;
+    const content = req.body.content || '';
+    const postSubtype = (req.body.post_subtype || 'post').toLowerCase();
+    const discussionTitle = req.body.discussion_title?.trim() || null;
 
-    if (!content || !content.trim()) {
-      return res.status(400).json({ message: 'Post content is required' });
+    if (postSubtype === 'discussion') {
+      if (!discussionTitle) return res.status(400).json({ message: 'Discussion title is required' });
+    } else {
+      if (!content.trim()) return res.status(400).json({ message: 'Post content is required' });
     }
 
     let imageUrl = null;
@@ -33,10 +37,15 @@ async function createPost(req, res) {
       content: content.trim(),
       imageUrl,
       category,
+      postSubtype,
+      discussionTitle,
     });
 
     // Index hashtags (fire-and-forget — don't fail the request on hashtag errors)
-    Hashtag.indexPostHashtags(post.id, content.trim()).catch(err =>
+    const textToIndex = postSubtype === 'discussion'
+      ? `${discussionTitle} ${content.trim()}`
+      : content.trim();
+    Hashtag.indexPostHashtags(post.id, textToIndex).catch(err =>
       console.error('Hashtag indexing error:', err.message)
     );
 

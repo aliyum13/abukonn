@@ -30,6 +30,8 @@ async function createPostsTable() {
   await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS is_repost BOOLEAN DEFAULT FALSE`);
   await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS original_post_id INTEGER`);
   await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS original_author_name TEXT`);
+  await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS post_subtype VARCHAR(20) DEFAULT 'post'`);
+  await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS discussion_title TEXT`);
   console.log('Posts table ready');
 }
 
@@ -38,12 +40,12 @@ async function createPostLikesTable() {
   console.log('Post likes table ready');
 }
 
-async function createPost({ userId, content, imageUrl = null, category = 'GENERAL', isRepost = false, originalPostId = null, originalAuthorName = null }) {
+async function createPost({ userId, content, imageUrl = null, category = 'GENERAL', isRepost = false, originalPostId = null, originalAuthorName = null, postSubtype = 'post', discussionTitle = null }) {
   const result = await pool.query(
-    `INSERT INTO abukonn.posts (user_id, content, image_url, category, is_repost, original_post_id, original_author_name)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO abukonn.posts (user_id, content, image_url, category, is_repost, original_post_id, original_author_name, post_subtype, discussion_title)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING *`,
-    [userId, content, imageUrl, category, isRepost, originalPostId, originalAuthorName]
+    [userId, content, imageUrl, category, isRepost, originalPostId, originalAuthorName, postSubtype, discussionTitle]
   );
   return result.rows[0];
 }
@@ -56,6 +58,8 @@ async function getAllPosts(currentUserId) {
             COALESCE(p.category, 'GENERAL') AS category,
             COALESCE(p.is_repost, FALSE) AS is_repost,
             p.original_post_id, p.original_author_name,
+            COALESCE(p.post_subtype, 'post') AS post_subtype,
+            p.discussion_title,
             p.created_at,
             u.full_name AS author_name, u.department AS author_department,
             u.profile_photo_url AS author_photo, u.matric_number AS author_matric,
@@ -95,6 +99,8 @@ async function getPostByIdForUser(id, currentUserId) {
             COALESCE(p.category, 'GENERAL') AS category,
             COALESCE(p.is_repost, FALSE) AS is_repost,
             p.original_post_id, p.original_author_name,
+            COALESCE(p.post_subtype, 'post') AS post_subtype,
+            p.discussion_title,
             p.created_at,
             u.full_name AS author_name, u.department AS author_department,
             u.profile_photo_url AS author_photo, u.matric_number AS author_matric,

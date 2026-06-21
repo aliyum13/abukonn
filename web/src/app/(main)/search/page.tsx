@@ -20,7 +20,7 @@ import {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
-type Tab = 'all' | 'users' | 'posts' | 'hashtags';
+type Tab = 'all' | 'users' | 'posts' | 'hashtags' | 'trending';
 
 interface SearchUser {
   id: number;
@@ -60,6 +60,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'users',    label: 'Students' },
   { id: 'posts',    label: 'Posts' },
   { id: 'hashtags', label: 'Hashtags' },
+  { id: 'trending', label: '🔥 Trending' },
 ];
 
 // ── Skeletons ─────────────────────────────────────────────────────────────────
@@ -234,11 +235,20 @@ function SearchResults() {
   const [tab, setTab] = useState<Tab>('all');
   const [results, setResults] = useState<SearchResults | null>(null);
   const [hashtags, setHashtags] = useState<SearchHashtag[]>([]);
+  const [trendingTopics, setTrendingTopics] = useState<SearchHashtag[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !token) router.push('/login');
   }, [authLoading, token, router]);
+
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${API_URL}/api/hashtags/trending?limit=10`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => setTrendingTopics(d.hashtags ?? []))
+      .catch(() => {});
+  }, [token]);
 
   const fetchResults = useCallback(
     async (query: string) => {
@@ -291,6 +301,7 @@ function SearchResults() {
     if (t === 'users')    return users.length;
     if (t === 'posts')    return posts.length;
     if (t === 'hashtags') return hashtags.length;
+    if (t === 'trending') return null;
     return users.length + posts.length + hashtags.length;
   };
 
@@ -326,7 +337,7 @@ function SearchResults() {
               )}
             >
               {t.label}
-              {!loading && results && t.id !== 'all' && (
+              {!loading && results && t.id !== 'all' && t.id !== 'trending' && tabCount(t.id) !== null && (
                 <span className="ml-1 text-caption text-ink-muted">({tabCount(t.id)})</span>
               )}
             </button>
@@ -334,8 +345,60 @@ function SearchResults() {
         </div>
       )}
 
+      {/* Trending tab — always visible regardless of query */}
+      {tab === 'trending' && (
+        <div className="space-y-3">
+          <h2 className="text-body-sm font-semibold uppercase tracking-wider text-ink-muted">
+            Trending on campus
+          </h2>
+          {trendingTopics.length === 0 ? (
+            <Card><EmptyState title="No trending topics yet" description="Start posting with hashtags to see them here." icon={<svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 01.778-.332 48.294 48.294 0 005.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" /></svg>} /></Card>
+          ) : (() => {
+            const maxCount = trendingTopics[0]?.post_count ?? 1;
+            return trendingTopics.map((h, idx) => (
+              <Link key={h.tag} href={`/hashtag/${h.tag}`}>
+                <div className="flex items-center gap-4 rounded-2xl border border-border dark:border-[#222] px-5 py-4 transition hover:bg-surface-muted dark:hover:bg-[#1a1a1a] hover:border-brand-200 dark:hover:border-brand-800 group">
+                  <div className={cn(
+                    'flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[20px] font-bold',
+                    idx < 3 ? 'bg-amber-50 dark:bg-amber-950/40' : 'bg-brand-50 dark:bg-brand-950/40'
+                  )}>
+                    {idx < 3 ? '🔥' : '#'}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-[15px] text-ink group-hover:text-brand-600 dark:group-hover:text-brand-400 transition">
+                        #{h.tag}
+                      </p>
+                      {idx < 3 && (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                          Hot
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-1.5 flex items-center gap-3">
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-border">
+                        <div
+                          className="h-full rounded-full bg-brand-400/70"
+                          style={{ width: `${Math.max(6, (h.post_count / maxCount) * 100)}%` }}
+                        />
+                      </div>
+                      <span className="shrink-0 text-[13px] text-ink-muted">
+                        {h.post_count.toLocaleString()} post{h.post_count !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                  </div>
+                  <svg className="h-4 w-4 shrink-0 text-ink-muted opacity-0 group-hover:opacity-100 transition" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                  </svg>
+                </div>
+              </Link>
+            ));
+          })()}
+        </div>
+      )}
+
       {/* Empty query state */}
-      {!q && (
+      {!q && tab !== 'trending' && (
         <Card>
           <EmptyState
             title="Search ABUkonn"
@@ -350,7 +413,7 @@ function SearchResults() {
       )}
 
       {/* Loading */}
-      {loading && q && (
+      {loading && q && tab !== 'trending' && (
         <div className="space-y-4">
           {showUsers    && <><Skeleton className="h-4 w-20" /><UserCardSkeleton /><UserCardSkeleton /></>}
           {showPosts    && <><Skeleton className="h-4 w-16 mt-2" /><PostCardSkeleton /><PostCardSkeleton /></>}
@@ -359,7 +422,7 @@ function SearchResults() {
       )}
 
       {/* Results */}
-      {!loading && (results || hashtags.length > 0) && q && (
+      {!loading && (results || hashtags.length > 0) && q && tab !== 'trending' && (
         <>
           {filteredTotal === 0 ? (
             <Card>
