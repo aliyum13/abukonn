@@ -53,6 +53,7 @@ interface UserSettings {
   notif_follows: boolean;
   notif_connect_requests: boolean;
   notif_messages: boolean;
+  show_birthday: boolean;
 }
 
 function Toast({ message, isError, onClose }: { message: string; isError: boolean; onClose: () => void }) {
@@ -147,7 +148,7 @@ export default function SettingsPage() {
   const [toast, setToast] = useState<{ message: string; isError: boolean } | null>(null);
 
   const [accountForm, setAccountForm] = useState({
-    full_name: '', username: '', bio: '', department: '', level: '', email: '',
+    full_name: '', username: '', bio: '', department: '', level: '', email: '', date_of_birth: '',
   });
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [savingAccount, setSavingAccount] = useState(false);
@@ -189,6 +190,7 @@ export default function SettingsPage() {
         department: u.department || '',
         level: u.level || '',
         email: u.email || '',
+        date_of_birth: u.date_of_birth ? u.date_of_birth.split('T')[0] : '',
       });
       setSettings(data.settings);
     } catch {
@@ -261,6 +263,7 @@ export default function SettingsPage() {
           bio: accountForm.bio,
           department: accountForm.department,
           level: accountForm.level,
+          date_of_birth: accountForm.date_of_birth || null,
         }),
       });
       const data = await res.json();
@@ -541,6 +544,19 @@ export default function SettingsPage() {
                 {LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
               </Select>
 
+              <div>
+                <label className="mb-1.5 block text-label text-ink-secondary">
+                  Date of Birth <span className="text-ink-muted font-normal">(used for birthday wishes)</span>
+                </label>
+                <input
+                  type="date"
+                  value={accountForm.date_of_birth}
+                  onChange={e => setAccountForm(f => ({ ...f, date_of_birth: e.target.value }))}
+                  max={new Date().toISOString().split('T')[0]}
+                  className="h-10 w-full rounded-xl border border-border bg-surface px-3.5 text-[14px] text-ink focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-[#333] dark:bg-[#1a1a1a]"
+                />
+              </div>
+
               {/* Email */}
               <div>
                 <label className="mb-1.5 block text-label text-ink-secondary">Email</label>
@@ -666,6 +682,14 @@ export default function SettingsPage() {
                     onChange={v => patchSettings({ show_matric: v }).then(ok => ok && showToast('Privacy updated'))}
                   />
                 </div>
+
+                <SettingToggleRow
+                  label="Show my birthday to others"
+                  description="Others will see a birthday card on your special day"
+                  checked={settings.show_birthday}
+                  onChange={v => patchSettings({ show_birthday: v }).then(ok => ok && showToast('Privacy updated'))}
+                  disabled={savingSetting}
+                />
               </div>
               {savingSetting && <p className="text-[13px] text-ink-muted">Saving…</p>}
             </SettingsCard>

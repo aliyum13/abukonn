@@ -71,16 +71,16 @@ async function getUserById(req, res) {
 
 async function updateProfile(req, res) {
   try {
-    const { bio, department, level, username, full_name } = req.body;
+    const { bio, department, level, username, full_name, date_of_birth } = req.body;
 
-    // Validate username: only letters, numbers, underscores, max 30 chars
     if (username !== undefined && username !== null && username !== '') {
       if (!/^[a-zA-Z0-9_]{1,30}$/.test(username)) {
         return res.status(400).json({ message: 'Username may only contain letters, numbers, and underscores (max 30 characters).' });
       }
     }
 
-    const user = await User.updateProfile(req.user.id, { bio, department, level, username, full_name });
+    const dateOfBirth = date_of_birth ? date_of_birth : null;
+    const user = await User.updateProfile(req.user.id, { bio, department, level, username, full_name, dateOfBirth });
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
@@ -119,4 +119,21 @@ async function uploadPhoto(req, res) {
   }
 }
 
-module.exports = { getProfile, getUserById, updateProfile, uploadPhoto };
+async function getBirthdaysToday(req, res) {
+  try {
+    const users = await User.getBirthdayUsers(req.user.id);
+    const me = await User.findById(req.user.id);
+    let isMyBirthday = false;
+    if (me?.date_of_birth) {
+      const dob = new Date(me.date_of_birth);
+      const now = new Date();
+      isMyBirthday = dob.getUTCMonth() === now.getUTCMonth() && dob.getUTCDate() === now.getUTCDate();
+    }
+    res.json({ users, is_my_birthday: isMyBirthday });
+  } catch (err) {
+    console.error('getBirthdaysToday:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+module.exports = { getProfile, getUserById, updateProfile, uploadPhoto, getBirthdaysToday };

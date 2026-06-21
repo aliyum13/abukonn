@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS abukonn.users (
 ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS username VARCHAR(100);
 ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'user';
+ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS date_of_birth DATE;
 
 DO $$
 BEGIN
@@ -86,7 +87,7 @@ async function findByUsername(username) {
   return result.rows[0] || null;
 }
 
-const COLS = 'id, username, matric_number, full_name, email, department, level, profile_photo_url, bio, is_admin, role, created_at';
+const COLS = 'id, username, matric_number, full_name, email, department, level, profile_photo_url, bio, is_admin, role, date_of_birth, created_at';
 
 async function findById(id) {
   const result = await pool.query(
@@ -131,19 +132,36 @@ async function updateRole(id, role) {
   return result.rows[0] || null;
 }
 
-async function updateProfile(id, { bio, department, level, username, full_name }) {
+async function updateProfile(id, { bio, department, level, username, full_name, dateOfBirth }) {
   const result = await pool.query(
     `UPDATE abukonn.users
-     SET bio        = COALESCE($2, bio),
-         department = COALESCE($3, department),
-         level      = COALESCE($4, level),
-         username   = COALESCE($5, username),
-         full_name  = COALESCE($6, full_name)
+     SET bio           = COALESCE($2, bio),
+         department    = COALESCE($3, department),
+         level         = COALESCE($4, level),
+         username      = COALESCE($5, username),
+         full_name     = COALESCE($6, full_name),
+         date_of_birth = COALESCE($7, date_of_birth)
      WHERE id = $1
      RETURNING ${COLS}`,
-    [id, bio ?? null, department ?? null, level ?? null, username ?? null, full_name ?? null]
+    [id, bio ?? null, department ?? null, level ?? null, username ?? null, full_name ?? null, dateOfBirth ?? null]
   );
   return result.rows[0] || null;
+}
+
+async function getBirthdayUsers(excludeUserId) {
+  const { rows } = await pool.query(
+    `SELECT u.id, u.full_name, u.username, u.profile_photo_url, u.department
+     FROM abukonn.users u
+     LEFT JOIN abukonn.user_settings s ON s.user_id = u.id
+     WHERE u.date_of_birth IS NOT NULL
+       AND EXTRACT(MONTH FROM u.date_of_birth) = EXTRACT(MONTH FROM CURRENT_DATE AT TIME ZONE 'Africa/Lagos')
+       AND EXTRACT(DAY   FROM u.date_of_birth) = EXTRACT(DAY   FROM CURRENT_DATE AT TIME ZONE 'Africa/Lagos')
+       AND (s.show_birthday IS NULL OR s.show_birthday = TRUE)
+       AND u.id != $1
+     LIMIT 20`,
+    [excludeUserId]
+  );
+  return rows;
 }
 
 async function updateProfilePhoto(id, photoUrl) {
@@ -170,7 +188,6 @@ function toPublicUser(user) {
   return {
     id: user.id,
     username: user.username,
-    // matric_number excluded by default — added back only for own profile or admin views
     full_name: user.full_name,
     email: user.email,
     department: user.department,
@@ -183,11 +200,12 @@ function toPublicUser(user) {
   };
 }
 
-// Full user data including matric — for own-profile and admin use only
+// Full user data including matric + DOB — for own-profile and admin use only
 function toPrivateUser(user) {
   return {
     ...toPublicUser(user),
     matric_number: user.matric_number,
+    date_of_birth: user.date_of_birth ?? null,
   };
 }
 
@@ -206,6 +224,7 @@ module.exports = {
   updatePassword,
   deleteById,
   createUser,
+  getBirthdayUsers,
   toPublicUser,
   toPrivateUser,
 };

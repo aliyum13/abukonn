@@ -4,6 +4,7 @@ const SETTINGS_COLS = `
   user_id, default_post_audience, story_audience, who_can_message,
   who_can_connect, show_matric,
   notif_likes, notif_comments, notif_follows, notif_connect_requests, notif_messages,
+  show_birthday,
   is_deactivated, created_at, updated_at
 `;
 
@@ -21,10 +22,12 @@ async function createUserSettingsTable() {
       notif_follows           BOOLEAN NOT NULL DEFAULT TRUE,
       notif_connect_requests  BOOLEAN NOT NULL DEFAULT TRUE,
       notif_messages          BOOLEAN NOT NULL DEFAULT TRUE,
+      show_birthday           BOOLEAN NOT NULL DEFAULT TRUE,
       is_deactivated          BOOLEAN NOT NULL DEFAULT FALSE,
       created_at              TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
       updated_at              TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
+    ALTER TABLE abukonn.user_settings ADD COLUMN IF NOT EXISTS show_birthday BOOLEAN NOT NULL DEFAULT TRUE;
   `);
   console.log('User settings table ready');
 }
@@ -61,6 +64,7 @@ const ALLOWED = {
 
 const BOOL_FIELDS = [
   'notif_likes', 'notif_comments', 'notif_follows', 'notif_connect_requests', 'notif_messages',
+  'show_birthday',
 ];
 
 async function update(userId, fields) {
@@ -120,6 +124,7 @@ function toClientSettings(row) {
     notif_follows: row.notif_follows,
     notif_connect_requests: row.notif_connect_requests,
     notif_messages: row.notif_messages,
+    show_birthday: row.show_birthday ?? true,
     is_deactivated: row.is_deactivated,
   };
 }

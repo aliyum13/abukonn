@@ -153,6 +153,13 @@ interface FeedChannel {
   icon: string;
 }
 
+interface BirthdayUser {
+  id: number;
+  full_name: string;
+  profile_photo_url: string | null;
+  department: string;
+}
+
 interface ShareFollower {
   id: number;
   full_name: string;
@@ -896,6 +903,10 @@ export default function FeedPage() {
   // Highlights
   const [highlights, setHighlights] = useState<Highlight[]>([]);
 
+  // Birthdays
+  const [birthdayUsers, setBirthdayUsers] = useState<BirthdayUser[]>([]);
+  const [isMyBirthday, setIsMyBirthday] = useState(false);
+
   // Category filter
   const [categoryFilter, setCategoryFilter] = useState<PostCategory | 'ALL'>('ALL');
   const [newPostCategory, setNewPostCategory] = useState<PostCategory>('GENERAL');
@@ -950,6 +961,15 @@ export default function FeedPage() {
     fetch(`${API_URL}/api/highlights`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(d => setHighlights(d.highlights || []))
+      .catch(() => {});
+  }, [token]);
+
+  // Fetch today's birthdays
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${API_URL}/api/users/birthdays/today`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => { setBirthdayUsers(d.users || []); setIsMyBirthday(!!d.is_my_birthday); })
       .catch(() => {});
   }, [token]);
 
@@ -1816,6 +1836,47 @@ export default function FeedPage() {
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* Birthdays Today */}
+          {(isMyBirthday || birthdayUsers.length > 0) && (
+            <div className="border-b border-border px-4 py-3 animate-[fadeIn_0.4s_ease-out]">
+              <div className="mb-2.5 flex items-center gap-1.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">Birthdays Today</p>
+                <span className="text-[15px]">🎂</span>
+              </div>
+              <div className="flex gap-3 overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none' }}>
+                {isMyBirthday && user && (
+                  <div className="flex min-w-[156px] shrink-0 flex-col items-center gap-2 rounded-2xl border border-pink-200 bg-gradient-to-b from-pink-50 to-rose-50 p-3.5 text-center dark:border-pink-900/50 dark:from-pink-950/40 dark:to-rose-950/30">
+                    <div className="relative">
+                      <Avatar src={user.profile_photo_url} name={user.full_name} size="md" />
+                      <span className="absolute -top-1 -right-1 text-[14px]">🎉</span>
+                    </div>
+                    <div>
+                      <p className="text-[13px] font-bold text-pink-700 dark:text-pink-300">Happy Birthday!</p>
+                      <p className="text-[11px] text-ink-muted">{user.full_name}</p>
+                    </div>
+                  </div>
+                )}
+                {birthdayUsers.map(bu => (
+                  <div key={bu.id} className="flex min-w-[156px] shrink-0 flex-col items-center gap-2 rounded-2xl border border-pink-200 bg-gradient-to-b from-pink-50 to-rose-50 p-3.5 text-center dark:border-pink-900/50 dark:from-pink-950/40 dark:to-rose-950/30">
+                    <Avatar src={bu.profile_photo_url} name={bu.full_name} size="md" />
+                    <div>
+                      <p className="text-[13px] font-semibold text-ink leading-tight">{bu.full_name}</p>
+                      <p className="text-[11px] text-ink-muted">{bu.department}</p>
+                      <p className="mt-0.5 text-[11px] font-medium text-pink-600 dark:text-pink-400">🎂 Today!</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/messages?userId=${bu.id}`)}
+                      className="rounded-full bg-pink-100 px-3 py-1 text-[11px] font-semibold text-pink-700 transition hover:bg-pink-200 dark:bg-pink-950/60 dark:text-pink-300 dark:hover:bg-pink-900/60"
+                    >
+                      Wish them well 🎉
+                    </button>
+                  </div>
+                ))}
               </div>
             </div>
           )}
