@@ -71,7 +71,11 @@ async function getAllPosts(currentUserId) {
             EXISTS(
               SELECT 1 FROM abukonn.follows f
               WHERE f.follower_id = $1 AND f.following_id = p.user_id
-            ) AS is_following_author
+            ) AS is_following_author,
+            (p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) AS engagement_score,
+            (p.created_at > NOW() - INTERVAL '24 hours' AND (p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) > 20) AS is_trending,
+            ((p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) > 50) AS is_hot,
+            (SELECT COUNT(*)::int FROM abukonn.comments c WHERE c.post_id = p.id AND c.created_at > NOW() - INTERVAL '1 hour') AS comment_velocity
      FROM abukonn.posts p
      JOIN abukonn.users u ON p.user_id = u.id
      ORDER BY p.created_at DESC`,
@@ -112,7 +116,11 @@ async function getPostByIdForUser(id, currentUserId) {
             EXISTS(
               SELECT 1 FROM abukonn.follows f
               WHERE f.follower_id = $2 AND f.following_id = p.user_id
-            ) AS is_following_author
+            ) AS is_following_author,
+            (p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) AS engagement_score,
+            (p.created_at > NOW() - INTERVAL '24 hours' AND (p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) > 20) AS is_trending,
+            ((p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) > 50) AS is_hot,
+            (SELECT COUNT(*)::int FROM abukonn.comments c WHERE c.post_id = p.id AND c.created_at > NOW() - INTERVAL '1 hour') AS comment_velocity
      FROM abukonn.posts p
      JOIN abukonn.users u ON p.user_id = u.id
      WHERE p.id = $1`,

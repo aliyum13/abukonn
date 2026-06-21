@@ -60,6 +60,10 @@ interface Post {
   author_photo: string | null;
   author_matric: string;
   author_role?: string;
+  engagement_score?: number;
+  is_trending?: boolean;
+  is_hot?: boolean;
+  comment_velocity?: number;
 }
 
 interface Comment {

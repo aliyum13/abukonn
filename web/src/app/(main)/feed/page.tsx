@@ -69,6 +69,12 @@ const POST_CATEGORIES = [
 
 type PostCategory = typeof POST_CATEGORIES[number]['value'];
 
+function formatCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}K`;
+  return String(n);
+}
+
 const CATEGORY_COLORS: Record<string, string> = {
   GENERAL:      'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300',
   EXAMINATION:  'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400',
@@ -123,6 +129,10 @@ interface Post {
   author_photo: string | null;
   author_matric: string;
   author_role?: string;
+  engagement_score: number;
+  is_trending: boolean;
+  is_hot: boolean;
+  comment_velocity: number;
 }
 
 interface Comment {
@@ -1706,6 +1716,11 @@ export default function FeedPage() {
   };
 
   const userPostCount = posts.filter((p) => p.user_id === user?.id).length;
+  const maxEngagementScore = Math.max(1, ...posts.map(p => p.engagement_score ?? 0));
+  const activePosts = [...posts]
+    .filter(p => (p.comment_velocity ?? 0) > 0)
+    .sort((a, b) => (b.comment_velocity ?? 0) - (a.comment_velocity ?? 0))
+    .slice(0, 3);
 
   const [suggestions, setSuggestions] = useState<SuggestedUser[]>([]);
   const [myChannels, setMyChannels] = useState<FeedChannel[]>([]);
@@ -2057,6 +2072,15 @@ export default function FeedPage() {
                               💬 Discussion
                             </span>
                           )}
+                          {post.is_hot ? (
+                            <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700 dark:bg-red-950 dark:text-red-300">
+                              ⚡ Hot
+                            </span>
+                          ) : post.is_trending ? (
+                            <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-700 dark:bg-orange-950 dark:text-orange-300">
+                              🔥 Trending
+                            </span>
+                          ) : null}
                         </div>
                         <p className="text-[13px] text-ink-muted">
                           {post.author_department} · {timeAgo(post.created_at)}
@@ -2125,6 +2149,14 @@ export default function FeedPage() {
                       </button>
                     )}
 
+                    {(post.comment_velocity ?? 0) > 3 && (
+                      <div className="mt-2.5">
+                        <span className="inline-flex animate-pulse items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-1 text-[11px] font-semibold text-green-700 dark:bg-green-950/60 dark:text-green-400">
+                          💬 Active discussion
+                        </span>
+                      </div>
+                    )}
+
                     {/* Action row — icon-only buttons, evenly spaced */}
                     <div className="mt-3 flex items-center justify-between">
                       {/* Like */}
@@ -2184,9 +2216,23 @@ export default function FeedPage() {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
                           </svg>
                         </span>
-                        {post.view_count > 0 ? post.view_count.toLocaleString() : '0'}
+                        {formatCount(post.view_count)}
                       </span>
                     </div>
+                    {(post.engagement_score ?? 0) > 0 && (
+                      <div className="mt-2 h-[3px] overflow-hidden rounded-full bg-border/50">
+                        <div
+                          className={cn('h-full rounded-full transition-all duration-500',
+                            (post.engagement_score ?? 0) > 50
+                              ? 'bg-red-400 dark:bg-red-500'
+                              : (post.engagement_score ?? 0) > 20
+                              ? 'bg-amber-400 dark:bg-amber-500'
+                              : 'bg-green-400 dark:bg-green-500'
+                          )}
+                          style={{ width: `${Math.min(100, Math.max(3, ((post.engagement_score ?? 0) / maxEngagementScore) * 100))}%` }}
+                        />
+                      </div>
+                    )}
 
                       {/* Comments section */}
                       {commentingId === post.id && (
@@ -2389,6 +2435,34 @@ export default function FeedPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {activePosts.length > 0 && (
+              <Card>
+                <CardContent className="p-5">
+                  <h3 className="font-semibold text-ink">People are talking</h3>
+                  <div className="mt-3 space-y-3">
+                    {activePosts.map(p => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => router.push(`/post/${p.id}`)}
+                        className="flex w-full items-start gap-2.5 rounded-xl p-1.5 text-left transition hover:bg-surface-muted dark:hover:bg-[#1a1a1a]"
+                      >
+                        <Avatar src={p.author_photo} name={p.author_name} size="sm" className="mt-0.5 shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <p className="line-clamp-2 text-[12px] leading-snug text-ink">
+                            {p.discussion_title || p.content}
+                          </p>
+                          <p className="mt-0.5 text-[11px] font-medium text-green-600 dark:text-green-400">
+                            💬 {p.comment_velocity} comment{p.comment_velocity !== 1 ? 's' : ''} this hour
+                          </p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </aside>
       </div>
