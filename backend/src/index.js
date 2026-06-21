@@ -30,6 +30,7 @@ const { createConnectTables } = require('./models/Connect');
 const { createHashtagTables } = require('./models/Hashtag');
 const { createUserSettingsTable } = require('./models/UserSettings');
 const { createHighlightsTable } = require('./models/Highlight');
+const { createChannelTables } = require('./models/Channel');
 const notificationRoutes = require('./routes/notifications');
 const adminRoutes = require('./routes/admin');
 const groupRoutes = require('./routes/groups');
@@ -38,6 +39,7 @@ const connectRoutes = require('./routes/connect');
 const hashtagRoutes = require('./routes/hashtags');
 const settingsRoutes = require('./routes/settings');
 const highlightRoutes = require('./routes/highlights');
+const channelRoutes = require('./routes/channels');
 
 const app = express();
 const server = http.createServer(app);
@@ -171,6 +173,7 @@ app.use('/api/connect', connectRoutes);
 app.use('/api/hashtags', hashtagRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/highlights', highlightRoutes);
+app.use('/api/channels', channelRoutes);
 
 // Test route
 app.get('/', (req, res) => {
@@ -198,6 +201,7 @@ createUsersTable()
   .then(() => createHashtagTables())
   .then(() => createUserSettingsTable())
   .then(() => createHighlightsTable())
+  .then(() => createChannelTables())
   .then(() => {
     server.timeout = 120000;
     server.keepAliveTimeout = 120000;
