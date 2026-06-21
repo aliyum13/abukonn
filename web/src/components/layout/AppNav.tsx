@@ -432,11 +432,12 @@ export function AppNav() {
         {/* Right side: bell + avatar + logout */}
         {!searchOpen && (
           <div className="flex shrink-0 items-center gap-2">
-            {/* Notification bell → /notifications */}
+            {/* Notification bell — toggles to/from /notifications */}
             {!loading && user && (
-              <Link
-                href="/notifications"
+              <button
+                type="button"
                 aria-label="Notifications"
+                onClick={() => pathname === '/notifications' ? router.back() : router.push('/notifications')}
                 className="relative flex h-9 w-9 items-center justify-center rounded-xl text-ink-secondary transition hover:bg-surface-subtle hover:text-ink"
               >
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -447,7 +448,7 @@ export function AppNav() {
                     {(unreadCount + connectCount) > 9 ? '9+' : (unreadCount + connectCount)}
                   </span>
                 )}
-              </Link>
+              </button>
             )}
 
             {!loading && user && (
