@@ -2,7 +2,7 @@ const Notification = require('../models/Notification');
 
 async function getNotifications(req, res) {
   try {
-    const notifications = await Notification.getMyNotifications(req.user.id);
+    const notifications = await Notification.getGroupedNotifications(req.user.id);
     res.json({ notifications });
   } catch (err) {
     console.error('Get notifications error:', err.message);
@@ -41,4 +41,18 @@ async function markOneRead(req, res) {
   }
 }
 
-module.exports = { getNotifications, getUnreadCount, markAllRead, markOneRead };
+async function markManyRead(req, res) {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ message: 'ids must be a non-empty array' });
+    }
+    await Notification.markManyRead(ids.map(Number), req.user.id);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Mark many read error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+module.exports = { getNotifications, getUnreadCount, markAllRead, markOneRead, markManyRead };

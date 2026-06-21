@@ -23,6 +23,8 @@ EXCEPTION WHEN others THEN NULL;
 END $$;
 `;
 
+const GROUPABLE = new Set(['like', 'comment', 'follow']);
+
 async function createNotificationsTable() {
   await pool.query(CREATE_NOTIFICATIONS_TABLE);
   console.log('Notifications table ready');
@@ -39,7 +41,7 @@ async function createNotification({ recipientId, senderId, type, postId = null }
   return result.rows[0];
 }
 
-async function getMyNotifications(userId) {
+async function getGroupedNotifications(userId) {
   const result = await pool.query(
     `SELECT n.id, n.type, n.post_id, n.is_read, n.created_at,
             u.id AS sender_id,
@@ -49,16 +51,71 @@ async function getMyNotifications(userId) {
      JOIN abukonn.users u ON n.sender_id = u.id
      WHERE n.recipient_id = $1
      ORDER BY n.created_at DESC
-     LIMIT 20`,
+     LIMIT 100`,
     [userId]
   );
-  return result.rows;
+
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  const groupMap = new Map();
+  const ordered = [];
+
+  for (const row of result.rows) {
+    const isRecent = new Date(row.created_at).getTime() > cutoff;
+    const canGroup = GROUPABLE.has(row.type) && isRecent;
+
+    if (canGroup) {
+      const key = `${row.type}_${row.post_id ?? 'null'}`;
+      if (!groupMap.has(key)) {
+        const group = {
+          id: `group_${key}`,
+          notification_ids: [],
+          type: row.type,
+          post_id: row.post_id,
+          actors: [],
+          actor_count: 0,
+          is_read: true,
+          latest_at: row.created_at,
+        };
+        groupMap.set(key, group);
+        ordered.push(group);
+      }
+      const g = groupMap.get(key);
+      g.notification_ids.push(row.id);
+      g.actor_count += 1;
+      if (!row.is_read) g.is_read = false;
+      if (g.actors.length < 3 && !g.actors.find(a => a.id === row.sender_id)) {
+        g.actors.push({ id: row.sender_id, full_name: row.sender_name, profile_photo_url: row.sender_photo });
+      }
+    } else {
+      ordered.push({
+        id: `single_${row.id}`,
+        notification_ids: [row.id],
+        type: row.type,
+        post_id: row.post_id,
+        actors: [{ id: row.sender_id, full_name: row.sender_name, profile_photo_url: row.sender_photo }],
+        actor_count: 1,
+        is_read: row.is_read,
+        latest_at: row.created_at,
+      });
+    }
+  }
+
+  return ordered.slice(0, 30);
 }
 
 async function getUnreadCount(userId) {
   const result = await pool.query(
-    `SELECT COUNT(*) FROM abukonn.notifications
-     WHERE recipient_id = $1 AND is_read = FALSE`,
+    `SELECT COUNT(*) FROM (
+       SELECT CASE
+         WHEN type IN ('like','comment','follow')
+           AND created_at > NOW() - INTERVAL '24 hours'
+         THEN type || '_' || COALESCE(post_id::text, 'null')
+         ELSE 'single_' || id::text
+       END AS group_key
+       FROM abukonn.notifications
+       WHERE recipient_id = $1 AND is_read = FALSE
+       GROUP BY group_key
+     ) t`,
     [userId]
   );
   return parseInt(result.rows[0].count, 10);
@@ -80,11 +137,21 @@ async function markOneRead(id, userId) {
   );
 }
 
+async function markManyRead(ids, userId) {
+  if (!ids.length) return;
+  await pool.query(
+    `UPDATE abukonn.notifications SET is_read = TRUE
+     WHERE id = ANY($1) AND recipient_id = $2`,
+    [ids, userId]
+  );
+}
+
 module.exports = {
   createNotificationsTable,
   createNotification,
-  getMyNotifications,
+  getGroupedNotifications,
   getUnreadCount,
   markAllRead,
   markOneRead,
+  markManyRead,
 };
