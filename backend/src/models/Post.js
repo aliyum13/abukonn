@@ -32,6 +32,38 @@ async function createPostsTable() {
   await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS original_author_name TEXT`);
   await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS post_subtype VARCHAR(20) DEFAULT 'post'`);
   await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS discussion_title TEXT`);
+  await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS poll_duration_hours INTEGER`);
+  await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS poll_ends_at TIMESTAMP WITH TIME ZONE`);
+  await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS event_title VARCHAR(200)`);
+  await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS event_date TIMESTAMP WITH TIME ZONE`);
+  await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS event_location VARCHAR(200)`);
+  await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS event_rsvp_count INTEGER DEFAULT 0`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS abukonn.poll_options (
+      id SERIAL PRIMARY KEY,
+      post_id INTEGER NOT NULL REFERENCES abukonn.posts(id) ON DELETE CASCADE,
+      option_text VARCHAR(200) NOT NULL,
+      vote_count INTEGER DEFAULT 0
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS abukonn.poll_votes (
+      id SERIAL PRIMARY KEY,
+      post_id INTEGER NOT NULL REFERENCES abukonn.posts(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES abukonn.users(id) ON DELETE CASCADE,
+      option_id INTEGER NOT NULL REFERENCES abukonn.poll_options(id) ON DELETE CASCADE,
+      UNIQUE(post_id, user_id)
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS abukonn.event_rsvps (
+      id SERIAL PRIMARY KEY,
+      post_id INTEGER NOT NULL REFERENCES abukonn.posts(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES abukonn.users(id) ON DELETE CASCADE,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(post_id, user_id)
+    )
+  `);
   console.log('Posts table ready');
 }
 
@@ -40,14 +72,29 @@ async function createPostLikesTable() {
   console.log('Post likes table ready');
 }
 
-async function createPost({ userId, content, imageUrl = null, category = 'GENERAL', isRepost = false, originalPostId = null, originalAuthorName = null, postSubtype = 'post', discussionTitle = null }) {
+async function createPost({ userId, content, imageUrl = null, category = 'GENERAL', isRepost = false, originalPostId = null, originalAuthorName = null, postSubtype = 'post', discussionTitle = null, pollOptions = null, pollDurationHours = null, eventTitle = null, eventDate = null, eventLocation = null }) {
+  const pollEndsAt = (postSubtype === 'poll' && pollDurationHours)
+    ? new Date(Date.now() + pollDurationHours * 3600000).toISOString()
+    : null;
+
   const result = await pool.query(
-    `INSERT INTO abukonn.posts (user_id, content, image_url, category, is_repost, original_post_id, original_author_name, post_subtype, discussion_title)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `INSERT INTO abukonn.posts (user_id, content, image_url, category, is_repost, original_post_id, original_author_name, post_subtype, discussion_title, poll_duration_hours, poll_ends_at, event_title, event_date, event_location)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
      RETURNING *`,
-    [userId, content, imageUrl, category, isRepost, originalPostId, originalAuthorName, postSubtype, discussionTitle]
+    [userId, content, imageUrl, category, isRepost, originalPostId, originalAuthorName, postSubtype, discussionTitle, pollDurationHours || null, pollEndsAt, eventTitle || null, eventDate || null, eventLocation || null]
   );
-  return result.rows[0];
+  const post = result.rows[0];
+
+  if (postSubtype === 'poll' && Array.isArray(pollOptions)) {
+    for (const text of pollOptions.filter(t => t?.trim())) {
+      await pool.query(
+        'INSERT INTO abukonn.poll_options (post_id, option_text) VALUES ($1, $2)',
+        [post.id, text.trim()]
+      );
+    }
+  }
+
+  return post;
 }
 
 async function getAllPosts(currentUserId) {
@@ -75,7 +122,12 @@ async function getAllPosts(currentUserId) {
             (p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) AS engagement_score,
             (p.created_at > NOW() - INTERVAL '24 hours' AND (p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) > 20) AS is_trending,
             ((p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) > 50) AS is_hot,
-            (SELECT COUNT(*)::int FROM abukonn.comments c WHERE c.post_id = p.id AND c.created_at > NOW() - INTERVAL '1 hour') AS comment_velocity
+            (SELECT COUNT(*)::int FROM abukonn.comments c WHERE c.post_id = p.id AND c.created_at > NOW() - INTERVAL '1 hour') AS comment_velocity,
+            p.poll_duration_hours, p.poll_ends_at,
+            p.event_title, p.event_date, p.event_location, COALESCE(p.event_rsvp_count, 0) AS event_rsvp_count,
+            (SELECT json_agg(json_build_object('id', po.id, 'option_text', po.option_text, 'vote_count', po.vote_count) ORDER BY po.id) FROM abukonn.poll_options po WHERE po.post_id = p.id) AS poll_options,
+            (SELECT pv.option_id FROM abukonn.poll_votes pv WHERE pv.post_id = p.id AND pv.user_id = $1) AS voted_option_id,
+            EXISTS(SELECT 1 FROM abukonn.event_rsvps er WHERE er.post_id = p.id AND er.user_id = $1) AS is_attending
      FROM abukonn.posts p
      JOIN abukonn.users u ON p.user_id = u.id
      ORDER BY p.created_at DESC`,
@@ -120,7 +172,12 @@ async function getPostByIdForUser(id, currentUserId) {
             (p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) AS engagement_score,
             (p.created_at > NOW() - INTERVAL '24 hours' AND (p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) > 20) AS is_trending,
             ((p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) > 50) AS is_hot,
-            (SELECT COUNT(*)::int FROM abukonn.comments c WHERE c.post_id = p.id AND c.created_at > NOW() - INTERVAL '1 hour') AS comment_velocity
+            (SELECT COUNT(*)::int FROM abukonn.comments c WHERE c.post_id = p.id AND c.created_at > NOW() - INTERVAL '1 hour') AS comment_velocity,
+            p.poll_duration_hours, p.poll_ends_at,
+            p.event_title, p.event_date, p.event_location, COALESCE(p.event_rsvp_count, 0) AS event_rsvp_count,
+            (SELECT json_agg(json_build_object('id', po.id, 'option_text', po.option_text, 'vote_count', po.vote_count) ORDER BY po.id) FROM abukonn.poll_options po WHERE po.post_id = p.id) AS poll_options,
+            (SELECT pv.option_id FROM abukonn.poll_votes pv WHERE pv.post_id = p.id AND pv.user_id = $2) AS voted_option_id,
+            EXISTS(SELECT 1 FROM abukonn.event_rsvps er WHERE er.post_id = p.id AND er.user_id = $2) AS is_attending
      FROM abukonn.posts p
      JOIN abukonn.users u ON p.user_id = u.id
      WHERE p.id = $1`,
@@ -218,6 +275,34 @@ async function deletePost(id) {
   return result.rows[0] || null;
 }
 
+async function votePoll(postId, userId, optionId) {
+  const { rows } = await pool.query('SELECT poll_ends_at FROM abukonn.posts WHERE id = $1', [postId]);
+  if (!rows[0]) throw new Error('Post not found');
+  if (rows[0].poll_ends_at && new Date(rows[0].poll_ends_at) < new Date()) {
+    throw new Error('Poll has ended');
+  }
+  await pool.query(
+    'INSERT INTO abukonn.poll_votes (post_id, user_id, option_id) VALUES ($1, $2, $3)',
+    [postId, userId, optionId]
+  );
+  await pool.query('UPDATE abukonn.poll_options SET vote_count = vote_count + 1 WHERE id = $1', [optionId]);
+}
+
+async function toggleEventRSVP(postId, userId) {
+  const { rows } = await pool.query(
+    'SELECT id FROM abukonn.event_rsvps WHERE post_id = $1 AND user_id = $2',
+    [postId, userId]
+  );
+  if (rows.length > 0) {
+    await pool.query('DELETE FROM abukonn.event_rsvps WHERE post_id = $1 AND user_id = $2', [postId, userId]);
+    await pool.query('UPDATE abukonn.posts SET event_rsvp_count = GREATEST(COALESCE(event_rsvp_count,0) - 1, 0) WHERE id = $1', [postId]);
+    return { attending: false };
+  }
+  await pool.query('INSERT INTO abukonn.event_rsvps (post_id, user_id) VALUES ($1, $2)', [postId, userId]);
+  await pool.query('UPDATE abukonn.posts SET event_rsvp_count = COALESCE(event_rsvp_count, 0) + 1 WHERE id = $1', [postId]);
+  return { attending: true };
+}
+
 module.exports = {
   CREATE_POSTS_TABLE,
   createPostsTable,
@@ -232,4 +317,6 @@ module.exports = {
   repostPost,
   incrementViewCount,
   deletePost,
+  votePoll,
+  toggleEventRSVP,
 };

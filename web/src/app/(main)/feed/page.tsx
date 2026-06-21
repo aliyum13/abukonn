@@ -121,8 +121,17 @@ interface Post {
   original_post_id: number | null;
   original_author_name: string | null;
   is_following_author: boolean;
-  post_subtype: 'post' | 'discussion';
+  post_subtype: 'post' | 'discussion' | 'poll' | 'question' | 'event';
   discussion_title: string | null;
+  poll_options: Array<{ id: number; option_text: string; vote_count: number }> | null;
+  voted_option_id: number | null;
+  poll_ends_at: string | null;
+  poll_duration_hours: number | null;
+  event_title: string | null;
+  event_date: string | null;
+  event_location: string | null;
+  event_rsvp_count: number;
+  is_attending: boolean;
   created_at: string;
   author_name: string;
   author_department: string;
@@ -144,6 +153,7 @@ interface Comment {
   author_name: string;
   author_photo: string | null;
   reply_count: number;
+  is_best_answer?: boolean;
 }
 
 interface Reply {
@@ -859,8 +869,13 @@ export default function FeedPage() {
   const router = useRouter();
   const [posts, setPosts] = useState<Post[]>([]);
   const [newPost, setNewPost] = useState('');
-  const [composerMode, setComposerMode] = useState<'post' | 'discussion'>('post');
+  const [composerMode, setComposerMode] = useState<'post' | 'discussion' | 'poll' | 'question' | 'event'>('post');
   const [discussionTitle, setDiscussionTitle] = useState('');
+  const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
+  const [pollDuration, setPollDuration] = useState<24 | 48 | 72 | 168>(24);
+  const [eventTitle, setEventTitle] = useState('');
+  const [eventDate, setEventDate] = useState('');
+  const [eventLocation, setEventLocation] = useState('');
   const [loading, setLoading] = useState(true);
   const [posting, setPosting] = useState(false);
   const [commentingId, setCommentingId] = useState<number | null>(null);
@@ -1170,7 +1185,9 @@ export default function FeedPage() {
   const handleCreatePost = async (e: FormEvent) => {
     e.preventDefault();
     if (!token) return;
-    if (composerMode === 'discussion' && !discussionTitle.trim()) return;
+    if ((composerMode === 'discussion' || composerMode === 'question') && !discussionTitle.trim()) return;
+    if (composerMode === 'poll' && pollOptions.filter(o => o.trim()).length < 2) return;
+    if (composerMode === 'event' && (!eventTitle.trim() || !eventDate)) return;
     if (composerMode === 'post' && !newPost.trim()) return;
     setPosting(true);
     setError('');
@@ -1181,6 +1198,18 @@ export default function FeedPage() {
       if (composerMode === 'discussion') {
         formData.append('post_subtype', 'discussion');
         formData.append('discussion_title', discussionTitle.trim());
+      } else if (composerMode === 'question') {
+        formData.append('post_subtype', 'question');
+        formData.append('discussion_title', discussionTitle.trim());
+      } else if (composerMode === 'poll') {
+        formData.append('post_subtype', 'poll');
+        formData.append('poll_options', JSON.stringify(pollOptions.filter(o => o.trim())));
+        formData.append('poll_duration_hours', String(pollDuration));
+      } else if (composerMode === 'event') {
+        formData.append('post_subtype', 'event');
+        formData.append('event_title', eventTitle.trim());
+        formData.append('event_date', eventDate);
+        if (eventLocation.trim()) formData.append('event_location', eventLocation.trim());
       }
       if (imageFile) formData.append('image', imageFile);
 
@@ -1197,6 +1226,11 @@ export default function FeedPage() {
       setNewPostCategory('GENERAL');
       setComposerMode('post');
       setDiscussionTitle('');
+      setPollOptions(['', '']);
+      setPollDuration(24);
+      setEventTitle('');
+      setEventDate('');
+      setEventLocation('');
       setSelectedChannelId(null);
       setImageFile(null);
       setImagePreview(null);
@@ -1206,6 +1240,45 @@ export default function FeedPage() {
     } finally {
       setPosting(false);
     }
+  };
+
+  const handleVote = async (postId: number, optionId: number) => {
+    if (!token) return;
+    setPosts(prev => prev.map(p => p.id !== postId ? p : {
+      ...p,
+      voted_option_id: optionId,
+      poll_options: p.poll_options?.map(o => o.id === optionId ? { ...o, vote_count: o.vote_count + 1 } : o) ?? null,
+    }));
+    fetch(`${API_URL}/api/posts/${postId}/vote`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ option_id: optionId }),
+    }).catch(() => {});
+  };
+
+  const handleRSVP = async (postId: number) => {
+    if (!token) return;
+    setPosts(prev => prev.map(p => p.id !== postId ? p : {
+      ...p,
+      is_attending: !p.is_attending,
+      event_rsvp_count: p.is_attending ? p.event_rsvp_count - 1 : p.event_rsvp_count + 1,
+    }));
+    fetch(`${API_URL}/api/posts/${postId}/rsvp`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    }).catch(() => {});
+  };
+
+  const handleMarkBestAnswer = async (postId: number, commentId: number) => {
+    if (!token) return;
+    setComments(prev => ({
+      ...prev,
+      [postId]: (prev[postId] ?? []).map(c => ({ ...c, is_best_answer: c.id === commentId })),
+    }));
+    fetch(`${API_URL}/api/posts/${postId}/comments/${commentId}/best-answer`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    }).catch(() => {});
   };
 
   const fetchComments = async (postId: number) => {
@@ -1928,20 +2001,83 @@ export default function FeedPage() {
               <div className="flex gap-3">
                 <Avatar src={user.profile_photo_url} name={user.full_name} size="md" className="mt-0.5 shrink-0" />
                 <div className="min-w-0 flex-1">
-                  {composerMode === 'discussion' && (
+                  {(composerMode === 'discussion' || composerMode === 'question') && (
                     <input
                       type="text"
                       value={discussionTitle}
                       onChange={(e) => setDiscussionTitle(e.target.value.slice(0, 100))}
-                      placeholder="Discussion title (required)"
+                      placeholder={composerMode === 'question' ? 'Ask your question… (required)' : 'Discussion title (required)'}
                       maxLength={100}
                       className="mb-2 w-full border-b border-border bg-transparent pb-2 text-[16px] font-semibold text-ink placeholder:text-ink-muted focus:outline-none"
                     />
                   )}
+                  {composerMode === 'event' && (
+                    <div className="mb-3 space-y-2">
+                      <input type="text" value={eventTitle} onChange={e => setEventTitle(e.target.value.slice(0, 200))}
+                        placeholder="Event title (required)" maxLength={200}
+                        className="w-full border-b border-border bg-transparent pb-2 text-[16px] font-semibold text-ink placeholder:text-ink-muted focus:outline-none" />
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <p className="mb-1 text-[11px] text-ink-muted">Date & Time</p>
+                          <input type="datetime-local" value={eventDate} onChange={e => setEventDate(e.target.value)}
+                            className="w-full rounded-lg border border-border bg-transparent px-2 py-1.5 text-[13px] text-ink focus:border-brand-500 focus:outline-none dark:border-[#333]" />
+                        </div>
+                        <div>
+                          <p className="mb-1 text-[11px] text-ink-muted">Location (optional)</p>
+                          <input type="text" value={eventLocation} onChange={e => setEventLocation(e.target.value)}
+                            placeholder="e.g. Faculty Hall" maxLength={200}
+                            className="w-full rounded-lg border border-border bg-transparent px-2 py-1.5 text-[13px] text-ink placeholder:text-ink-muted focus:border-brand-500 focus:outline-none dark:border-[#333]" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {composerMode === 'poll' && (
+                    <div className="mb-3 space-y-2">
+                      {pollOptions.map((opt, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <input type="text" value={opt}
+                            onChange={e => setPollOptions(opts => opts.map((o, j) => j === i ? e.target.value : o))}
+                            placeholder={`Option ${i + 1}${i < 2 ? ' (required)' : ''}`} maxLength={200}
+                            className="flex-1 rounded-xl border border-border bg-transparent px-3 py-2 text-[14px] text-ink placeholder:text-ink-muted focus:border-brand-500 focus:outline-none dark:border-[#333]" />
+                          {i >= 2 && (
+                            <button type="button" onClick={() => setPollOptions(opts => opts.filter((_, j) => j !== i))}
+                              className="text-ink-muted hover:text-red-500 transition">
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                      {pollOptions.length < 4 && (
+                        <button type="button" onClick={() => setPollOptions(opts => [...opts, ''])}
+                          className="text-[13px] font-medium text-brand-600 hover:text-brand-700 transition">
+                          + Add option
+                        </button>
+                      )}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[12px] text-ink-muted">Duration:</span>
+                        {([24, 48, 72, 168] as const).map(d => (
+                          <button key={d} type="button" onClick={() => setPollDuration(d)}
+                            className={cn('rounded-full px-2.5 py-1 text-[12px] font-medium transition',
+                              pollDuration === d ? 'bg-indigo-600 text-white' : 'bg-surface-muted text-ink-secondary hover:text-ink dark:bg-[#1a1a1a]'
+                            )}>
+                            {d === 24 ? '1 day' : d === 48 ? '2 days' : d === 72 ? '3 days' : '1 week'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <textarea
                     value={newPost}
                     onChange={(e) => { setNewPost(e.target.value); const t = e.target; t.style.height = 'auto'; t.style.height = `${t.scrollHeight}px`; }}
-                    placeholder={composerMode === 'discussion' ? 'Add context or details (optional)…' : "What's happening on campus?"}
+                    placeholder={
+                      composerMode === 'discussion' ? 'Add context or details (optional)…' :
+                      composerMode === 'question' ? 'Add context or description (optional)…' :
+                      composerMode === 'poll' ? 'Describe what you\'re asking (optional)…' :
+                      composerMode === 'event' ? 'Event description (optional)…' :
+                      "What's happening on campus?"
+                    }
                     rows={1}
                     className="w-full resize-none bg-transparent text-[15px] text-ink placeholder:text-ink-muted focus:outline-none leading-relaxed"
                     style={{ minHeight: '28px', maxHeight: '200px', overflow: 'hidden' }}
@@ -1978,6 +2114,24 @@ export default function FeedPage() {
                         )}>
                         💬
                       </button>
+                      <button type="button"
+                        onClick={() => { setComposerMode(m => m === 'question' ? 'post' : 'question'); setDiscussionTitle(''); }}
+                        title="Ask a question"
+                        className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[17px] transition',
+                          composerMode === 'question' ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300' : 'text-cyan-600 hover:bg-cyan-50 dark:hover:bg-cyan-950/40'
+                        )}>❓</button>
+                      <button type="button"
+                        onClick={() => setComposerMode(m => m === 'poll' ? 'post' : 'poll')}
+                        title="Create a poll"
+                        className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[17px] transition',
+                          composerMode === 'poll' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300' : 'text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40'
+                        )}>📊</button>
+                      <button type="button"
+                        onClick={() => { setComposerMode(m => m === 'event' ? 'post' : 'event'); setEventTitle(''); setEventDate(''); setEventLocation(''); }}
+                        title="Create an event"
+                        className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[17px] transition',
+                          composerMode === 'event' ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300' : 'text-green-600 hover:bg-green-50 dark:hover:bg-green-950/40'
+                        )}>📅</button>
                       <select
                         value={newPostCategory}
                         onChange={e => setNewPostCategory(e.target.value as PostCategory)}
@@ -1999,10 +2153,25 @@ export default function FeedPage() {
                       )}
                     </div>
                     <Button type="submit" size="sm"
-                      disabled={posting || (composerMode === 'discussion' ? !discussionTitle.trim() : !newPost.trim())}
+                      disabled={posting || (
+                        composerMode === 'discussion' ? !discussionTitle.trim() :
+                        composerMode === 'question' ? !discussionTitle.trim() :
+                        composerMode === 'poll' ? pollOptions.filter(o => o.trim()).length < 2 :
+                        composerMode === 'event' ? (!eventTitle.trim() || !eventDate) :
+                        !newPost.trim()
+                      )}
                       loading={posting}
-                      className={cn('shrink-0 rounded-full px-5', composerMode === 'discussion' && 'bg-purple-600 hover:bg-purple-700')}>
-                      {composerMode === 'discussion' ? 'Discuss' : 'Post'}
+                      className={cn('shrink-0 rounded-full px-5',
+                        composerMode === 'discussion' && 'bg-purple-600 hover:bg-purple-700',
+                        composerMode === 'question' && 'bg-cyan-600 hover:bg-cyan-700',
+                        composerMode === 'poll' && 'bg-indigo-600 hover:bg-indigo-700',
+                        composerMode === 'event' && 'bg-green-600 hover:bg-green-700',
+                      )}>
+                      {composerMode === 'discussion' ? 'Discuss' :
+                       composerMode === 'question' ? 'Ask' :
+                       composerMode === 'poll' ? 'Create Poll' :
+                       composerMode === 'event' ? 'Create Event' :
+                       'Post'}
                     </Button>
                   </div>
 
@@ -2070,6 +2239,21 @@ export default function FeedPage() {
                           {post.post_subtype === 'discussion' && (
                             <span className="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-semibold text-purple-700 dark:bg-purple-950 dark:text-purple-300">
                               💬 Discussion
+                            </span>
+                          )}
+                          {post.post_subtype === 'question' && (
+                            <span className="rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-semibold text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300">
+                              ❓ Question
+                            </span>
+                          )}
+                          {post.post_subtype === 'poll' && (
+                            <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                              📊 Poll
+                            </span>
+                          )}
+                          {post.post_subtype === 'event' && (
+                            <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700 dark:bg-green-950 dark:text-green-300">
+                              📅 Event
                             </span>
                           )}
                           {post.is_hot ? (
@@ -2149,6 +2333,69 @@ export default function FeedPage() {
                       </button>
                     )}
 
+                    {/* Poll */}
+                    {post.post_subtype === 'poll' && post.poll_options && (() => {
+                      const totalVotes = post.poll_options.reduce((s, o) => s + o.vote_count, 0);
+                      const hasVoted = !!post.voted_option_id;
+                      const isExpiredPoll = post.poll_ends_at ? new Date(post.poll_ends_at) < new Date() : false;
+                      return (
+                        <div className="mt-3 space-y-2">
+                          {post.poll_options.map(opt => {
+                            const pct = totalVotes > 0 ? Math.round((opt.vote_count / totalVotes) * 100) : 0;
+                            const isChosen = post.voted_option_id === opt.id;
+                            return (
+                              <button key={opt.id} type="button"
+                                disabled={hasVoted || isExpiredPoll}
+                                onClick={() => !hasVoted && !isExpiredPoll && handleVote(post.id, opt.id)}
+                                className={cn('relative w-full overflow-hidden rounded-xl border px-3 py-2.5 text-left text-[14px] transition',
+                                  isChosen ? 'border-brand-500 bg-brand-50 dark:bg-brand-950/40' : 'border-border dark:border-[#333]',
+                                  !hasVoted && !isExpiredPoll && 'hover:border-brand-400 cursor-pointer',
+                                  (hasVoted || isExpiredPoll) && 'cursor-default'
+                                )}>
+                                {(hasVoted || isExpiredPoll) && (
+                                  <div className="absolute inset-y-0 left-0 rounded-xl bg-brand-100/60 dark:bg-brand-950/30" style={{ width: `${pct}%` }} />
+                                )}
+                                <div className="relative flex items-center justify-between">
+                                  <span className={cn('font-medium', isChosen ? 'text-brand-700 dark:text-brand-300' : 'text-ink')}>{opt.option_text}</span>
+                                  {(hasVoted || isExpiredPoll) && <span className="text-[13px] text-ink-muted">{pct}%</span>}
+                                </div>
+                              </button>
+                            );
+                          })}
+                          <p className="text-[12px] text-ink-muted">
+                            {totalVotes} vote{totalVotes !== 1 ? 's' : ''}
+                            {post.poll_ends_at && <> · {new Date(post.poll_ends_at) > new Date() ? `ends ${timeAgo(post.poll_ends_at)}` : 'Poll ended'}</>}
+                          </p>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Event card */}
+                    {post.post_subtype === 'event' && post.event_title && (
+                      <div className="mt-3 rounded-2xl border border-green-200 bg-green-50 p-3.5 dark:border-green-900/40 dark:bg-green-950/30">
+                        <p className="font-bold text-[15px] text-ink">{post.event_title}</p>
+                        {post.event_date && (
+                          <p className="mt-1.5 flex items-center gap-1.5 text-[13px] text-ink-muted">
+                            <span>📅</span>
+                            {new Date(post.event_date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                          </p>
+                        )}
+                        {post.event_location && (
+                          <p className="mt-0.5 flex items-center gap-1.5 text-[13px] text-ink-muted">
+                            <span>📍</span>{post.event_location}
+                          </p>
+                        )}
+                        <button type="button" onClick={() => handleRSVP(post.id)}
+                          className={cn('mt-3 rounded-full px-4 py-1.5 text-[13px] font-semibold transition',
+                            post.is_attending
+                              ? 'bg-green-600 text-white hover:bg-green-700'
+                              : 'border border-green-600 text-green-700 hover:bg-green-50 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-950/40'
+                          )}>
+                          {post.is_attending ? `✅ Attending (${post.event_rsvp_count})` : `RSVP${post.event_rsvp_count > 0 ? ` · ${post.event_rsvp_count}` : ''}`}
+                        </button>
+                      </div>
+                    )}
+
                     {(post.comment_velocity ?? 0) > 3 && (
                       <div className="mt-2.5">
                         <span className="inline-flex animate-pulse items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-1 text-[11px] font-semibold text-green-700 dark:bg-green-950/60 dark:text-green-400">
@@ -2182,7 +2429,11 @@ export default function FeedPage() {
                           </svg>
                         </span>
                         {post.comments_count > 0 && (
-                          <span>{post.comments_count}{post.post_subtype === 'discussion' && <span className="ml-0.5 text-[11px]"> replies</span>}</span>
+                          <span>
+                            {post.comments_count}
+                            {post.post_subtype === 'discussion' && <span className="ml-0.5 text-[11px]"> replies</span>}
+                            {post.post_subtype === 'question' && <span className="ml-0.5 text-[11px]"> answers</span>}
+                          </span>
                         )}
                       </button>
 
@@ -2263,6 +2514,11 @@ export default function FeedPage() {
                                           <span className="text-caption text-ink-muted">{timeAgo(c.created_at)}</span>
                                         </div>
                                         <p className="mt-0.5 text-body-sm text-ink leading-relaxed">{c.content}</p>
+                                        {c.is_best_answer && (
+                                          <div className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-semibold text-green-700 dark:bg-green-950 dark:text-green-400">
+                                            ✓ Best Answer
+                                          </div>
+                                        )}
                                       </div>
                                       {/* Reply button + view replies */}
                                       <div className="ml-2 mt-1 flex items-center gap-3">
@@ -2274,6 +2530,13 @@ export default function FeedPage() {
                                           className="text-caption font-medium text-ink-secondary transition hover:text-brand-600">
                                           Reply
                                         </button>
+                                        {post.post_subtype === 'question' && post.user_id === user.id && !c.is_best_answer && (
+                                          <button type="button"
+                                            onClick={() => handleMarkBestAnswer(post.id, c.id)}
+                                            className="text-caption font-medium text-green-600 transition hover:text-green-700">
+                                            ✓ Best Answer
+                                          </button>
+                                        )}
                                         {(c.reply_count > 0 || (replies[c.id]?.length ?? 0) > 0) && (
                                           <button type="button"
                                             onClick={() => toggleReplies(post.id, c.id)}

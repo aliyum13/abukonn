@@ -19,8 +19,12 @@ async function createPost(req, res) {
     const postSubtype = (req.body.post_subtype || 'post').toLowerCase();
     const discussionTitle = req.body.discussion_title?.trim() || null;
 
-    if (postSubtype === 'discussion') {
-      if (!discussionTitle) return res.status(400).json({ message: 'Discussion title is required' });
+    if (postSubtype === 'discussion' || postSubtype === 'question') {
+      if (!discussionTitle) return res.status(400).json({ message: 'Title is required' });
+    } else if (postSubtype === 'poll') {
+      // poll_options is JSON string from FormData
+    } else if (postSubtype === 'event') {
+      if (!req.body.event_title?.trim()) return res.status(400).json({ message: 'Event title is required' });
     } else {
       if (!content.trim()) return res.status(400).json({ message: 'Post content is required' });
     }
@@ -32,6 +36,11 @@ async function createPost(req, res) {
     }
 
     const category = (req.body.category || 'GENERAL').toUpperCase();
+    let pollOptions = null;
+    if (req.body.poll_options) {
+      try { pollOptions = JSON.parse(req.body.poll_options); } catch { pollOptions = null; }
+    }
+
     const post = await Post.createPost({
       userId: req.user.id,
       content: content.trim(),
@@ -39,21 +48,64 @@ async function createPost(req, res) {
       category,
       postSubtype,
       discussionTitle,
+      pollOptions,
+      pollDurationHours: req.body.poll_duration_hours ? parseInt(req.body.poll_duration_hours) : null,
+      eventTitle: req.body.event_title?.trim() || null,
+      eventDate: req.body.event_date || null,
+      eventLocation: req.body.event_location?.trim() || null,
     });
 
-    // Index hashtags (fire-and-forget — don't fail the request on hashtag errors)
-    const textToIndex = postSubtype === 'discussion'
-      ? `${discussionTitle} ${content.trim()}`
-      : content.trim();
-    Hashtag.indexPostHashtags(post.id, textToIndex).catch(err =>
-      console.error('Hashtag indexing error:', err.message)
-    );
+    const textToIndex = `${discussionTitle || ''} ${content.trim()}`.trim();
+    if (textToIndex) {
+      Hashtag.indexPostHashtags(post.id, textToIndex).catch(err =>
+        console.error('Hashtag indexing error:', err.message)
+      );
+    }
 
     const fullPost = await Post.getPostById(post.id);
     res.status(201).json({ message: 'Post created', post: fullPost });
   } catch (err) {
     console.error('Create post error:', err.message);
     res.status(500).json({ message: 'Server error creating post' });
+  }
+}
+
+async function voteOnPoll(req, res) {
+  try {
+    const postId = parseInt(req.params.id, 10);
+    const optionId = parseInt(req.body.option_id, 10);
+    if (!optionId) return res.status(400).json({ message: 'option_id is required' });
+    await Post.votePoll(postId, req.user.id, optionId);
+    res.json({ ok: true });
+  } catch (err) {
+    if (err.message === 'Poll has ended') return res.status(400).json({ message: err.message });
+    if (err.code === '23505') return res.status(409).json({ message: 'Already voted' });
+    console.error('voteOnPoll error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function toggleRSVP(req, res) {
+  try {
+    const postId = parseInt(req.params.id, 10);
+    const result = await Post.toggleEventRSVP(postId, req.user.id);
+    res.json(result);
+  } catch (err) {
+    console.error('toggleRSVP error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function setBestAnswer(req, res) {
+  try {
+    const postId = parseInt(req.params.id, 10);
+    const commentId = parseInt(req.params.commentId, 10);
+    await Comment.markBestAnswer(commentId, postId, req.user.id);
+    res.json({ ok: true });
+  } catch (err) {
+    if (err.message === 'Unauthorized') return res.status(403).json({ message: 'Only the post owner can mark the best answer' });
+    console.error('setBestAnswer error:', err.message);
+    res.status(500).json({ message: 'Server error' });
   }
 }
 
@@ -229,4 +281,4 @@ async function addReply(req, res) {
   }
 }
 
-module.exports = { createPost, getFeed, getSinglePost, likePost, addComment, getComments, deletePost, getReplies, addReply, repostPost, viewPost };
+module.exports = { createPost, getFeed, getSinglePost, likePost, addComment, getComments, deletePost, getReplies, addReply, repostPost, viewPost, voteOnPoll, toggleRSVP, setBestAnswer };
