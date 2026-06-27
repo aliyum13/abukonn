@@ -151,7 +151,7 @@ const getChannelPosts = async (channelId, userId) => {
             p.discussion_title,
             p.created_at,
             u.full_name AS author_name, u.department AS author_department,
-            u.profile_photo_url AS author_photo, u.matric_number AS author_matric,
+            u.profile_photo_url AS author_photo,
             COALESCE(u.role, 'user') AS author_role,
             EXISTS(
               SELECT 1 FROM abukonn.post_likes pl

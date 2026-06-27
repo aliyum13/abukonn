@@ -87,7 +87,7 @@ async function findByUsername(username) {
   return result.rows[0] || null;
 }
 
-const COLS = 'id, username, matric_number, full_name, email, department, level, profile_photo_url, bio, is_admin, role, date_of_birth, created_at';
+const COLS = 'id, username, full_name, email, department, level, profile_photo_url, bio, is_admin, role, date_of_birth, created_at';
 
 async function findById(id) {
   const result = await pool.query(
@@ -174,12 +174,12 @@ async function updateProfilePhoto(id, photoUrl) {
   return result.rows[0] || null;
 }
 
-async function createUser({ matricNumber, fullName, email, department, level, passwordHash, username }) {
+async function createUser({ fullName, email, department, level, passwordHash, username }) {
   const result = await pool.query(
-    `INSERT INTO abukonn.users (matric_number, full_name, email, department, level, password_hash, username)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO abukonn.users (full_name, email, department, level, password_hash, username)
+     VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING ${COLS}`,
-    [matricNumber, fullName, email, department, level, passwordHash, username ?? null]
+    [fullName, email, department, level, passwordHash, username ?? null]
   );
   return result.rows[0];
 }
@@ -200,11 +200,9 @@ function toPublicUser(user) {
   };
 }
 
-// Full user data including matric + DOB — for own-profile and admin use only
 function toPrivateUser(user) {
   return {
     ...toPublicUser(user),
-    matric_number: user.matric_number,
     date_of_birth: user.date_of_birth ?? null,
   };
 }

@@ -11,7 +11,6 @@ const PAGE_LIMIT = 20;
 
 interface AdminUser {
   id: number;
-  matric_number: string;
   full_name: string;
   email: string;
   department: string;
@@ -186,7 +185,7 @@ export default function AdminUsersPage() {
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name or matric number..."
+              placeholder="Search by name or email..."
               className="max-w-xs"
             />
             {search && (
@@ -202,7 +201,6 @@ export default function AdminUsersPage() {
               <thead>
                 <tr className="border-b border-border bg-surface-muted">
                   <th className="px-4 py-3 font-semibold text-ink">User</th>
-                  <th className="px-4 py-3 font-semibold text-ink">Matric</th>
                   <th className="hidden px-4 py-3 font-semibold text-ink md:table-cell">Department</th>
                   <th className="hidden px-4 py-3 font-semibold text-ink lg:table-cell">Posts</th>
                   <th className="hidden px-4 py-3 font-semibold text-ink sm:table-cell">Role</th>
@@ -243,7 +241,6 @@ export default function AdminUsersPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3 font-mono text-caption text-ink-secondary">{u.matric_number}</td>
                       <td className="hidden px-4 py-3 text-ink-secondary md:table-cell">{u.department}</td>
                       <td className="hidden px-4 py-3 text-ink-secondary lg:table-cell">{u.post_count}</td>
                       <td className="hidden px-4 py-3 sm:table-cell">

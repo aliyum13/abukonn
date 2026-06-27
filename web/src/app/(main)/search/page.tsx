@@ -25,7 +25,6 @@ type Tab = 'all' | 'users' | 'posts' | 'hashtags' | 'trending';
 interface SearchUser {
   id: number;
   full_name: string;
-  matric_number: string;
   department: string;
   level: string;
   profile_photo_url: string | null;
@@ -42,7 +41,6 @@ interface SearchPost {
   author_name: string;
   author_department: string;
   author_photo: string | null;
-  author_matric: string;
 }
 
 interface SearchHashtag {

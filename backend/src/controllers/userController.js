@@ -48,12 +48,6 @@ async function getUserById(req, res) {
 
     const publicUser = User.toPublicUser(user);
 
-    // Expose matric_number only to the user themselves or admins
-    const canSeeMatric = req.user.id === userId || req.user.is_admin;
-    if (!canSeeMatric) {
-      delete publicUser.matric_number;
-    }
-
     res.json({
       user: {
         ...publicUser,

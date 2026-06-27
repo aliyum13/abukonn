@@ -1,7 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const Whitelist = require('../models/Whitelist');
 const UserSettings = require('../models/UserSettings');
 
 function generateToken(user) {
@@ -14,9 +13,9 @@ function generateToken(user) {
 
 async function register(req, res) {
   try {
-    const { matric_number, full_name, email, department, level, password } = req.body;
+    const { full_name, email, department, level, password } = req.body;
 
-    if (!matric_number || !full_name || !email || !department || !level || !password) {
+    if (!full_name || !email || !department || !level || !password) {
       return res.status(400).json({ message: 'All fields are required' });
     }
 
@@ -24,32 +23,13 @@ async function register(req, res) {
       return res.status(400).json({ message: 'Password must be at least 6 characters' });
     }
 
-    // Enforce whitelist only when at least one matric number has been uploaded
-    const whitelistCount = await Whitelist.getCount();
-    if (whitelistCount > 0) {
-      const allowed = await Whitelist.isWhitelisted(matric_number);
-      if (!allowed) {
-        return res.status(403).json({
-          message: 'Your matric number is not on the approved student list. Contact admin if this is an error.',
-          field: 'matric_number',
-        });
-      }
-    }
-
-    // Email is the unique login identifier — check it first
     const existingEmail = await User.findByEmail(email);
     if (existingEmail) {
       return res.status(409).json({ message: 'An account with this email already exists' });
     }
 
-    const existingMatric = await User.findByMatricNumber(matric_number);
-    if (existingMatric) {
-      return res.status(409).json({ message: 'Matric number already registered' });
-    }
-
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Auto-generate username: try email prefix first, add 3-digit suffix only on conflict
     const baseUsername = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '_');
     const taken = await User.findByUsername(baseUsername);
     const username = taken
@@ -57,7 +37,6 @@ async function register(req, res) {
       : baseUsername;
 
     const user = await User.createUser({
-      matricNumber: matric_number,
       fullName: full_name,
       email,
       department,

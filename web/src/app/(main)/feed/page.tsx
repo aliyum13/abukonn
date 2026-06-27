@@ -33,7 +33,6 @@ const NAV_ITEMS = [
 interface SuggestedUser {
   id: number;
   full_name: string;
-  matric_number: string;
   department: string;
   level: string;
   profile_photo_url: string | null;
@@ -136,7 +135,6 @@ interface Post {
   author_name: string;
   author_department: string;
   author_photo: string | null;
-  author_matric: string;
   author_role?: string;
   engagement_score: number;
   is_trending: boolean;

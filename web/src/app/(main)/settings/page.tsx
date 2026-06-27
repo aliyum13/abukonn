@@ -47,7 +47,6 @@ interface UserSettings {
   story_audience: string;
   who_can_message: string;
   who_can_connect: string;
-  show_matric: string;
   notif_likes: boolean;
   notif_comments: boolean;
   notif_follows: boolean;
@@ -667,19 +666,6 @@ export default function SettingsPage() {
                       { value: 'nobody', label: 'Nobody' },
                     ]}
                     onChange={v => patchSettings({ who_can_connect: v }).then(ok => ok && showToast('Privacy updated'))}
-                  />
-                </div>
-
-                <div>
-                  <p className="mb-2 text-[14px] font-medium text-ink">Show matric number to</p>
-                  <SegmentedControl
-                    value={settings.show_matric as 'only_me' | 'connections' | 'everyone'}
-                    options={[
-                      { value: 'only_me', label: 'Only me' },
-                      { value: 'connections', label: 'Connections' },
-                      { value: 'everyone', label: 'Everyone' },
-                    ]}
-                    onChange={v => patchSettings({ show_matric: v }).then(ok => ok && showToast('Privacy updated'))}
                   />
                 </div>
 

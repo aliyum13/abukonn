@@ -44,7 +44,6 @@ export default function RegisterPage() {
   const { register } = useAuth();
   const router = useRouter();
   const [form, setForm] = useState({
-    matric_number: '',
     full_name: '',
     email: '',
     department: '',
@@ -52,7 +51,6 @@ export default function RegisterPage() {
     password: '',
   });
   const [error, setError] = useState('');
-  const [matricError, setMatricError] = useState('');
   const [loading, setLoading] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
 
@@ -63,20 +61,13 @@ export default function RegisterPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
-    setMatricError('');
     setLoading(true);
 
     try {
       await register(form);
       router.push('/feed');
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Registration failed';
-      // 403 from whitelist check → show error on the matric field
-      if (message.includes('not on the approved student list')) {
-        setMatricError(message);
-      } else {
-        setError(message);
-      }
+      setError(err instanceof Error ? err.message : 'Registration failed');
     } finally {
       setLoading(false);
     }
@@ -118,18 +109,6 @@ export default function RegisterPage() {
           onChange={(e) => handleChange('full_name', e.target.value)}
           placeholder="Your full name"
           required
-        />
-
-        <Input
-          id="matric"
-          label="Matric Number"
-          type="text"
-          value={form.matric_number}
-          onChange={(e) => { handleChange('matric_number', e.target.value); setMatricError(''); }}
-          placeholder="e.g. UG20/CS/1001"
-          required
-          error={matricError || undefined}
-          hint={matricError ? undefined : 'Used for your student profile, not for login'}
         />
 
         <Select

@@ -20,7 +20,6 @@ const NAV_LINKS = [
 interface SearchUser {
   id: number;
   full_name: string;
-  matric_number: string;
   department: string;
   level: string;
   profile_photo_url: string | null;

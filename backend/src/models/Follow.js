@@ -58,7 +58,7 @@ async function isFollowing(followerId, followingId) {
 
 async function getFollowers(userId, currentUserId) {
   const result = await pool.query(
-    `SELECT u.id, u.full_name, u.matric_number, u.username, u.department, u.level, u.profile_photo_url,
+    `SELECT u.id, u.full_name, u.username, u.department, u.level, u.profile_photo_url,
             EXISTS(SELECT 1 FROM abukonn.follows cf WHERE cf.follower_id = $2 AND cf.following_id = u.id) AS is_following
      FROM abukonn.follows f
      JOIN abukonn.users u ON f.follower_id = u.id
@@ -71,7 +71,7 @@ async function getFollowers(userId, currentUserId) {
 
 async function getFollowing(userId, currentUserId) {
   const result = await pool.query(
-    `SELECT u.id, u.full_name, u.matric_number, u.username, u.department, u.level, u.profile_photo_url,
+    `SELECT u.id, u.full_name, u.username, u.department, u.level, u.profile_photo_url,
             EXISTS(SELECT 1 FROM abukonn.follows cf WHERE cf.follower_id = $2 AND cf.following_id = u.id) AS is_following
      FROM abukonn.follows f
      JOIN abukonn.users u ON f.following_id = u.id
@@ -84,7 +84,7 @@ async function getFollowing(userId, currentUserId) {
 
 async function getSuggestions(userId, limit = 5) {
   const result = await pool.query(
-    `SELECT u.id, u.full_name, u.matric_number, u.department, u.level, u.profile_photo_url
+    `SELECT u.id, u.full_name, u.department, u.level, u.profile_photo_url
      FROM abukonn.users u
      WHERE u.id != $1
        AND u.id NOT IN (

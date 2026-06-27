@@ -4,7 +4,6 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 
 export interface User {
   id: number;
-  matric_number: string;
   full_name: string;
   username?: string;
   email: string;
@@ -28,7 +27,6 @@ interface AuthContextType {
 }
 
 interface RegisterData {
-  matric_number: string;
   full_name: string;
   email: string;
   department: string;

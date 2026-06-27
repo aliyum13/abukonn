@@ -38,7 +38,7 @@ async function getUsers(req, res) {
     const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
 
     const where = search
-      ? `WHERE u.full_name ILIKE $1 OR u.matric_number ILIKE $1`
+      ? `WHERE u.full_name ILIKE $1 OR u.email ILIKE $1`
       : '';
     const params = search ? [`%${search}%`, parseInt(limit, 10), offset] : [parseInt(limit, 10), offset];
 
@@ -48,7 +48,7 @@ async function getUsers(req, res) {
     );
 
     const usersResult = await pool.query(
-      `SELECT u.id, u.matric_number, u.full_name, u.email, u.department, u.level,
+      `SELECT u.id, u.full_name, u.email, u.department, u.level,
               u.profile_photo_url, u.is_admin, COALESCE(u.role, 'user') AS role, u.created_at,
               COUNT(p.id) AS post_count
        FROM abukonn.users u
@@ -75,7 +75,7 @@ async function getUsers(req, res) {
 async function getRecentUsers(req, res) {
   try {
     const result = await pool.query(
-      `SELECT id, matric_number, full_name, email, department, level, is_admin, created_at
+      `SELECT id, full_name, email, department, level, is_admin, created_at
        FROM abukonn.users
        ORDER BY created_at DESC
        LIMIT 10`
