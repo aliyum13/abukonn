@@ -31,6 +31,7 @@ const { createHashtagTables } = require('./models/Hashtag');
 const { createUserSettingsTable } = require('./models/UserSettings');
 const { createHighlightsTable } = require('./models/Highlight');
 const { createChannelTables } = require('./models/Channel');
+const { createPasswordResetsTable } = require('./models/PasswordReset');
 const notificationRoutes = require('./routes/notifications');
 const adminRoutes = require('./routes/admin');
 const groupRoutes = require('./routes/groups');
@@ -202,6 +203,7 @@ createUsersTable()
   .then(() => createUserSettingsTable())
   .then(() => createHighlightsTable())
   .then(() => createChannelTables())
+  .then(() => createPasswordResetsTable())
   .then(() => {
     server.timeout = 120000;
     server.keepAliveTimeout = 120000;

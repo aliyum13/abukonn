@@ -20,6 +20,8 @@ export default function LoginPage() {
     const params = new URLSearchParams(window.location.search);
     if (params.get('reason') === 'session_expired') {
       setSessionBanner('Your session expired. Please log in again.');
+    } else if (params.get('reason') === 'password_reset') {
+      setSessionBanner('Password updated! Please sign in with your new password.');
     }
   }, []);
 
@@ -44,7 +46,7 @@ export default function LoginPage() {
       subtitle="Sign in with your email address to continue."
     >
       {sessionBanner && (
-        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-body-sm text-amber-700" role="alert">
+        <div className={`mb-6 rounded-xl border px-4 py-3 text-body-sm ${sessionBanner.includes('updated') ? 'border-brand-200 bg-brand-50 text-brand-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`} role="alert">
           {sessionBanner}
         </div>
       )}
@@ -69,16 +71,23 @@ export default function LoginPage() {
           autoComplete="email"
         />
 
-        <Input
-          id="password"
-          label="Password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Enter your password"
-          required
-          autoComplete="current-password"
-        />
+        <div>
+          <Input
+            id="password"
+            label="Password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Enter your password"
+            required
+            autoComplete="current-password"
+          />
+          <div className="mt-1.5 text-right">
+            <Link href="/forgot-password" className="text-caption font-medium text-brand-600 transition hover:text-brand-700">
+              Forgot password?
+            </Link>
+          </div>
+        </div>
 
         <Button type="submit" fullWidth size="lg" loading={loading}>
           {loading ? 'Signing in...' : 'Sign in'}
