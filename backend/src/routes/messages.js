@@ -1,11 +1,13 @@
 const express = require('express');
 const auth = require('../middleware/auth');
+const upload = require('../middleware/upload');
 const {
   getConversations,
   getMessages,
   sendMessageHandler,
   startConversation,
   getUnreadCountHandler,
+  uploadMessageImage,
 } = require('../controllers/messageController');
 
 const router = express.Router();
@@ -16,6 +18,7 @@ router.use(auth);
 router.get('/conversations', getConversations);
 router.get('/unread-count', getUnreadCountHandler);
 router.post('/start', startConversation);
+router.post('/upload-image', upload.single('image'), uploadMessageImage);
 router.get('/:conversationId', getMessages);
 router.post('/', sendMessageHandler);
 

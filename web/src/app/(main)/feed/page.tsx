@@ -274,9 +274,10 @@ function SegmentedRing({ stories, viewedIds }: { stories: Story[]; viewedIds: Se
 }
 
 function StoriesBar({
-  groups, user, onAddStory, onViewGroup, viewedStoryIds,
+  groups, storiesLoaded, user, onAddStory, onViewGroup, viewedStoryIds,
 }: {
   groups: StoryGroup[];
+  storiesLoaded: boolean;
   user: NonNullable<ReturnType<typeof useAuth>['user']>;
   onAddStory: () => void;
   onViewGroup: (g: StoryGroup) => void;
@@ -285,7 +286,7 @@ function StoriesBar({
   const ownGroup = groups.find(g => g.is_own);
   const others = groups.filter(g => !g.is_own);
   return (
-    <div className="flex gap-5 overflow-x-auto scrollbar-hide">
+    <div className="flex gap-4 overflow-x-auto scrollbar-hide px-0.5">
       {/* My Status */}
       <div className="flex shrink-0 flex-col items-center gap-1.5">
         <div className="relative">
@@ -332,21 +333,20 @@ function StoriesBar({
           </span>
         </button>
       ))}
-      {/* Ghost circles when no one has posted stories */}
-      {others.length === 0 && (
-        <>
-          {[1, 2, 3].map(i => (
-            <div key={i} className="flex shrink-0 flex-col items-center gap-1.5">
-              <div className="h-14 w-14 rounded-full bg-gray-100 dark:bg-[#1a1a1a] ring-2 ring-gray-100 dark:ring-[#1a1a1a] ring-offset-2 dark:ring-offset-[#0a0a0a]" />
-              <div className="h-2 w-9 rounded-full bg-gray-100 dark:bg-[#1a1a1a]" />
-            </div>
-          ))}
-          <div className="flex shrink-0 items-center pl-2">
-            <p className="max-w-[96px] text-[11px] leading-tight text-ink-muted">
-              Follow people to see their stories
-            </p>
-          </div>
-        </>
+      {/* Loading skeletons — only while fetching */}
+      {!storiesLoaded && [1, 2, 3].map(i => (
+        <div key={i} className="flex shrink-0 flex-col items-center gap-1.5">
+          <div className="h-14 w-14 animate-pulse rounded-full bg-gray-200 dark:bg-[#2a2a2a]" />
+          <div className="h-2 w-9 animate-pulse rounded-full bg-gray-200 dark:bg-[#2a2a2a]" />
+        </div>
+      ))}
+      {/* No stories from others — just show hint text, no fake circles */}
+      {storiesLoaded && others.length === 0 && (
+        <div className="flex shrink-0 items-center pl-2">
+          <p className="max-w-[120px] text-[11px] leading-tight text-ink-muted">
+            Follow people to see their stories here
+          </p>
+        </div>
       )}
     </div>
   );
@@ -903,6 +903,7 @@ export default function FeedPage() {
 
   // Stories
   const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);
+  const [storiesLoaded, setStoriesLoaded] = useState(false);
   const [viewingGroup, setViewingGroup] = useState<StoryGroup | null>(null);
   const [viewingIdx, setViewingIdx] = useState(0);
   const [showUploadStory, setShowUploadStory] = useState(false);
@@ -975,8 +976,8 @@ export default function FeedPage() {
     if (!token) return;
     fetch(`${API_URL}/api/stories`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
-      .then(d => setStoryGroups(d.groups || []))
-      .catch(() => {});
+      .then(d => { setStoryGroups(d.groups || []); setStoriesLoaded(true); })
+      .catch(() => setStoriesLoaded(true));
   }, [token]);
 
   // Fetch highlights
@@ -1250,7 +1251,10 @@ export default function FeedPage() {
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
-      if (!res.ok) throw new Error('Failed to create post');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({})) as { message?: string };
+        throw new Error(errData.message || 'Failed to create post');
+      }
       setNewPost('');
       setNewPostCategory('GENERAL');
       setComposerMode('post');
@@ -1264,8 +1268,8 @@ export default function FeedPage() {
       setImageFile(null);
       setImagePreview(null);
       await fetchPosts();
-    } catch {
-      setError('Failed to create post');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create post');
     } finally {
       setPosting(false);
     }
@@ -1916,6 +1920,7 @@ export default function FeedPage() {
           <div className="border-b border-border px-4 py-3">
             <StoriesBar
               groups={storyGroups}
+              storiesLoaded={storiesLoaded}
               user={user}
               onAddStory={() => setShowUploadStory(true)}
               onViewGroup={(g) => { setViewingGroup(g); setViewingIdx(0); }}

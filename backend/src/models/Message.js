@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS abukonn.messages (
 async function createMessagesTables() {
   await pool.query(CREATE_CONVERSATIONS_TABLE);
   await pool.query(CREATE_MESSAGES_TABLE);
+  await pool.query(`ALTER TABLE abukonn.messages ADD COLUMN IF NOT EXISTS image_url TEXT`);
   console.log('Messages tables ready');
 }
 
@@ -108,12 +109,12 @@ async function getMessages(conversationId, userId) {
   return { conversation: conv.rows[0], messages: result.rows };
 }
 
-async function sendMessage({ conversationId, senderId, content }) {
+async function sendMessage({ conversationId, senderId, content, imageUrl = null }) {
   const result = await pool.query(
-    `INSERT INTO abukonn.messages (conversation_id, sender_id, content)
-     VALUES ($1, $2, $3)
+    `INSERT INTO abukonn.messages (conversation_id, sender_id, content, image_url)
+     VALUES ($1, $2, $3, $4)
      RETURNING *`,
-    [conversationId, senderId, content]
+    [conversationId, senderId, content, imageUrl]
   );
   return result.rows[0];
 }

@@ -1,9 +1,10 @@
 const Message = require('../models/Message');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const cloudinary = require('../config/cloudinary');
 
-async function saveMessage(conversationId, senderId, content) {
-  if (!content || !content.trim()) {
+async function saveMessage(conversationId, senderId, content, imageUrl = null) {
+  if (!content?.trim() && !imageUrl) {
     throw new Error('Message content is required');
   }
 
@@ -15,7 +16,8 @@ async function saveMessage(conversationId, senderId, content) {
   const message = await Message.sendMessage({
     conversationId,
     senderId,
-    content: content.trim(),
+    content: content?.trim() || '',
+    imageUrl,
   });
 
   const sender = await User.findById(senderId);
@@ -100,9 +102,9 @@ async function getUnreadCountHandler(req, res) {
 
 async function sendMessageHandler(req, res) {
   try {
-    const { recipient_id, conversation_id, content } = req.body;
+    const { recipient_id, conversation_id, content, image_url } = req.body;
 
-    if (!content || !content.trim()) {
+    if (!content?.trim() && !image_url) {
       return res.status(400).json({ message: 'Message content is required' });
     }
 
@@ -130,9 +132,8 @@ async function sendMessageHandler(req, res) {
       return res.status(404).json({ message: 'Conversation not found' });
     }
 
-    const message = await saveMessage(conversationId, req.user.id, content);
+    const message = await saveMessage(conversationId, req.user.id, content || '', image_url || null);
 
-    // Broadcast to all clients in the conversation room (real-time delivery)
     const io = req.app.get('io');
     if (io) {
       io.to(`conversation_${conversationId}`).emit('receive_message', message);
@@ -145,4 +146,19 @@ async function sendMessageHandler(req, res) {
   }
 }
 
-module.exports = { saveMessage, getConversations, getMessages, sendMessageHandler, startConversation, getUnreadCountHandler };
+async function uploadMessageImage(req, res) {
+  try {
+    if (!req.file) return res.status(400).json({ message: 'No image provided' });
+    const dataUri = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+    const result = await cloudinary.uploader.upload(dataUri, {
+      folder: 'abukonn/messages',
+      resource_type: 'image',
+    });
+    res.json({ url: result.secure_url });
+  } catch (err) {
+    console.error('Upload message image error:', err.message);
+    res.status(500).json({ message: 'Image upload failed' });
+  }
+}
+
+module.exports = { saveMessage, getConversations, getMessages, sendMessageHandler, startConversation, getUnreadCountHandler, uploadMessageImage };
