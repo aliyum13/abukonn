@@ -641,6 +641,15 @@ export default function MessagesPage() {
     return tb - ta;
   });
 
+  const [conversationSearch, setConversationSearch] = useState('');
+  const filteredListItems = conversationSearch.trim()
+    ? listItems.filter(item => {
+        const q = conversationSearch.toLowerCase();
+        if (item.kind === 'dm') return (item.other_user_name || '').toLowerCase().includes(q);
+        return item.name.toLowerCase().includes(q);
+      })
+    : listItems;
+
   const filteredFollowers = followers.filter(f =>
     f.full_name.toLowerCase().includes(followerSearch.toLowerCase())
   );
@@ -679,9 +688,45 @@ export default function MessagesPage() {
               </div>
             </div>
 
+            {/* Search bar */}
+            <div className="border-b border-border px-3 py-2.5">
+              <div className="relative">
+                <svg className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                </svg>
+                <input
+                  type="text"
+                  value={conversationSearch}
+                  onChange={e => setConversationSearch(e.target.value)}
+                  placeholder="Search conversations..."
+                  className="h-8 w-full rounded-lg border border-border bg-surface-muted pl-8 pr-7 text-[13px] text-ink placeholder:text-ink-muted focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:bg-[#1a1a1a] dark:border-[#333]"
+                />
+                {conversationSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setConversationSearch('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-muted transition hover:text-ink"
+                    aria-label="Clear search"
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            </div>
+
             <div className="flex-1 overflow-y-auto">
               {loading ? (
                 <div className="py-2"><ConversationSkeleton /><ConversationSkeleton /><ConversationSkeleton /></div>
+              ) : filteredListItems.length === 0 && conversationSearch ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+                  <svg className="mb-2 h-8 w-8 text-ink-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                  </svg>
+                  <p className="text-body-sm font-medium text-ink">No conversations found</p>
+                  <p className="mt-0.5 text-caption text-ink-muted">Try a different name</p>
+                </div>
               ) : listItems.length === 0 ? (
                 <EmptyState
                   title="No conversations yet"
@@ -690,7 +735,7 @@ export default function MessagesPage() {
                   icon={<svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" /></svg>}
                 />
               ) : (
-                listItems.map(item => {
+                filteredListItems.map(item => {
                   if (item.kind === 'dm') {
                     const conv = item;
                     const isActive = activeId === conv.id;
