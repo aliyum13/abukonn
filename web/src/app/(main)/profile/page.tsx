@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -31,6 +31,18 @@ interface FollowUser {
 
 type ModalType = 'none' | 'followers' | 'following';
 type TabType = 'posts' | 'replies';
+
+interface ProfileStory {
+  id: number;
+  media_url: string | null;
+  media_type: 'image' | 'video' | null;
+  story_type: 'image' | 'video' | 'text';
+  text_content: string | null;
+  bg_color: string | null;
+  created_at: string;
+  expires_at: string;
+  view_count: number;
+}
 
 // ── Subcomponents ─────────────────────────────────────────────────────────────
 
@@ -130,6 +142,23 @@ export default function ProfilePage() {
   const [modalLoading, setModalLoading] = useState(false);
   const [modalError, setModalError] = useState('');
 
+  // Stories
+  const [myStories, setMyStories] = useState<ProfileStory[]>([]);
+  const [storiesLoading, setStoriesLoading] = useState(false);
+  const [viewingStory, setViewingStory] = useState<ProfileStory | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  // Story upload modal
+  const [showUpload, setShowUpload] = useState(false);
+  const [uploadTab, setUploadTab] = useState<'media' | 'text'>('media');
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadPreview, setUploadPreview] = useState<string | null>(null);
+  const [uploadText, setUploadText] = useState('');
+  const [uploadBgColor, setUploadBgColor] = useState('#16a34a');
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     if (!authLoading && !token) router.push('/login');
   }, [authLoading, token, router]);
@@ -155,6 +184,111 @@ export default function ProfilePage() {
       .then(d => { setFollowersCount(d.followers_count ?? 0); setFollowingCount(d.following_count ?? 0); })
       .catch(() => {});
   }, [token, user?.id]);
+
+  // Fetch own stories
+  useEffect(() => {
+    if (!token) return;
+    setStoriesLoading(true);
+    fetch(`${API_URL}/api/stories/mine`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => setMyStories(d.stories || []))
+      .catch(() => {})
+      .finally(() => setStoriesLoading(false));
+  }, [token]);
+
+  const refreshStories = () => {
+    if (!token) return;
+    fetch(`${API_URL}/api/stories/mine`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => setMyStories(d.stories || []))
+      .catch(() => {});
+  };
+
+  const handleDeleteStory = async (storyId: number) => {
+    if (!token) return;
+    setDeletingId(storyId);
+    try {
+      await fetch(`${API_URL}/api/stories/${storyId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setMyStories(prev => prev.filter(s => s.id !== storyId));
+      if (viewingStory?.id === storyId) setViewingStory(null);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const closeUploadModal = () => {
+    setShowUpload(false);
+    setUploadFile(null);
+    setUploadPreview(null);
+    setUploadText('');
+    setUploadBgColor('#16a34a');
+    setUploadTab('media');
+    setUploadError('');
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const isVideo = file.type.startsWith('video/');
+    if (isVideo && file.size > 10 * 1024 * 1024) {
+      setUploadError('Video must be under 10MB');
+      return;
+    }
+    if (!isVideo && file.size > 5 * 1024 * 1024) {
+      setUploadError('Image must be under 5MB');
+      return;
+    }
+    setUploadError('');
+    setUploadFile(file);
+    const reader = new FileReader();
+    reader.onloadend = () => setUploadPreview(reader.result as string);
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleUploadStory = async () => {
+    if (!token) return;
+    setUploading(true);
+    setUploadError('');
+    try {
+      if (uploadTab === 'text') {
+        if (!uploadText.trim()) { setUploadError('Please enter some text'); setUploading(false); return; }
+        const res = await fetch(`${API_URL}/api/stories`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ story_type: 'text', text_content: uploadText.trim(), bg_color: uploadBgColor }),
+        });
+        if (!res.ok) throw new Error('Failed to share story');
+      } else if (uploadFile) {
+        const isVideo = uploadFile.type.startsWith('video/');
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          const tid = setTimeout(() => xhr.abort(), isVideo ? 120000 : 30000);
+          xhr.onload = () => { clearTimeout(tid); xhr.status < 300 ? resolve() : reject(new Error('Upload failed')); };
+          xhr.onerror = () => { clearTimeout(tid); reject(new Error('Network error')); };
+          xhr.onabort = () => { clearTimeout(tid); reject(new Error('Upload timed out')); };
+          const fd = new FormData();
+          fd.append('media', uploadFile);
+          xhr.open('POST', `${API_URL}/api/stories`);
+          xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+          xhr.send(fd);
+        });
+      } else {
+        setUploadError('Please select a photo or video');
+        setUploading(false);
+        return;
+      }
+      refreshStories();
+      closeUploadModal();
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const openModal = async (type: 'followers' | 'following') => {
     if (!token || !user) return;
@@ -284,6 +418,68 @@ export default function ProfilePage() {
         </div>
       </div>
 
+      {/* ── My Status ── */}
+      <div className="border-b border-border px-4 py-4 dark:border-[#222]">
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-[13px] font-semibold text-ink">My Status</p>
+          <Link href="/mystories" className="text-[12px] font-medium text-brand-600 transition hover:text-brand-700 dark:text-brand-400">
+            Manage all →
+          </Link>
+        </div>
+
+        <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+          {/* Add button */}
+          <button type="button" onClick={() => setShowUpload(true)}
+            className="flex shrink-0 flex-col items-center gap-1.5">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-dashed border-brand-400 bg-brand-50 transition hover:bg-brand-100 dark:bg-brand-950/30 dark:border-brand-700 dark:hover:bg-brand-950/50">
+              <svg className="h-5 w-5 text-brand-600 dark:text-brand-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+            </div>
+            <span className="text-[11px] font-medium text-ink-muted">Add</span>
+          </button>
+
+          {/* Story thumbnails */}
+          {storiesLoading && !myStories.length && [1, 2].map(i => (
+            <div key={i} className="flex shrink-0 flex-col items-center gap-1.5">
+              <div className="h-14 w-14 animate-pulse rounded-full bg-gray-200 dark:bg-[#2a2a2a]" />
+              <div className="h-2 w-10 animate-pulse rounded-full bg-gray-200 dark:bg-[#2a2a2a]" />
+            </div>
+          ))}
+
+          {myStories.map(story => (
+            <div key={story.id} className="relative flex shrink-0 flex-col items-center gap-1.5">
+              <button type="button" onClick={() => setViewingStory(story)}
+                className="relative h-14 w-14 overflow-hidden rounded-full ring-2 ring-brand-500 ring-offset-2 dark:ring-offset-[#0a0a0a] transition hover:opacity-90">
+                {story.story_type === 'text' ? (
+                  <div className="flex h-full w-full items-center justify-center" style={{ backgroundColor: story.bg_color || '#16a34a' }}>
+                    <p className="text-center text-[8px] font-semibold leading-tight text-white px-1 line-clamp-3">{story.text_content}</p>
+                  </div>
+                ) : story.story_type === 'video' ? (
+                  <div className="flex h-full w-full items-center justify-center bg-black">
+                    <svg className="h-5 w-5 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                  </div>
+                ) : (
+                  <img src={story.media_url!} alt="Story" className="h-full w-full object-cover" />
+                )}
+              </button>
+              {/* Delete button */}
+              <button type="button" disabled={deletingId === story.id}
+                onClick={() => handleDeleteStory(story.id)}
+                className="absolute -right-0.5 -top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white ring-2 ring-white dark:ring-[#0a0a0a] transition hover:bg-red-600 disabled:opacity-50">
+                {deletingId === story.id
+                  ? <svg className="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                  : <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                }
+              </button>
+              <span className="text-[10px] text-ink-muted">{timeAgo(story.created_at)}</span>
+            </div>
+          ))}
+        </div>
+
+        <p className="mt-2.5 text-[11px] text-ink-muted">Stories disappear after 24 hours</p>
+      </div>
+
       {/* ── Tab bar ── */}
       <div className="sticky top-[104px] z-10 flex border-b border-border bg-white dark:bg-[#0a0a0a] dark:border-[#222]">
         {(['posts', 'replies'] as TabType[]).map(tab => (
@@ -365,6 +561,136 @@ export default function ProfilePage() {
           <p className="mt-1 text-[14px] text-ink-muted">Your comments on posts will appear here</p>
         </div>
       )}
+
+      {/* ── Story viewer ── */}
+      {viewingStory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+          onClick={() => setViewingStory(null)}>
+          <div className="relative w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <button type="button" onClick={() => setViewingStory(null)}
+              className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/80">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            {viewingStory.story_type === 'text' ? (
+              <div className="flex min-h-[60vh] items-center justify-center rounded-2xl px-8"
+                style={{ backgroundColor: viewingStory.bg_color || '#16a34a' }}>
+                <p className="text-center text-3xl font-bold leading-snug text-white break-words">
+                  {viewingStory.text_content}
+                </p>
+              </div>
+            ) : viewingStory.story_type === 'video' ? (
+              <video src={viewingStory.media_url!} autoPlay controls playsInline
+                className="max-h-[80vh] w-full rounded-2xl object-contain" />
+            ) : (
+              <img src={viewingStory.media_url!} alt="Story"
+                className="max-h-[80vh] w-full rounded-2xl object-contain" />
+            )}
+            <div className="mt-2 text-center text-[12px] text-white/60">{timeAgo(viewingStory.created_at)}</div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Story upload modal ── */}
+      {showUpload && (() => {
+        const BG_PRESETS = ['#16a34a','#1d4ed8','#7c3aed','#dc2626','#ea580c','#0891b2','#111827','#be185d'];
+        const canShare = uploadTab === 'text' ? uploadText.trim().length > 0 : !!uploadFile;
+        return (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center sm:p-4"
+            onClick={e => { if (e.target === e.currentTarget) closeUploadModal(); }}>
+            <div className="w-full max-w-sm overflow-hidden rounded-t-2xl bg-white shadow-2xl dark:bg-[#111] sm:rounded-2xl">
+              <div className="flex items-center justify-between border-b border-border px-4 py-3.5 dark:border-[#222]">
+                <h3 className="font-semibold text-ink">Add Status</h3>
+                <button type="button" onClick={closeUploadModal}
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-ink-muted transition hover:bg-surface-muted hover:text-ink">
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Tabs */}
+              <div className="flex border-b border-border dark:border-[#222]">
+                {(['media', 'text'] as const).map(t => (
+                  <button key={t} type="button"
+                    onClick={() => { setUploadTab(t); setUploadError(''); }}
+                    className={cn('flex-1 py-2.5 text-sm font-medium transition',
+                      uploadTab === t ? 'border-b-2 border-brand-600 text-brand-600' : 'text-ink-muted hover:text-ink')}>
+                    {t === 'media' ? 'Photo / Video' : 'Text'}
+                  </button>
+                ))}
+              </div>
+
+              <div className="p-5 space-y-4">
+                {uploadError && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-[13px] text-red-600">{uploadError}</div>
+                )}
+
+                {uploadTab === 'media' ? (
+                  <>
+                    <input ref={uploadInputRef} type="file" accept="image/*,video/*"
+                      onChange={handleFileSelect} className="hidden" />
+                    {uploadPreview ? (
+                      <div className="relative">
+                        {uploadFile?.type.startsWith('video/') ? (
+                          <video src={uploadPreview} className="max-h-56 w-full rounded-xl object-cover" controls />
+                        ) : (
+                          <img src={uploadPreview} alt="Preview" className="max-h-56 w-full rounded-xl object-cover" />
+                        )}
+                        <button type="button" onClick={() => { setUploadFile(null); setUploadPreview(null); }}
+                          className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80">
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ) : (
+                      <button type="button" onClick={() => uploadInputRef.current?.click()}
+                        className="flex h-40 w-full flex-col items-center justify-center rounded-xl border-2 border-dashed border-border text-ink-muted transition hover:border-brand-400 hover:text-brand-600">
+                        <svg className="mb-2 h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5z" />
+                        </svg>
+                        <p className="text-sm font-medium">Tap to add photo or video</p>
+                        <p className="text-[11px] text-ink-muted mt-0.5">Images up to 5MB · Videos up to 10MB</p>
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="flex h-36 items-center justify-center rounded-xl px-4"
+                      style={{ backgroundColor: uploadBgColor }}>
+                      <p className={cn('text-center font-bold leading-tight text-white break-words w-full',
+                        uploadText.length > 100 ? 'text-lg' : uploadText.length > 50 ? 'text-xl' : 'text-2xl')}>
+                        {uploadText || <span className="opacity-40">Your text here…</span>}
+                      </p>
+                    </div>
+                    <textarea value={uploadText} onChange={e => setUploadText(e.target.value)}
+                      placeholder="What's on your mind?" maxLength={280} rows={3}
+                      className="w-full resize-none rounded-xl border border-border bg-surface px-3.5 py-2.5 text-[14px] text-ink placeholder:text-ink-muted focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:bg-[#1a1a1a] dark:border-[#333]" />
+                    <div className="flex flex-wrap gap-2">
+                      {BG_PRESETS.map(c => (
+                        <button key={c} type="button" onClick={() => setUploadBgColor(c)}
+                          className={cn('h-7 w-7 shrink-0 rounded-full transition hover:scale-110',
+                            uploadBgColor === c ? 'ring-2 ring-offset-2 ring-brand-500 scale-110' : '')}
+                          style={{ backgroundColor: c }} />
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                <div className="flex gap-3 pt-1">
+                  <Button variant="outline" className="flex-1" onClick={closeUploadModal}>Cancel</Button>
+                  <Button className="flex-1" disabled={!canShare || uploading} loading={uploading}
+                    onClick={handleUploadStory}>
+                    Share Story
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Followers / Following modal ── */}
       {modalType !== 'none' && (
