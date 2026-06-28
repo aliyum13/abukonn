@@ -267,19 +267,72 @@ export default function ProfilePage() {
         if (!res.ok) throw new Error('Failed to share story');
       } else if (uploadFile) {
         const isVideo = uploadFile.type.startsWith('video/');
-        await new Promise<void>((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          const tid = setTimeout(() => xhr.abort(), isVideo ? 120000 : 30000);
-          xhr.onload = () => { clearTimeout(tid); xhr.status < 300 ? resolve() : reject(new Error('Upload failed')); };
-          xhr.onerror = () => { clearTimeout(tid); reject(new Error('Network error')); };
-          xhr.onabort = () => { clearTimeout(tid); reject(new Error('Upload timed out')); };
-          const fd = new FormData();
-          fd.append('media', uploadFile);
-          if (uploadCaption.trim()) fd.append('caption', uploadCaption.trim());
-          xhr.open('POST', `${API_URL}/api/stories`);
-          xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-          xhr.send(fd);
-        });
+
+        if (isVideo) {
+          // Direct-to-Cloudinary upload — bypasses Railway's 30 s proxy timeout
+          const sigRes = await fetch(`${API_URL}/api/stories/upload-signature`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (!sigRes.ok) throw new Error('Failed to get upload signature');
+          const { signature, timestamp, api_key, cloud_name, folder } = await sigRes.json() as {
+            signature: string; timestamp: number; api_key: string; cloud_name: string; folder: string;
+          };
+
+          const cloudinaryUrl = await new Promise<string>((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            const tid = setTimeout(() => xhr.abort(), 300000);
+            xhr.onload = () => {
+              clearTimeout(tid);
+              if (xhr.status >= 200 && xhr.status < 300) {
+                try { resolve((JSON.parse(xhr.responseText) as { secure_url: string }).secure_url); }
+                catch { reject(new Error('Invalid Cloudinary response')); }
+              } else {
+                try { reject(new Error((JSON.parse(xhr.responseText) as { error?: { message: string } }).error?.message || 'Cloudinary upload failed')); }
+                catch { reject(new Error('Cloudinary upload failed')); }
+              }
+            };
+            xhr.onerror = () => { clearTimeout(tid); reject(new Error('Network error')); };
+            xhr.onabort = () => { clearTimeout(tid); reject(new Error('Upload timed out')); };
+            const fd = new FormData();
+            fd.append('file', uploadFile);
+            fd.append('api_key', api_key);
+            fd.append('timestamp', String(timestamp));
+            fd.append('signature', signature);
+            fd.append('folder', folder);
+            xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloud_name}/video/upload`);
+            xhr.send(fd);
+          });
+
+          const saveRes = await fetch(`${API_URL}/api/stories`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              story_type: 'video',
+              media_url: cloudinaryUrl,
+              direct_upload: true,
+              caption: uploadCaption.trim() || undefined,
+            }),
+          });
+          if (!saveRes.ok) {
+            const d = await saveRes.json().catch(() => ({})) as { message?: string };
+            throw new Error(d.message || 'Failed to save story');
+          }
+        } else {
+          // Images go through Railway — small enough to complete in < 30 s
+          await new Promise<void>((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            const tid = setTimeout(() => xhr.abort(), 30000);
+            xhr.onload = () => { clearTimeout(tid); xhr.status < 300 ? resolve() : reject(new Error('Upload failed')); };
+            xhr.onerror = () => { clearTimeout(tid); reject(new Error('Network error')); };
+            xhr.onabort = () => { clearTimeout(tid); reject(new Error('Upload timed out')); };
+            const fd = new FormData();
+            fd.append('media', uploadFile);
+            if (uploadCaption.trim()) fd.append('caption', uploadCaption.trim());
+            xhr.open('POST', `${API_URL}/api/stories`);
+            xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+            xhr.send(fd);
+          });
+        }
       } else {
         setUploadError('Please select a photo or video');
         setUploading(false);
