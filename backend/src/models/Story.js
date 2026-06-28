@@ -24,14 +24,15 @@ ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS bg_color VARCHAR(20);`;
 async function createStoriesTable() {
   await pool.query(CREATE_STORIES_TABLE);
   try { await pool.query(MIGRATE_STORIES_TABLE); } catch { /* columns already exist */ }
+  await pool.query(`ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS caption TEXT`);
   console.log('Stories table ready');
 }
 
-async function createStory({ userId, mediaUrl, mediaType = 'image', storyType = 'image', textContent = null, bgColor = null }) {
+async function createStory({ userId, mediaUrl, mediaType = 'image', storyType = 'image', textContent = null, bgColor = null, caption = null }) {
   const result = await pool.query(
-    `INSERT INTO abukonn.stories (user_id, media_url, media_type, story_type, text_content, bg_color)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-    [userId, mediaUrl, mediaType, storyType, textContent, bgColor]
+    `INSERT INTO abukonn.stories (user_id, media_url, media_type, story_type, text_content, bg_color, caption)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [userId, mediaUrl, mediaType, storyType, textContent, bgColor, caption]
   );
   return result.rows[0];
 }
@@ -39,7 +40,7 @@ async function createStory({ userId, mediaUrl, mediaType = 'image', storyType = 
 async function getActiveStoriesForUser(userId) {
   const result = await pool.query(
     `SELECT s.id, s.user_id, s.media_url, s.media_type, s.story_type, s.text_content, s.bg_color,
-            s.created_at, s.expires_at,
+            s.caption, s.created_at, s.expires_at,
             u.full_name AS user_name, u.profile_photo_url AS user_photo,
             COUNT(sv.id)::int AS view_count
      FROM abukonn.stories s
@@ -68,7 +69,7 @@ async function deleteStory(storyId, userId) {
 async function getMyActiveStories(userId) {
   const result = await pool.query(
     `SELECT s.id, s.user_id, s.media_url, s.media_type, s.story_type, s.text_content, s.bg_color,
-            s.created_at, s.expires_at,
+            s.caption, s.created_at, s.expires_at,
             COUNT(sv.id)::int AS view_count
      FROM abukonn.stories s
      LEFT JOIN abukonn.story_views sv ON sv.story_id = s.id

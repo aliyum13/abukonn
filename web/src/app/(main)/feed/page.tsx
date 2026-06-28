@@ -92,6 +92,7 @@ interface Story {
   story_type: 'image' | 'video' | 'text';
   text_content: string | null;
   bg_color: string | null;
+  caption: string | null;
   created_at: string;
   expires_at: string;
   view_count: number;
@@ -514,6 +515,14 @@ function StoryViewer({
           <img src={story.media_url!} alt="Story" className="max-h-full w-full object-contain" />
         )}
       </div>
+      {/* Caption overlay — image/video only */}
+      {story.story_type !== 'text' && story.caption && (
+        <div className="absolute inset-x-0 bottom-20 z-10 pointer-events-none">
+          <div className="bg-gradient-to-t from-black/70 to-transparent px-4 pb-4 pt-10">
+            <p className="text-sm font-medium leading-snug text-white/95 line-clamp-2">{story.caption}</p>
+          </div>
+        </div>
+      )}
       {/* Tap zones */}
       <button type="button" className="absolute left-0 top-0 z-10 h-full w-1/3" onClick={onPrev} aria-label="Previous" />
       <button type="button" className="absolute left-1/3 right-1/3 top-0 z-10 h-full" onClick={handleCenterTap} aria-label="Pause/Resume" />
@@ -913,6 +922,7 @@ export default function FeedPage() {
   const [storyTab, setStoryTab] = useState<'media' | 'text'>('media');
   const [storyText, setStoryText] = useState('');
   const [storyBgColor, setStoryBgColor] = useState('#16a34a');
+  const [storyCaption, setStoryCaption] = useState('');
   const [viewedStoryIds, setViewedStoryIds] = useState<Set<number>>(new Set());
   // Story reactions & replies
   const [storyReactions, setStoryReactions] = useState<Record<number, { count: number; is_liked: boolean }>>({});
@@ -962,7 +972,7 @@ export default function FeedPage() {
       if (e.key !== 'Escape') return;
       if (showUploadStory) {
         setShowUploadStory(false);
-        setStoryFile(null); setStoryPreview(null); setStoryText(''); setStoryBgColor('#16a34a'); setStoryTab('media'); setStoryUploadError(''); setStoryUploadProgress(null);
+        setStoryFile(null); setStoryPreview(null); setStoryText(''); setStoryBgColor('#16a34a'); setStoryTab('media'); setStoryCaption(''); setStoryUploadError(''); setStoryUploadProgress(null);
       } else {
         setLightboxUrl(null); setViewingGroup(null);
       }
@@ -1546,7 +1556,7 @@ export default function FeedPage() {
           const saveRes = await fetch(`${API_URL}/api/stories`, {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ story_type: 'video', media_url: cloudinaryUrl, direct_upload: true }),
+            body: JSON.stringify({ story_type: 'video', media_url: cloudinaryUrl, direct_upload: true, caption: storyCaption.trim() || undefined }),
           });
           if (!saveRes.ok) {
             const d = await saveRes.json().catch(() => ({})) as { message?: string };
@@ -1574,6 +1584,7 @@ export default function FeedPage() {
             xhr.onabort = () => { clearTimeout(tid); reject(new Error('Upload timed out')); };
             const fd = new FormData();
             fd.append('media', storyFile);
+            if (storyCaption.trim()) fd.append('caption', storyCaption.trim());
             xhr.open('POST', `${API_URL}/api/stories`);
             xhr.setRequestHeader('Authorization', `Bearer ${token}`);
             xhr.send(fd);
@@ -2792,7 +2803,7 @@ export default function FeedPage() {
       {/* Story Upload modal */}
       {showUploadStory && (() => {
         const BG_PRESETS = ['#16a34a','#1d4ed8','#7c3aed','#dc2626','#ea580c','#0891b2','#111827','#be185d'];
-        const closeModal = () => { setShowUploadStory(false); setStoryFile(null); setStoryPreview(null); setStoryText(''); setStoryBgColor('#16a34a'); setStoryTab('media'); setStoryUploadError(''); setStoryUploadProgress(null); };
+        const closeModal = () => { setShowUploadStory(false); setStoryFile(null); setStoryPreview(null); setStoryText(''); setStoryBgColor('#16a34a'); setStoryTab('media'); setStoryCaption(''); setStoryUploadError(''); setStoryUploadProgress(null); };
         const canShare = storyTab === 'text' ? storyText.trim().length > 0 : !!storyFile;
         const textLen = storyText.length;
         const textSize = textLen > 100 ? 'text-xl' : textLen > 50 ? 'text-2xl' : 'text-3xl';
@@ -2833,10 +2844,21 @@ export default function FeedPage() {
                         ) : (
                           <img src={storyPreview} alt="Preview" className="max-h-64 w-full rounded-xl object-cover" />
                         )}
-                        <button type="button" onClick={() => { setStoryFile(null); setStoryPreview(null); }}
+                        <button type="button" onClick={() => { setStoryFile(null); setStoryPreview(null); setStoryCaption(''); }}
                           className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80">
                           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                         </button>
+                      </div>
+                      {/* Caption */}
+                      <div className="mt-3">
+                        <textarea
+                          value={storyCaption}
+                          onChange={e => setStoryCaption(e.target.value.slice(0, 150))}
+                          placeholder="Add a caption..."
+                          rows={2}
+                          className="w-full resize-none rounded-xl border border-border bg-surface-muted px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:bg-[#1a1a1a] dark:border-[#333]"
+                        />
+                        <p className="mt-1 text-right text-[11px] text-ink-muted">{storyCaption.length}/150</p>
                       </div>
                     ) : (
                       <button type="button" onClick={() => storyInputRef.current?.click()}

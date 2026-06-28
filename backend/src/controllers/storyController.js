@@ -48,6 +48,7 @@ async function getUploadSignature(req, res) {
 async function createStory(req, res) {
   try {
     const storyType = req.body?.story_type;
+    const caption = (req.body?.caption || '').trim().slice(0, 150) || null;
 
     if (storyType === 'text') {
       const textContent = (req.body?.text_content || '').trim();
@@ -60,6 +61,7 @@ async function createStory(req, res) {
         storyType: 'text',
         textContent,
         bgColor,
+        // No caption for text stories — the text content is the story
       });
       return res.status(201).json({ story });
     }
@@ -73,6 +75,7 @@ async function createStory(req, res) {
         mediaUrl,
         mediaType: 'video',
         storyType: 'video',
+        caption,
       });
       return res.status(201).json({ story });
     }
@@ -108,6 +111,7 @@ async function createStory(req, res) {
       mediaUrl: result.secure_url,
       mediaType,
       storyType: mediaType,
+      caption,
     });
     res.status(201).json({ story });
   } catch (err) {

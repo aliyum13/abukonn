@@ -39,6 +39,7 @@ interface ProfileStory {
   story_type: 'image' | 'video' | 'text';
   text_content: string | null;
   bg_color: string | null;
+  caption: string | null;
   created_at: string;
   expires_at: string;
   view_count: number;
@@ -155,6 +156,7 @@ export default function ProfilePage() {
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
   const [uploadText, setUploadText] = useState('');
   const [uploadBgColor, setUploadBgColor] = useState('#16a34a');
+  const [uploadCaption, setUploadCaption] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -225,6 +227,7 @@ export default function ProfilePage() {
     setUploadPreview(null);
     setUploadText('');
     setUploadBgColor('#16a34a');
+    setUploadCaption('');
     setUploadTab('media');
     setUploadError('');
   };
@@ -272,6 +275,7 @@ export default function ProfilePage() {
           xhr.onabort = () => { clearTimeout(tid); reject(new Error('Upload timed out')); };
           const fd = new FormData();
           fd.append('media', uploadFile);
+          if (uploadCaption.trim()) fd.append('caption', uploadCaption.trim());
           xhr.open('POST', `${API_URL}/api/stories`);
           xhr.setRequestHeader('Authorization', `Bearer ${token}`);
           xhr.send(fd);
@@ -581,11 +585,25 @@ export default function ProfilePage() {
                 </p>
               </div>
             ) : viewingStory.story_type === 'video' ? (
-              <video src={viewingStory.media_url!} autoPlay controls playsInline
-                className="max-h-[80vh] w-full rounded-2xl object-contain" />
+              <div className="relative">
+                <video src={viewingStory.media_url!} autoPlay controls playsInline
+                  className="max-h-[80vh] w-full rounded-2xl object-contain" />
+                {viewingStory.caption && (
+                  <div className="absolute inset-x-0 bottom-0 rounded-b-2xl bg-gradient-to-t from-black/70 to-transparent px-4 pb-3 pt-8 pointer-events-none">
+                    <p className="text-sm font-medium text-white/95 leading-snug line-clamp-2">{viewingStory.caption}</p>
+                  </div>
+                )}
+              </div>
             ) : (
-              <img src={viewingStory.media_url!} alt="Story"
-                className="max-h-[80vh] w-full rounded-2xl object-contain" />
+              <div className="relative">
+                <img src={viewingStory.media_url!} alt="Story"
+                  className="max-h-[80vh] w-full rounded-2xl object-contain" />
+                {viewingStory.caption && (
+                  <div className="absolute inset-x-0 bottom-0 rounded-b-2xl bg-gradient-to-t from-black/70 to-transparent px-4 pb-3 pt-8 pointer-events-none">
+                    <p className="text-sm font-medium text-white/95 leading-snug line-clamp-2">{viewingStory.caption}</p>
+                  </div>
+                )}
+              </div>
             )}
             <div className="mt-2 text-center text-[12px] text-white/60">{timeAgo(viewingStory.created_at)}</div>
           </div>
@@ -638,12 +656,18 @@ export default function ProfilePage() {
                         ) : (
                           <img src={uploadPreview} alt="Preview" className="max-h-56 w-full rounded-xl object-cover" />
                         )}
-                        <button type="button" onClick={() => { setUploadFile(null); setUploadPreview(null); }}
+                        <button type="button" onClick={() => { setUploadFile(null); setUploadPreview(null); setUploadCaption(''); }}
                           className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80">
                           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                           </svg>
                         </button>
+                      </div>
+                      <div className="mt-3">
+                        <textarea value={uploadCaption} onChange={e => setUploadCaption(e.target.value.slice(0, 150))}
+                          placeholder="Add a caption..." rows={2}
+                          className="w-full resize-none rounded-xl border border-border bg-surface-muted px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:bg-[#1a1a1a] dark:border-[#333]" />
+                        <p className="mt-1 text-right text-[11px] text-ink-muted">{uploadCaption.length}/150</p>
                       </div>
                     ) : (
                       <button type="button" onClick={() => uploadInputRef.current?.click()}
