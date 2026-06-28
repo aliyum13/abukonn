@@ -36,3 +36,6 @@ export { PostContent } from './PostContent';
 export { Toggle } from './Toggle';
 
 export { ThemeToggleRow } from './ThemeToggleRow';
+
+export { PasswordInput } from './PasswordInput';
+export type { PasswordInputProps } from './PasswordInput';

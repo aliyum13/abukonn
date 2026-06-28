@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { AuthSplitLayout } from '@/components/auth/AuthSplitLayout';
-import { Button, Input } from '@/components/ui';
+import { Button, Input, PasswordInput } from '@/components/ui';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -72,10 +72,9 @@ export default function LoginPage() {
         />
 
         <div>
-          <Input
+          <PasswordInput
             id="password"
             label="Password"
-            type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Enter your password"

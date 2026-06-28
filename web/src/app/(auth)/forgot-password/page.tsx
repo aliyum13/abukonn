@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AuthSplitLayout } from '@/components/auth/AuthSplitLayout';
-import { Button, Input } from '@/components/ui';
+import { Button, Input, PasswordInput } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 const OTP_LENGTH = 6;
@@ -246,11 +246,11 @@ export default function ForgotPasswordPage() {
         <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-body-sm text-red-600">{passwordError}</div>
       )}
       <form onSubmit={handleResetPassword} className="space-y-5">
-        <Input id="new-password" label="New password" type="password"
+        <PasswordInput id="new-password" label="New password"
           value={newPassword} onChange={e => setNewPassword(e.target.value)}
           placeholder="At least 6 characters" required minLength={6}
           hint="Must be at least 6 characters" autoComplete="new-password" />
-        <Input id="confirm-password" label="Confirm new password" type="password"
+        <PasswordInput id="confirm-password" label="Confirm new password"
           value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
           placeholder="Re-enter your password" required autoComplete="new-password" />
         <Button type="submit" fullWidth size="lg" loading={passwordLoading}>

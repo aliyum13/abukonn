@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
   Input,
+  PasswordInput,
   Select,
   Toggle,
   ThemeToggleRow,
@@ -591,18 +592,18 @@ export default function SettingsPage() {
           {/* SECURITY */}
           <SettingsCard id="security" title="Security">
             <form onSubmit={handlePasswordSave} className="space-y-4 max-w-md">
-              <Input label="Current password" type="password" autoComplete="current-password"
+              <PasswordInput label="Current password" autoComplete="current-password"
                 value={passwordForm.current_password}
                 onChange={e => setPasswordForm(f => ({ ...f, current_password: e.target.value }))}
                 required
               />
-              <Input label="New password" type="password" autoComplete="new-password"
+              <PasswordInput label="New password" autoComplete="new-password"
                 value={passwordForm.new_password}
                 onChange={e => setPasswordForm(f => ({ ...f, new_password: e.target.value }))}
                 hint="At least 6 characters"
                 required
               />
-              <Input label="Confirm new password" type="password" autoComplete="new-password"
+              <PasswordInput label="Confirm new password" autoComplete="new-password"
                 value={passwordForm.confirm_password}
                 onChange={e => setPasswordForm(f => ({ ...f, confirm_password: e.target.value }))}
                 required

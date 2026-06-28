@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { AuthSplitLayout } from '@/components/auth/AuthSplitLayout';
-import { Button, Input, Select } from '@/components/ui';
+import { Button, Input, Select, PasswordInput } from '@/components/ui';
 
 const DEPARTMENTS = [
   'Computer Science',
@@ -141,10 +141,9 @@ export default function RegisterPage() {
           ))}
         </Select>
 
-        <Input
+        <PasswordInput
           id="password"
           label="Password"
-          type="password"
           value={form.password}
           onChange={(e) => handleChange('password', e.target.value)}
           placeholder="At least 6 characters"
