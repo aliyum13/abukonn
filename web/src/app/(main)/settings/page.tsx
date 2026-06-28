@@ -14,6 +14,9 @@ import {
   CardTitle,
   Input,
   PasswordInput,
+  PasswordStrengthMeter,
+  getPasswordStrength,
+  COMMON_PASSWORDS,
   Select,
   Toggle,
   ThemeToggleRow,
@@ -332,6 +335,14 @@ export default function SettingsPage() {
   const handlePasswordSave = async (e: FormEvent) => {
     e.preventDefault();
     if (!token) return;
+    if (COMMON_PASSWORDS.has(passwordForm.new_password.toLowerCase())) {
+      showToast('This password is too common. Please choose a unique password.', true);
+      return;
+    }
+    if (getPasswordStrength(passwordForm.new_password) === 'weak') {
+      showToast('Password is too weak. Please choose a stronger password.', true);
+      return;
+    }
     setSavingPassword(true);
     try {
       const res = await fetch(`${API_URL}/api/settings/password`, {
@@ -597,12 +608,14 @@ export default function SettingsPage() {
                 onChange={e => setPasswordForm(f => ({ ...f, current_password: e.target.value }))}
                 required
               />
-              <PasswordInput label="New password" autoComplete="new-password"
-                value={passwordForm.new_password}
-                onChange={e => setPasswordForm(f => ({ ...f, new_password: e.target.value }))}
-                hint="At least 6 characters"
-                required
-              />
+              <div>
+                <PasswordInput label="New password" autoComplete="new-password"
+                  value={passwordForm.new_password}
+                  onChange={e => setPasswordForm(f => ({ ...f, new_password: e.target.value }))}
+                  required
+                />
+                <PasswordStrengthMeter password={passwordForm.new_password} />
+              </div>
               <PasswordInput label="Confirm new password" autoComplete="new-password"
                 value={passwordForm.confirm_password}
                 onChange={e => setPasswordForm(f => ({ ...f, confirm_password: e.target.value }))}

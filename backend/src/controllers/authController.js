@@ -3,6 +3,13 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const UserSettings = require('../models/UserSettings');
 
+const COMMON_PASSWORDS = new Set([
+  'password','password123','123456','12345678','123456789',
+  'qwerty','abc123','letmein','welcome','monkey','dragon',
+  'master','iloveyou','sunshine','princess','football',
+  'shadow','superman','michael','charlie',
+]);
+
 function generateToken(user) {
   return jwt.sign(
     { id: user.id, email: user.email, is_admin: user.is_admin || false },
@@ -21,6 +28,9 @@ async function register(req, res) {
 
     if (password.length < 6) {
       return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    }
+    if (COMMON_PASSWORDS.has(password.toLowerCase())) {
+      return res.status(400).json({ message: 'This password is too common. Please choose a unique password.' });
     }
 
     const existingEmail = await User.findByEmail(email);

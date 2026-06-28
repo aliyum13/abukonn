@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { AuthSplitLayout } from '@/components/auth/AuthSplitLayout';
-import { Button, Input, Select, PasswordInput } from '@/components/ui';
+import { Button, Input, Select, PasswordInput, PasswordStrengthMeter, getPasswordStrength, COMMON_PASSWORDS } from '@/components/ui';
 
 const DEPARTMENTS = [
   'Computer Science',
@@ -61,8 +61,17 @@ export default function RegisterPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
-    setLoading(true);
 
+    if (COMMON_PASSWORDS.has(form.password.toLowerCase())) {
+      setError('This password is too common. Please choose a unique password.');
+      return;
+    }
+    if (getPasswordStrength(form.password) === 'weak') {
+      setError('Password is too weak. Please choose a stronger password.');
+      return;
+    }
+
+    setLoading(true);
     try {
       await register(form);
       router.push('/feed');
@@ -141,17 +150,19 @@ export default function RegisterPage() {
           ))}
         </Select>
 
-        <PasswordInput
-          id="password"
-          label="Password"
-          value={form.password}
-          onChange={(e) => handleChange('password', e.target.value)}
-          placeholder="At least 6 characters"
-          required
-          minLength={6}
-          hint="Must be at least 6 characters"
-          autoComplete="new-password"
-        />
+        <div>
+          <PasswordInput
+            id="password"
+            label="Password"
+            value={form.password}
+            onChange={(e) => handleChange('password', e.target.value)}
+            placeholder="At least 6 characters"
+            required
+            minLength={6}
+            autoComplete="new-password"
+          />
+          <PasswordStrengthMeter password={form.password} />
+        </div>
 
         {/* Terms checkbox */}
         <div className="pt-1">

@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AuthSplitLayout } from '@/components/auth/AuthSplitLayout';
-import { Button, Input, PasswordInput } from '@/components/ui';
+import { Button, Input, PasswordInput, PasswordStrengthMeter, getPasswordStrength, COMMON_PASSWORDS } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 const OTP_LENGTH = 6;
@@ -145,6 +145,8 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
     setPasswordError('');
     if (newPassword.length < 6) { setPasswordError('Password must be at least 6 characters'); return; }
+    if (COMMON_PASSWORDS.has(newPassword.toLowerCase())) { setPasswordError('This password is too common. Please choose a unique password.'); return; }
+    if (getPasswordStrength(newPassword) === 'weak') { setPasswordError('Password is too weak. Please choose a stronger password.'); return; }
     if (newPassword !== confirmPassword) { setPasswordError('Passwords do not match'); return; }
     setPasswordLoading(true);
     try {
@@ -246,10 +248,13 @@ export default function ForgotPasswordPage() {
         <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-body-sm text-red-600">{passwordError}</div>
       )}
       <form onSubmit={handleResetPassword} className="space-y-5">
-        <PasswordInput id="new-password" label="New password"
-          value={newPassword} onChange={e => setNewPassword(e.target.value)}
-          placeholder="At least 6 characters" required minLength={6}
-          hint="Must be at least 6 characters" autoComplete="new-password" />
+        <div>
+          <PasswordInput id="new-password" label="New password"
+            value={newPassword} onChange={e => setNewPassword(e.target.value)}
+            placeholder="At least 6 characters" required minLength={6}
+            autoComplete="new-password" />
+          <PasswordStrengthMeter password={newPassword} />
+        </div>
         <PasswordInput id="confirm-password" label="Confirm new password"
           value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
           placeholder="Re-enter your password" required autoComplete="new-password" />

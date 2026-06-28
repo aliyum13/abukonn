@@ -39,3 +39,6 @@ export { ThemeToggleRow } from './ThemeToggleRow';
 
 export { PasswordInput } from './PasswordInput';
 export type { PasswordInputProps } from './PasswordInput';
+
+export { PasswordStrengthMeter, getPasswordStrength, COMMON_PASSWORDS } from './PasswordStrengthMeter';
+export type { PasswordStrength } from './PasswordStrengthMeter';
