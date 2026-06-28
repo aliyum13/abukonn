@@ -2838,28 +2838,29 @@ export default function FeedPage() {
                 {storyTab === 'media' ? (
                   <>
                     {storyPreview ? (
-                      <div className="relative mb-4">
-                        {storyFile?.type.startsWith('video') ? (
-                          <video src={storyPreview} className="max-h-64 w-full rounded-xl object-cover" controls />
-                        ) : (
-                          <img src={storyPreview} alt="Preview" className="max-h-64 w-full rounded-xl object-cover" />
-                        )}
-                        <button type="button" onClick={() => { setStoryFile(null); setStoryPreview(null); setStoryCaption(''); }}
-                          className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80">
-                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-                        </button>
-                      </div>
-                      {/* Caption */}
-                      <div className="mt-3">
-                        <textarea
-                          value={storyCaption}
-                          onChange={e => setStoryCaption(e.target.value.slice(0, 150))}
-                          placeholder="Add a caption..."
-                          rows={2}
-                          className="w-full resize-none rounded-xl border border-border bg-surface-muted px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:bg-[#1a1a1a] dark:border-[#333]"
-                        />
-                        <p className="mt-1 text-right text-[11px] text-ink-muted">{storyCaption.length}/150</p>
-                      </div>
+                      <>
+                        <div className="relative mb-4">
+                          {storyFile?.type.startsWith('video') ? (
+                            <video src={storyPreview} className="max-h-64 w-full rounded-xl object-cover" controls />
+                          ) : (
+                            <img src={storyPreview} alt="Preview" className="max-h-64 w-full rounded-xl object-cover" />
+                          )}
+                          <button type="button" onClick={() => { setStoryFile(null); setStoryPreview(null); setStoryCaption(''); }}
+                            className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80">
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                          </button>
+                        </div>
+                        <div className="mt-3">
+                          <textarea
+                            value={storyCaption}
+                            onChange={e => setStoryCaption(e.target.value.slice(0, 150))}
+                            placeholder="Add a caption..."
+                            rows={2}
+                            className="w-full resize-none rounded-xl border border-border bg-surface-muted px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:bg-[#1a1a1a] dark:border-[#333]"
+                          />
+                          <p className="mt-1 text-right text-[11px] text-ink-muted">{storyCaption.length}/150</p>
+                        </div>
+                      </>
                     ) : (
                       <button type="button" onClick={() => storyInputRef.current?.click()}
                         className="mb-4 flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border py-10 text-ink-muted transition hover:border-brand-400 hover:text-brand-600">
