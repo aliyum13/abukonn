@@ -863,7 +863,7 @@ function FeedModalUserRow({
 }
 
 export default function FeedPage() {
-  const { user, token, loading: authLoading } = useAuth();
+  const { user, token, loading: authLoading, logout } = useAuth();
   const router = useRouter();
   const [posts, setPosts] = useState<Post[]>([]);
   const [newPost, setNewPost] = useState('');
@@ -945,6 +945,7 @@ export default function FeedPage() {
 
   const imageInputRef = useRef<HTMLInputElement>(null);
   const storyInputRef = useRef<HTMLInputElement>(null);
+  const lastFetchRef = useRef<number>(0);
   const viewedPostsRef = useRef<Set<number>>(new Set());
   const viewedStoryApiCallsRef = useRef<Set<number>>(new Set());
   const storyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1133,14 +1134,32 @@ export default function FeedPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [commentingId]);
 
-  const fetchPosts = async () => {
+  const fetchPosts = async (isRetry = false) => {
     if (!token) return;
     try {
       const res = await fetch(`${API_URL}/api/posts`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (res.status === 401 && !isRetry) {
+        // Token may be stale — verify with /api/users/me
+        const meRes = await fetch(`${API_URL}/api/users/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (meRes.ok) {
+          // Token is valid, just retry posts
+          return fetchPosts(true);
+        } else {
+          // Truly expired — log out
+          logout();
+          router.push('/login?reason=session_expired');
+          return;
+        }
+      }
       const data = await res.json();
-      if (res.ok) setPosts(data.posts);
+      if (res.ok) {
+        setPosts(data.posts);
+        lastFetchRef.current = Date.now();
+      }
     } catch {
       setError('Failed to load feed');
     } finally {
@@ -1150,6 +1169,18 @@ export default function FeedPage() {
 
   useEffect(() => {
     if (token) fetchPosts();
+  }, [token]);
+
+  // Re-fetch when user returns to the tab after 5+ minutes
+  useEffect(() => {
+    if (!token) return;
+    const handleFocus = () => {
+      if (Date.now() - lastFetchRef.current > 5 * 60 * 1000) {
+        fetchPosts();
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
   }, [token]);
 
   // Scroll to target post once posts are rendered and commentingId is set from URL

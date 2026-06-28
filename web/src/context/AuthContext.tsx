@@ -37,22 +37,38 @@ interface RegisterData {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const INACTIVITY_LIMIT_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+function touchActivity() {
+  localStorage.setItem('abukonn_last_active', String(Date.now()));
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Startup: inactivity check + restore session
   useEffect(() => {
     const storedToken = localStorage.getItem('abukonn_token');
     const storedUser = localStorage.getItem('abukonn_user');
+    const lastActive = localStorage.getItem('abukonn_last_active');
 
     if (storedToken && storedUser) {
-      // Set cached data immediately so the UI isn't blank
+      // Check inactivity — if last_active was set and is > 24h ago, expire the session
+      if (lastActive && Date.now() - parseInt(lastActive, 10) > INACTIVITY_LIMIT_MS) {
+        localStorage.removeItem('abukonn_token');
+        localStorage.removeItem('abukonn_user');
+        localStorage.removeItem('abukonn_last_active');
+        setLoading(false);
+        window.location.replace('/login?reason=session_expired');
+        return;
+      }
+
+      touchActivity();
       setToken(storedToken);
       setUser(JSON.parse(storedUser));
 
-      // Refresh from API to pick up any server-side changes (e.g. is_admin)
       fetch(`${API_URL}/api/users/me`, {
         headers: { Authorization: `Bearer ${storedToken}` },
       })
@@ -70,9 +86,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Track user activity — update last_active on click, keypress, scroll
+  useEffect(() => {
+    const touch = () => touchActivity();
+    document.addEventListener('click', touch, { passive: true });
+    document.addEventListener('keypress', touch, { passive: true });
+    document.addEventListener('scroll', touch, { passive: true });
+    return () => {
+      document.removeEventListener('click', touch);
+      document.removeEventListener('keypress', touch);
+      document.removeEventListener('scroll', touch);
+    };
+  }, []);
+
   const persistAuth = (newToken: string, newUser: User) => {
     localStorage.setItem('abukonn_token', newToken);
     localStorage.setItem('abukonn_user', JSON.stringify(newUser));
+    touchActivity();
     setToken(newToken);
     setUser(newUser);
   };
@@ -104,6 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     localStorage.removeItem('abukonn_token');
     localStorage.removeItem('abukonn_user');
+    localStorage.removeItem('abukonn_last_active');
     setToken(null);
     setUser(null);
   };
