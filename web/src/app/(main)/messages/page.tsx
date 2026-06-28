@@ -30,9 +30,16 @@ interface Group {
   avatar_url: string | null;
   created_by: number;
   member_count: number;
+  pending_count?: number;
   last_message: string | null;
   last_message_at: string | null;
   last_sender_name: string | null;
+  description?: string | null;
+  invite_code?: string;
+  invite_enabled?: boolean;
+  require_approval?: boolean;
+  only_admins_can_add?: boolean;
+  my_role?: 'admin' | 'member';
 }
 
 interface ChatMessage {
@@ -61,6 +68,8 @@ interface GroupMember {
   full_name: string;
   profile_photo_url: string | null;
   department: string;
+  role?: 'admin' | 'member';
+  status?: string;
 }
 
 interface Follower {
@@ -248,6 +257,17 @@ export default function MessagesPage() {
   const [groupMessages, setGroupMessages] = useState<GroupMessage[]>([]);
   const [activeGroupInfo, setActiveGroupInfo] = useState<Group | null>(null);
   const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
+  const [pendingMembers, setPendingMembers] = useState<GroupMember[]>([]);
+  const [myGroupRole, setMyGroupRole] = useState<'admin' | 'member'>('member');
+
+  // Group Info panel
+  const [showGroupInfo, setShowGroupInfo] = useState(false);
+  const [groupInfoView, setGroupInfoView] = useState<'info' | 'settings' | 'pending'>('info');
+  const [settingsForm, setSettingsForm] = useState({ name: '', description: '', require_approval: false, only_admins_can_add: false, invite_enabled: true });
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [groupInfoToast, setGroupInfoToast] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
+  const [copiedInvite, setCopiedInvite] = useState(false);
 
   // Create group modal
   const [showCreateGroup, setShowCreateGroup] = useState(false);
@@ -368,8 +388,20 @@ export default function MessagesPage() {
       });
       const data = await res.json();
       setGroupMessages(data.messages || []);
-      if (data.group) setActiveGroupInfo(data.group);
+      if (data.group) {
+        setActiveGroupInfo(data.group);
+        setSettingsForm({
+          name: data.group.name || '',
+          description: data.group.description || '',
+          require_approval: data.group.require_approval || false,
+          only_admins_can_add: data.group.only_admins_can_add || false,
+          invite_enabled: data.group.invite_enabled !== false,
+        });
+        setInviteCode(data.group.invite_code || '');
+      }
       if (data.members) setGroupMembers(data.members);
+      if (data.pending) setPendingMembers(data.pending);
+      if (data.my_role) setMyGroupRole(data.my_role);
     } catch { setGroupMessages([]); }
     finally { setMessagesLoading(false); }
   }, [token]);
@@ -910,10 +942,17 @@ export default function MessagesPage() {
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100">
                     <GroupIcon className="h-4.5 w-4.5 text-brand-600" />
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium text-ink">{activeGroupInfo.name}</p>
-                    <p className="text-caption text-ink-muted">{activeGroupInfo.member_count} members</p>
-                  </div>
+                  <button type="button" className="min-w-0 flex-1 text-left" onClick={() => { setShowGroupInfo(true); setGroupInfoView('info'); }}>
+                    <p className="font-medium text-ink hover:text-brand-600 transition">{activeGroupInfo.name}</p>
+                    <p className="text-caption text-ink-muted">
+                      {activeGroupInfo.member_count} members
+                      {(activeGroupInfo.pending_count ?? 0) > 0 && myGroupRole === 'admin' && (
+                        <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                          {activeGroupInfo.pending_count} pending
+                        </span>
+                      )}
+                    </p>
+                  </button>
                 </div>
 
                 <div className="flex-1 overflow-y-auto bg-surface-muted/40 p-4">
@@ -986,6 +1025,243 @@ export default function MessagesPage() {
           </div>
         </Card>
       </div>
+
+      {/* ── Group Info Panel ────────────────────────────────────────────── */}
+      {showGroupInfo && activeGroupInfo && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowGroupInfo(false)} />
+          <div className="relative flex w-full max-w-sm flex-col bg-white shadow-2xl dark:bg-[#111] dark:border-l dark:border-[#222]">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-border px-4 py-3.5 dark:border-[#222]">
+              <div className="flex items-center gap-2">
+                {groupInfoView !== 'info' && (
+                  <button type="button" onClick={() => setGroupInfoView('info')} className="mr-1 text-ink-muted hover:text-ink">
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/></svg>
+                  </button>
+                )}
+                <h3 className="font-semibold text-ink">
+                  {groupInfoView === 'info' ? 'Group Info' : groupInfoView === 'settings' ? 'Group Settings' : 'Pending Members'}
+                </h3>
+              </div>
+              <button type="button" onClick={() => setShowGroupInfo(false)} className="text-ink-muted hover:text-ink">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            </div>
+
+            {groupInfoToast && (
+              <div className="mx-4 mt-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-2.5 text-sm text-brand-700">{groupInfoToast}</div>
+            )}
+
+            <div className="flex-1 overflow-y-auto">
+              {/* INFO VIEW */}
+              {groupInfoView === 'info' && (
+                <div className="space-y-0">
+                  {/* Group details */}
+                  <div className="px-4 py-4 border-b border-border dark:border-[#222]">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-100 text-xl dark:bg-brand-950">💬</div>
+                      <div>
+                        <p className="font-semibold text-ink">{activeGroupInfo.name}</p>
+                        <p className="text-sm text-ink-muted">{activeGroupInfo.member_count} members</p>
+                      </div>
+                    </div>
+                    {activeGroupInfo.description && (
+                      <p className="mt-2 text-sm text-ink-muted">{activeGroupInfo.description}</p>
+                    )}
+                  </div>
+
+                  {/* Admin actions */}
+                  {myGroupRole === 'admin' && (
+                    <div className="px-4 py-3 border-b border-border dark:border-[#222] flex flex-wrap gap-2">
+                      <button type="button" onClick={() => setGroupInfoView('settings')}
+                        className="rounded-full border border-border px-3.5 py-1.5 text-[13px] font-medium text-ink transition hover:bg-surface-muted">
+                        ⚙️ Settings
+                      </button>
+                      {pendingMembers.length > 0 && (
+                        <button type="button" onClick={() => setGroupInfoView('pending')}
+                          className="rounded-full border border-amber-300 bg-amber-50 px-3.5 py-1.5 text-[13px] font-medium text-amber-700 transition hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+                          ⏳ Pending ({pendingMembers.length})
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Members */}
+                  <div className="px-4 py-3">
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-muted">{groupMembers.length} Members</p>
+                    <div className="space-y-1">
+                      {groupMembers.map(m => (
+                        <div key={m.id} className="flex items-center gap-3 rounded-xl px-2 py-2 transition hover:bg-surface-muted dark:hover:bg-[#1a1a1a]">
+                          <Avatar src={m.profile_photo_url} name={m.full_name} size="sm" />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[13px] font-medium text-ink truncate">{m.full_name}</p>
+                            <p className="text-[11px] text-ink-muted">{m.department}</p>
+                          </div>
+                          {m.role === 'admin' && (
+                            <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-semibold text-brand-700 dark:bg-brand-950 dark:text-brand-300">Admin</span>
+                          )}
+                          {/* Admin actions on other members */}
+                          {myGroupRole === 'admin' && m.id !== user?.id && (
+                            <div className="flex gap-1">
+                              <button type="button"
+                                onClick={async () => {
+                                  const newRole = m.role === 'admin' ? 'member' : 'admin';
+                                  await fetch(`${API_URL}/api/groups/${activeGroupInfo.id}/members/${m.id}/role`, {
+                                    method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ role: newRole }),
+                                  });
+                                  setGroupMembers(prev => prev.map(x => x.id === m.id ? { ...x, role: newRole } : x));
+                                  setGroupInfoToast(newRole === 'admin' ? `${m.full_name} is now an admin` : `${m.full_name} is now a member`);
+                                  setTimeout(() => setGroupInfoToast(''), 3000);
+                                }}
+                                className="rounded-lg px-2 py-1 text-[11px] font-medium text-ink-muted hover:bg-surface-muted hover:text-ink transition"
+                                title={m.role === 'admin' ? 'Demote' : 'Promote to admin'}>
+                                {m.role === 'admin' ? '↓' : '↑ Admin'}
+                              </button>
+                              <button type="button"
+                                onClick={async () => {
+                                  if (!confirm(`Remove ${m.full_name} from the group?`)) return;
+                                  await fetch(`${API_URL}/api/groups/${activeGroupInfo.id}/members/${m.id}`, {
+                                    method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+                                  });
+                                  setGroupMembers(prev => prev.filter(x => x.id !== m.id));
+                                  setActiveGroupInfo(g => g ? { ...g, member_count: Math.max(0, (g.member_count || 1) - 1) } : g);
+                                }}
+                                className="rounded-lg px-2 py-1 text-[11px] font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition">
+                                Remove
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* SETTINGS VIEW */}
+              {groupInfoView === 'settings' && myGroupRole === 'admin' && (
+                <div className="space-y-5 px-4 py-4">
+                  <div>
+                    <label className="mb-1.5 block text-[13px] font-medium text-ink-secondary">Group Name</label>
+                    <input value={settingsForm.name} onChange={e => setSettingsForm(f => ({ ...f, name: e.target.value }))}
+                      className="w-full rounded-xl border border-border bg-white px-3.5 py-2.5 text-sm text-ink focus:border-brand-500 focus:outline-none dark:bg-[#0a0a0a] dark:border-[#333]" />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-[13px] font-medium text-ink-secondary">Description</label>
+                    <textarea value={settingsForm.description} onChange={e => setSettingsForm(f => ({ ...f, description: e.target.value }))}
+                      rows={3} className="w-full resize-none rounded-xl border border-border bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-muted focus:border-brand-500 focus:outline-none dark:bg-[#0a0a0a] dark:border-[#333]" />
+                  </div>
+                  {[
+                    { key: 'require_approval' as const, label: 'Require approval to join' },
+                    { key: 'only_admins_can_add' as const, label: 'Only admins can add members' },
+                    { key: 'invite_enabled' as const, label: 'Invite link enabled' },
+                  ].map(({ key, label }) => (
+                    <div key={key} className="flex items-center justify-between">
+                      <span className="text-sm text-ink">{label}</span>
+                      <button type="button" onClick={() => setSettingsForm(f => ({ ...f, [key]: !f[key] }))}
+                        className={cn('relative h-6 w-11 rounded-full transition', settingsForm[key] ? 'bg-brand-600' : 'bg-gray-300 dark:bg-[#333]')}>
+                        <span className={cn('absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all', settingsForm[key] ? 'left-[22px]' : 'left-0.5')} />
+                      </button>
+                    </div>
+                  ))}
+
+                  {/* Invite link */}
+                  <div>
+                    <label className="mb-1.5 block text-[13px] font-medium text-ink-secondary">Invite Link</label>
+                    <div className="flex items-center gap-2 rounded-xl border border-border bg-surface-muted px-3 py-2 dark:bg-[#1a1a1a] dark:border-[#333]">
+                      <span className="flex-1 truncate font-mono text-[12px] text-ink">{typeof window !== 'undefined' ? `${window.location.origin}/join/${inviteCode}` : `/join/${inviteCode}`}</span>
+                      <button type="button" onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/join/${inviteCode}`); setCopiedInvite(true); setTimeout(() => setCopiedInvite(false), 2000); }}
+                        className="shrink-0 text-[12px] font-semibold text-brand-600 hover:text-brand-700 transition">
+                        {copiedInvite ? 'Copied!' : 'Copy'}
+                      </button>
+                    </div>
+                    <button type="button"
+                      onClick={async () => {
+                        if (!confirm('Reset invite link? The old link will stop working.')) return;
+                        const res = await fetch(`${API_URL}/api/groups/${activeGroupInfo.id}/invite/reset`, {
+                          method: 'POST', headers: { Authorization: `Bearer ${token}` },
+                        });
+                        const data = await res.json() as { invite_code?: string };
+                        if (data.invite_code) { setInviteCode(data.invite_code); setGroupInfoToast('Invite link reset'); setTimeout(() => setGroupInfoToast(''), 3000); }
+                      }}
+                      className="mt-1.5 text-[12px] font-medium text-red-500 hover:text-red-600 transition">
+                      Reset invite link
+                    </button>
+                  </div>
+
+                  <Button loading={savingSettings} onClick={async () => {
+                    setSavingSettings(true);
+                    try {
+                      const res = await fetch(`${API_URL}/api/groups/${activeGroupInfo.id}/settings`, {
+                        method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: settingsForm.name, description: settingsForm.description, require_approval: settingsForm.require_approval, only_admins_can_add: settingsForm.only_admins_can_add, invite_enabled: settingsForm.invite_enabled }),
+                      });
+                      const data = await res.json() as { group?: Group };
+                      if (data.group) {
+                        setActiveGroupInfo(data.group);
+                        setGroups(prev => prev.map(g => g.id === activeGroupInfo.id ? { ...g, ...data.group } : g));
+                      }
+                      setGroupInfoToast('Settings saved'); setTimeout(() => setGroupInfoToast(''), 3000);
+                      setGroupInfoView('info');
+                    } finally { setSavingSettings(false); }
+                  }} className="w-full">Save Settings</Button>
+                </div>
+              )}
+
+              {/* PENDING VIEW */}
+              {groupInfoView === 'pending' && (
+                <div className="px-4 py-4">
+                  {pendingMembers.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-ink-muted">No pending requests</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {pendingMembers.map(m => (
+                        <div key={m.id} className="flex items-center gap-3">
+                          <Avatar src={m.profile_photo_url} name={m.full_name} size="sm" />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[13px] font-medium text-ink">{m.full_name}</p>
+                            <p className="text-[11px] text-ink-muted">{m.department}</p>
+                          </div>
+                          <div className="flex gap-1">
+                            <button type="button" onClick={async () => {
+                              await fetch(`${API_URL}/api/groups/${activeGroupInfo.id}/members/${m.id}/approve`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } });
+                              setPendingMembers(prev => prev.filter(x => x.id !== m.id));
+                              setGroupMembers(prev => [...prev, { ...m, role: 'member', status: 'active' }]);
+                              setActiveGroupInfo(g => g ? { ...g, member_count: (g.member_count || 0) + 1, pending_count: Math.max(0, (g.pending_count || 1) - 1) } : g);
+                            }} className="rounded-lg bg-brand-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-brand-700 transition">Accept</button>
+                            <button type="button" onClick={async () => {
+                              await fetch(`${API_URL}/api/groups/${activeGroupInfo.id}/members/${m.id}/reject`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } });
+                              setPendingMembers(prev => prev.filter(x => x.id !== m.id));
+                              setActiveGroupInfo(g => g ? { ...g, pending_count: Math.max(0, (g.pending_count || 1) - 1) } : g);
+                            }} className="rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition">Reject</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer actions */}
+            <div className="border-t border-border px-4 py-3 dark:border-[#222] space-y-2">
+              <button type="button"
+                onClick={async () => {
+                  if (!confirm('Leave this group?')) return;
+                  const res = await fetch(`${API_URL}/api/groups/${activeGroupInfo.id}/leave`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+                  const d = await res.json() as { message?: string };
+                  if (!res.ok) { setGroupInfoToast(d.message || 'Could not leave'); setTimeout(() => setGroupInfoToast(''), 4000); return; }
+                  setGroups(prev => prev.filter(g => g.id !== activeGroupInfo.id));
+                  setActiveGroupId(null); setActiveGroupInfo(null); setShowGroupInfo(false); setMobileShowChat(false);
+                }}
+                className="w-full rounded-xl py-2.5 text-center text-sm font-semibold text-red-600 transition hover:bg-red-50 dark:hover:bg-red-950/30">
+                Leave Group
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Create Group Modal ─────────────────────────────────────────── */}
       {showCreateGroup && (

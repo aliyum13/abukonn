@@ -3,21 +3,16 @@ const User = require('../models/User');
 
 async function createGroup(req, res) {
   try {
-    const { name, member_ids = [] } = req.body;
-    if (!name || !name.trim()) {
-      return res.status(400).json({ message: 'Group name is required' });
-    }
+    const { name, member_ids = [], description } = req.body;
+    if (!name?.trim()) return res.status(400).json({ message: 'Group name is required' });
 
-    const group = await Group.createGroup(name.trim(), req.user.id);
+    const group = await Group.createGroup(name.trim(), req.user.id, description?.trim() || null);
+    await Group.addMember(group.id, req.user.id, 'admin');
 
-    // Creator is always a member
-    await Group.addMember(group.id, req.user.id);
-
-    // Add additional members
     for (const uid of member_ids) {
       const parsed = parseInt(uid, 10);
       if (parsed && parsed !== req.user.id) {
-        await Group.addMember(group.id, parsed);
+        await Group.addMember(group.id, parsed, 'member', 'active');
       }
     }
 
@@ -45,10 +40,14 @@ async function getGroupMessages(req, res) {
     const member = await Group.isMember(groupId, req.user.id);
     if (!member) return res.status(403).json({ message: 'Not a member of this group' });
 
-    const messages = await Group.getGroupMessages(groupId);
-    const group = await Group.getGroupById(groupId);
-    const members = await Group.getGroupMembers(groupId);
-    res.json({ messages, group, members });
+    const [messages, group, members, pending] = await Promise.all([
+      Group.getGroupMessages(groupId),
+      Group.getGroupById(groupId),
+      Group.getGroupMembers(groupId),
+      Group.getPendingMembers(groupId),
+    ]);
+    const myRole = (await Group.isAdmin(groupId, req.user.id)) ? 'admin' : 'member';
+    res.json({ messages, group, members, pending, my_role: myRole });
   } catch (err) {
     console.error('Get group messages error:', err.message);
     res.status(500).json({ message: 'Server error' });
@@ -59,10 +58,7 @@ async function sendGroupMessage(req, res) {
   try {
     const groupId = parseInt(req.params.id, 10);
     const { content } = req.body;
-
-    if (!content || !content.trim()) {
-      return res.status(400).json({ message: 'Content is required' });
-    }
+    if (!content?.trim()) return res.status(400).json({ message: 'Content is required' });
 
     const member = await Group.isMember(groupId, req.user.id);
     if (!member) return res.status(403).json({ message: 'Not a member' });
@@ -87,11 +83,20 @@ async function addGroupMember(req, res) {
     const { user_id } = req.body;
     if (!user_id) return res.status(400).json({ message: 'user_id required' });
 
-    const member = await Group.isMember(groupId, req.user.id);
-    if (!member) return res.status(403).json({ message: 'Not a member' });
+    const group = await Group.getGroupById(groupId);
+    if (!group) return res.status(404).json({ message: 'Group not found' });
 
-    await Group.addMember(groupId, parseInt(user_id, 10));
-    res.json({ message: 'Member added' });
+    if (!(await Group.isMember(groupId, req.user.id))) {
+      return res.status(403).json({ message: 'Not a member' });
+    }
+    if (group.only_admins_can_add && !(await Group.isAdmin(groupId, req.user.id))) {
+      return res.status(403).json({ message: 'Only admins can add members' });
+    }
+
+    const targetId = parseInt(user_id, 10);
+    const status = group.require_approval ? 'pending' : 'active';
+    await Group.addMember(groupId, targetId, 'member', status);
+    res.json({ message: status === 'pending' ? 'Join request sent' : 'Member added' });
   } catch (err) {
     console.error('Add member error:', err.message);
     res.status(500).json({ message: 'Server error' });
@@ -102,12 +107,14 @@ async function removeGroupMember(req, res) {
   try {
     const groupId = parseInt(req.params.id, 10);
     const userId = parseInt(req.params.userId, 10);
-    const group = await Group.getGroupById(groupId);
-    if (!group) return res.status(404).json({ message: 'Group not found' });
+    const isSelf = userId === req.user.id;
+    const admin = await Group.isAdmin(groupId, req.user.id);
 
-    // Only the creator or the user themselves can remove
-    if (group.created_by !== req.user.id && userId !== req.user.id) {
-      return res.status(403).json({ message: 'Not authorized' });
+    if (!admin && !isSelf) return res.status(403).json({ message: 'Only admins can remove members' });
+    if (isSelf && admin) {
+      if ((await Group.countAdmins(groupId)) <= 1) {
+        return res.status(400).json({ message: 'Promote another admin before leaving' });
+      }
     }
 
     await Group.removeMember(groupId, userId);
@@ -118,11 +125,176 @@ async function removeGroupMember(req, res) {
   }
 }
 
+async function setMemberRoleHandler(req, res) {
+  try {
+    const groupId = parseInt(req.params.id, 10);
+    const targetId = parseInt(req.params.userId, 10);
+    const { role } = req.body;
+    if (!['admin', 'member'].includes(role)) return res.status(400).json({ message: 'Invalid role' });
+    if (!(await Group.isAdmin(groupId, req.user.id))) {
+      return res.status(403).json({ message: 'Only admins can change roles' });
+    }
+    if (role === 'member' && (await Group.countAdmins(groupId)) <= 1) {
+      return res.status(400).json({ message: 'Group must have at least one admin' });
+    }
+    await Group.setMemberRole(groupId, targetId, role);
+    res.json({ message: 'Role updated' });
+  } catch (err) {
+    console.error('Set role error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function leaveGroup(req, res) {
+  try {
+    const groupId = parseInt(req.params.id, 10);
+    if (await Group.isAdmin(groupId, req.user.id)) {
+      if ((await Group.countAdmins(groupId)) <= 1) {
+        return res.status(400).json({ message: 'Promote another admin before leaving, or delete the group.' });
+      }
+    }
+    await Group.removeMember(groupId, req.user.id);
+    res.json({ message: 'Left group' });
+  } catch (err) {
+    console.error('Leave group error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function deleteGroupHandler(req, res) {
+  try {
+    const groupId = parseInt(req.params.id, 10);
+    if (!(await Group.isAdmin(groupId, req.user.id))) {
+      return res.status(403).json({ message: 'Only admins can delete the group' });
+    }
+    await Group.deleteGroup(groupId);
+    res.json({ message: 'Group deleted' });
+  } catch (err) {
+    console.error('Delete group error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function getInviteLink(req, res) {
+  try {
+    const groupId = parseInt(req.params.id, 10);
+    if (!(await Group.isMember(groupId, req.user.id))) return res.status(403).json({ message: 'Not a member' });
+    const group = await Group.getGroupById(groupId);
+    res.json({ invite_code: group.invite_code, invite_enabled: group.invite_enabled });
+  } catch (err) {
+    console.error('Get invite error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function resetGroupInviteCode(req, res) {
+  try {
+    const groupId = parseInt(req.params.id, 10);
+    if (!(await Group.isAdmin(groupId, req.user.id))) {
+      return res.status(403).json({ message: 'Only admins can reset the invite link' });
+    }
+    const newCode = await Group.resetInviteCode(groupId);
+    res.json({ invite_code: newCode });
+  } catch (err) {
+    console.error('Reset invite error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// GET /join/:inviteCode — preview group before joining
+async function getGroupByInvitePreview(req, res) {
+  try {
+    const group = await Group.getGroupByInviteCode(req.params.inviteCode);
+    if (!group) return res.status(404).json({ message: 'Invalid or expired invite link' });
+    const isMem = await Group.isMember(group.id, req.user.id);
+    res.json({ group: { ...group, is_member: isMem } });
+  } catch (err) {
+    console.error('Preview invite error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// POST /join/:inviteCode — actually join
+async function joinByInviteCode(req, res) {
+  try {
+    const group = await Group.getGroupByInviteCode(req.params.inviteCode);
+    if (!group) return res.status(404).json({ message: 'Invalid or expired invite link' });
+    if (await Group.isMember(group.id, req.user.id)) {
+      return res.json({ message: 'Already a member', group, already_member: true });
+    }
+    const status = group.require_approval ? 'pending' : 'active';
+    await Group.addMember(group.id, req.user.id, 'member', status);
+    res.json({ message: status === 'pending' ? 'Join request sent' : 'Joined group', group, pending: status === 'pending' });
+  } catch (err) {
+    console.error('Join by invite error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function getPendingMembersHandler(req, res) {
+  try {
+    const groupId = parseInt(req.params.id, 10);
+    if (!(await Group.isAdmin(groupId, req.user.id))) {
+      return res.status(403).json({ message: 'Admins only' });
+    }
+    const pending = await Group.getPendingMembers(groupId);
+    res.json({ pending });
+  } catch (err) {
+    console.error('Get pending error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function approveMember(req, res) {
+  try {
+    const groupId = parseInt(req.params.id, 10);
+    const targetId = parseInt(req.params.userId, 10);
+    if (!(await Group.isAdmin(groupId, req.user.id))) return res.status(403).json({ message: 'Admins only' });
+    await Group.setMemberStatus(groupId, targetId, 'active');
+    res.json({ message: 'Member approved' });
+  } catch (err) {
+    console.error('Approve error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function rejectMember(req, res) {
+  try {
+    const groupId = parseInt(req.params.id, 10);
+    const targetId = parseInt(req.params.userId, 10);
+    if (!(await Group.isAdmin(groupId, req.user.id))) return res.status(403).json({ message: 'Admins only' });
+    await Group.removeMember(groupId, targetId);
+    res.json({ message: 'Member rejected' });
+  } catch (err) {
+    console.error('Reject error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function updateGroupSettingsHandler(req, res) {
+  try {
+    const groupId = parseInt(req.params.id, 10);
+    if (!(await Group.isAdmin(groupId, req.user.id))) {
+      return res.status(403).json({ message: 'Only admins can update settings' });
+    }
+    const { name, description, require_approval, only_admins_can_add, invite_enabled } = req.body;
+    const updated = await Group.updateGroupSettings(groupId, {
+      name: name?.trim(),
+      description: description !== undefined ? (description?.trim() || null) : undefined,
+      requireApproval: require_approval,
+      onlyAdminsCanAdd: only_admins_can_add,
+      inviteEnabled: invite_enabled,
+    });
+    res.json({ group: updated });
+  } catch (err) {
+    console.error('Update settings error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
 module.exports = {
-  createGroup,
-  getMyGroups,
-  getGroupMessages,
-  sendGroupMessage,
-  addGroupMember,
-  removeGroupMember,
+  createGroup, getMyGroups, getGroupMessages, sendGroupMessage,
+  addGroupMember, removeGroupMember, setMemberRoleHandler, leaveGroup, deleteGroupHandler,
+  getInviteLink, resetGroupInviteCode, joinByInviteCode, getGroupByInvitePreview,
+  getPendingMembersHandler, approveMember, rejectMember, updateGroupSettingsHandler,
 };
