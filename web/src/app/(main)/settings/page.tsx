@@ -41,6 +41,7 @@ const SECTIONS = [
   { id: 'privacy', label: 'Privacy' },
   { id: 'notifications', label: 'Notifications' },
   { id: 'appearance', label: 'Appearance' },
+  { id: 'support', label: 'Help & Support' },
   { id: 'danger', label: 'Danger zone' },
 ] as const;
 
@@ -733,6 +734,16 @@ export default function SettingsPage() {
             <ThemeToggleRow />
           </SettingsCard>
 
+          {/* SUPPORT */}
+          <SettingsCard id="support" title="Help &amp; Support">
+            <div className="space-y-3">
+              <p className="text-[13px] text-ink-muted">Having an issue or want to share feedback? Contact our support team.</p>
+              <Link href="/support">
+                <Button variant="outline">Contact Support</Button>
+              </Link>
+            </div>
+          </SettingsCard>
+
           {/* DANGER ZONE */}
           <SettingsCard id="danger" title="Danger zone">
             <div className="space-y-4">
@@ -823,4 +834,5 @@ export default function SettingsPage() {
     </div>
   );
 }
+
 
