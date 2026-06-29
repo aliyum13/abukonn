@@ -1,3 +1,4 @@
+const pool = require('../config/db');
 const Timetable = require('../models/Timetable');
 const User = require('../models/User');
 
@@ -153,9 +154,80 @@ async function previewCSV(req, res) {
   }
 }
 
+async function updateClass(req, res) {
+  try {
+    const { id } = req.params;
+    const { day, start_time, end_time, course_code, course_title, venue, lecturer } = req.body;
+    if (!course_title || !day || !start_time) {
+      return res.status(400).json({ message: 'day, start_time and course_title are required' });
+    }
+    const { rows } = await pool.query(
+      `UPDATE abukonn.timetables
+       SET day=$1, start_time=$2, end_time=$3, course_code=$4,
+           course_title=$5, venue=$6, lecturer=$7
+       WHERE id=$8 RETURNING *`,
+      [day, start_time, end_time || null, course_code || null, course_title, venue || null, lecturer || null, id]
+    );
+    if (!rows.length) return res.status(404).json({ message: 'Class not found' });
+    res.json({ class: rows[0] });
+  } catch (err) {
+    console.error('updateClass:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function addClass(req, res) {
+  try {
+    const { department, level, day, start_time, end_time, course_code, course_title, venue, lecturer } = req.body;
+    if (!department || !level || !course_title || !day || !start_time) {
+      return res.status(400).json({ message: 'department, level, day, start_time and course_title are required' });
+    }
+    const { rows } = await pool.query(
+      `INSERT INTO abukonn.timetables
+       (department, level, day, start_time, end_time, course_code, course_title, venue, lecturer, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [department, level, day, start_time, end_time || null, course_code || null, course_title, venue || null, lecturer || null, req.user.id]
+    );
+    // Update row count in uploads
+    await pool.query(
+      `UPDATE abukonn.timetable_uploads 
+       SET row_count = (SELECT COUNT(*) FROM abukonn.timetables WHERE department=$1 AND level=$2)
+       WHERE department=$1 AND level=$2`,
+      [department, level]
+    );
+    res.json({ class: rows[0] });
+  } catch (err) {
+    console.error('addClass:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function deleteClass(req, res) {
+  try {
+    const { id } = req.params;
+    // Get dept/level before deleting
+    const { rows: existing } = await pool.query('SELECT department, level FROM abukonn.timetables WHERE id=$1', [id]);
+    if (!existing.length) return res.status(404).json({ message: 'Class not found' });
+    const { department, level } = existing[0];
+    await pool.query('DELETE FROM abukonn.timetables WHERE id=$1', [id]);
+    // Update row count
+    await pool.query(
+      `UPDATE abukonn.timetable_uploads 
+       SET row_count = (SELECT COUNT(*) FROM abukonn.timetables WHERE department=$1 AND level=$2)
+       WHERE department=$1 AND level=$2`,
+      [department, level]
+    );
+    res.json({ message: 'Class deleted' });
+  } catch (err) {
+    console.error('deleteClass:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
 module.exports = {
   getTodayClasses, getWeekClasses, getTimetableByDeptLevel,
-  uploadTimetable, deleteTimetable, getUploads, previewCSV,
+  uploadTimetable, deleteTimetable, getUploads, previewCSV, updateClass, addClass, deleteClass,
 };
+
 
 
