@@ -266,10 +266,8 @@ export function AppNav() {
           href="/feed"
           className={`flex shrink-0 items-center gap-2 ${searchOpen ? 'hidden sm:flex' : 'flex'}`}
         >
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-xs font-bold text-white">
-            AB
-          </div>
-          <span className="hidden text-lg font-bold text-ink sm:block dark:text-[#f5f5f5]">ABUkonn</span>
+          <img src="/logo.svg" alt="ABUkonn" className="h-8 w-8 object-contain" />
+          <span className="hidden text-lg font-bold text-ink sm:block dark:text-[#f5f5f5]">ABU<span className="text-brand-600">konn</span></span>
         </Link>
 
         {/* Desktop nav links — hide when search open */}
