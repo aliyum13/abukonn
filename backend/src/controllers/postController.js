@@ -35,7 +35,11 @@ async function createPost(req, res) {
     }
 
     let imageUrl = null;
-    if (req.file) {
+    if (req.body.image_url) {
+      // Direct Cloudinary upload from frontend (bypasses Railway timeout)
+      imageUrl = req.body.image_url;
+    } else if (req.file) {
+      // Fallback: file uploaded through Railway
       const result = await uploadBufferToCloudinary(req.file.buffer, req.file.mimetype);
       imageUrl = result.secure_url;
     }
