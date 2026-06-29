@@ -129,7 +129,17 @@ const getUploads = async () => {
   return rows;
 };
 
+const deleteUploadRecord = async (department, level) => {
+  const normalLevel = normalizeLevel(level);
+  await pool.query(
+    `DELETE FROM abukonn.timetable_uploads 
+     WHERE department = $1 AND (level = $2 OR level = $3)`,
+    [department, level, normalLevel]
+  );
+};
+
 module.exports = {
   createTimetableTable, getTodayClasses, getWeekClasses, getTimetable,
-  clearTimetable, bulkInsert, saveUploadRecord, getUploads,
+  clearTimetable, bulkInsert, saveUploadRecord, getUploads, deleteUploadRecord,
 };
+
