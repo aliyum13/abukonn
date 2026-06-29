@@ -178,6 +178,7 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/highlights', highlightRoutes);
 app.use('/api/channels', channelRoutes);
 app.use('/api/timetable', require('./routes/timetable'));
+app.use('/api/support', require('./routes/support'));
 
 // Test route
 app.get('/', (req, res) => {
@@ -208,6 +209,7 @@ createUsersTable()
   .then(() => createChannelTables())
   .then(() => createPasswordResetsTable())
   .then(() => createTimetableTable())
+  .then(() => createSupportTable())
   .then(() => {
     server.timeout = 120000;
     server.keepAliveTimeout = 120000;
@@ -221,3 +223,4 @@ createUsersTable()
   });
 
 module.exports = { app, server, io };
+
