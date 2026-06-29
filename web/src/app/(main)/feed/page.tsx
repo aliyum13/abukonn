@@ -1573,8 +1573,8 @@ export default function FeedPage() {
         if (!storyFile) return;
         const isVideo = storyFile.type.startsWith('video/');
 
-        if (isVideo) {
-          // Direct-to-Cloudinary upload to bypass Railway's 30s proxy timeout
+        if (isVideo || storyFile.type.startsWith('image/')) {
+          // Direct-to-Cloudinary upload for BOTH images and videos — bypasses Railway's 30s proxy timeout
           const sigRes = await fetch(`${API_URL}/api/stories/upload-signature`, {
             headers: { Authorization: `Bearer ${token}` },
           });
@@ -1583,6 +1583,7 @@ export default function FeedPage() {
             signature: string; timestamp: number; api_key: string; cloud_name: string; folder: string;
           };
 
+          const resourceType = isVideo ? 'video' : 'image';
           const cloudinaryUrl = await new Promise<string>((resolve, reject) => {
             const xhr = new XMLHttpRequest();
             const tid = setTimeout(() => xhr.abort(), 300000);
@@ -1607,47 +1608,20 @@ export default function FeedPage() {
             fd.append('timestamp', String(timestamp));
             fd.append('signature', signature);
             fd.append('folder', folder);
-            xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloud_name}/video/upload`);
+            xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloud_name}/${resourceType}/upload`);
             xhr.send(fd);
           });
 
           const saveRes = await fetch(`${API_URL}/api/stories`, {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ story_type: 'video', media_url: cloudinaryUrl, direct_upload: true, caption: storyCaption.trim() || undefined }),
+            body: JSON.stringify({ story_type: isVideo ? 'video' : 'image', media_url: cloudinaryUrl, direct_upload: true, caption: storyCaption.trim() || undefined }),
           });
           if (!saveRes.ok) {
             const d = await saveRes.json().catch(() => ({})) as { message?: string };
             throw new Error(d.message || 'Failed to save story');
           }
           onSuccess(((await saveRes.json()) as { story: Story }).story);
-        } else {
-          const story = await new Promise<Story>((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-            const tid = setTimeout(() => xhr.abort(), 30000);
-            xhr.upload.onprogress = (e) => {
-              if (e.lengthComputable) setStoryUploadProgress(Math.round((e.loaded / e.total) * 100));
-            };
-            xhr.onload = () => {
-              clearTimeout(tid);
-              if (xhr.status >= 200 && xhr.status < 300) {
-                try { resolve((JSON.parse(xhr.responseText) as { story: Story }).story); }
-                catch { reject(new Error('Invalid server response')); }
-              } else {
-                try { reject(new Error((JSON.parse(xhr.responseText) as { message?: string }).message || 'Upload failed')); }
-                catch { reject(new Error('Upload failed')); }
-              }
-            };
-            xhr.onerror = () => { clearTimeout(tid); reject(new Error('Network error — check your connection')); };
-            xhr.onabort = () => { clearTimeout(tid); reject(new Error('Upload timed out')); };
-            const fd = new FormData();
-            fd.append('media', storyFile);
-            if (storyCaption.trim()) fd.append('caption', storyCaption.trim());
-            xhr.open('POST', `${API_URL}/api/stories`);
-            xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-            xhr.send(fd);
-          });
-          onSuccess(story);
         }
       }
     } catch (err) {
