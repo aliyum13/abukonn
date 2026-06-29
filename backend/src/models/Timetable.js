@@ -33,49 +33,61 @@ const createTimetableTable = async () => {
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+// Normalize level: "300 Level" -> "300" and "300" -> "300 Level" both match
+const normalizeLevel = (level) => level ? level.replace(/\s*level\s*/i, '').trim() : level;
+
 const getTodayClasses = async (department, level) => {
   const dayName = DAY_NAMES[new Date().getDay()];
+  const normalLevel = normalizeLevel(level);
   const { rows } = await pool.query(
     `SELECT * FROM abukonn.timetables
-     WHERE department = $1 AND level = $2 AND day = $3
+     WHERE department = $1 
+     AND (level = $2 OR level = $3 OR REPLACE(LOWER(level), ' level', '') = $4)
+     AND day = $5
      ORDER BY start_time ASC`,
-    [department, level, dayName]
+    [department, level, normalLevel, normalLevel.toLowerCase(), dayName]
   );
   return { classes: rows, day: dayName };
 };
 
 const getWeekClasses = async (department, level) => {
+  const normalLevel = normalizeLevel(level);
   const { rows } = await pool.query(
     `SELECT * FROM abukonn.timetables
-     WHERE department = $1 AND level = $2
+     WHERE department = $1 
+     AND (level = $2 OR level = $3 OR REPLACE(LOWER(level), ' level', '') = $4)
      ORDER BY
        CASE day
          WHEN 'Monday' THEN 1 WHEN 'Tuesday' THEN 2 WHEN 'Wednesday' THEN 3
          WHEN 'Thursday' THEN 4 WHEN 'Friday' THEN 5 ELSE 6 END,
        start_time ASC`,
-    [department, level]
+    [department, level, normalLevel, normalLevel.toLowerCase()]
   );
   return rows;
 };
 
 const getTimetable = async (department, level) => {
+  const normalLevel = normalizeLevel(level);
   const { rows } = await pool.query(
     `SELECT * FROM abukonn.timetables
-     WHERE department = $1 AND level = $2
+     WHERE department = $1 
+     AND (level = $2 OR level = $3 OR REPLACE(LOWER(level), ' level', '') = $4)
      ORDER BY
        CASE day
          WHEN 'Monday' THEN 1 WHEN 'Tuesday' THEN 2 WHEN 'Wednesday' THEN 3
          WHEN 'Thursday' THEN 4 WHEN 'Friday' THEN 5 ELSE 6 END,
        start_time ASC`,
-    [department, level]
+    [department, level, normalLevel, normalLevel.toLowerCase()]
   );
   return rows;
 };
 
 const clearTimetable = async (department, level) => {
+  const normalLevel = normalizeLevel(level);
   await pool.query(
-    'DELETE FROM abukonn.timetables WHERE department = $1 AND level = $2',
-    [department, level]
+    `DELETE FROM abukonn.timetables 
+     WHERE department = $1 AND (level = $2 OR level = $3)`,
+    [department, level, normalLevel]
   );
 };
 
