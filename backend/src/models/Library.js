@@ -32,12 +32,12 @@ const getMaterials = async ({ type, department, level, course_code, search, page
   const params = [];
   let idx = 1;
 
-  if (type && type !== 'all') { conditions.push(`type = $${idx++}`); params.push(type); }
-  if (department) { conditions.push(`department ILIKE $${idx++}`); params.push(`%${department}%`); }
-  if (level) { conditions.push(`level ILIKE $${idx++}`); params.push(`%${level.replace(' Level', '')}%`); }
-  if (course_code) { conditions.push(`course_code ILIKE $${idx++}`); params.push(`%${course_code}%`); }
+  if (type && type !== 'all') { conditions.push(`lm.type = $${idx++}`); params.push(type); }
+  if (department) { conditions.push(`lm.department ILIKE $${idx++}`); params.push(`%${department}%`); }
+  if (level) { conditions.push(`lm.level ILIKE $${idx++}`); params.push(`%${level.replace(' Level', '')}%`); }
+  if (course_code) { conditions.push(`lm.course_code ILIKE $${idx++}`); params.push(`%${course_code}%`); }
   if (search) {
-    conditions.push(`(title ILIKE $${idx} OR course_title ILIKE $${idx} OR course_code ILIKE $${idx} OR description ILIKE $${idx})`);
+    conditions.push(`(lm.title ILIKE $${idx} OR lm.course_title ILIKE $${idx} OR lm.course_code ILIKE $${idx} OR lm.description ILIKE $${idx})`);
     params.push(`%${search}%`); idx++;
   }
 
@@ -53,7 +53,7 @@ const getMaterials = async ({ type, department, level, course_code, search, page
     [...params, limit, offset]
   );
   const { rows: countRows } = await pool.query(
-    `SELECT COUNT(*) FROM abukonn.library_materials ${where}`, params
+    `SELECT COUNT(*) FROM abukonn.library_materials lm ${where}`, params
   );
   return { materials: rows, total: parseInt(countRows[0].count), page, limit };
 };
