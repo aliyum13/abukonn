@@ -29,9 +29,16 @@ const createTimetableTable = async () => {
     )
   `);
   await pool.query(`
-    ALTER TABLE abukonn.timetable_uploads
-    ADD CONSTRAINT IF NOT EXISTS timetable_uploads_dept_level_unique
-    UNIQUE (department, level)
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'timetable_uploads_dept_level_unique'
+      ) THEN
+        ALTER TABLE abukonn.timetable_uploads
+        ADD CONSTRAINT timetable_uploads_dept_level_unique
+        UNIQUE (department, level);
+      END IF;
+    END $$;
   `).catch(() => {});
   console.log('Timetable tables ready');
 };
