@@ -153,6 +153,16 @@ export function AppNav() {
     return () => clearInterval(id);
   }, [token, fetchUnreadCount]);
 
+  // Listen for mark-all-read event from notifications page — reset bell immediately
+  useEffect(() => {
+    const handler = () => {
+      setUnreadCount(0);
+      setConnectCount(0);
+    };
+    window.addEventListener('notifications-read-all', handler);
+    return () => window.removeEventListener('notifications-read-all', handler);
+  }, []);
+
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);
 
