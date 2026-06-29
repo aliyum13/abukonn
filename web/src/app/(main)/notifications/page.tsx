@@ -153,6 +153,17 @@ export default function NotificationsPage() {
     if (token) fetchNotifications();
   }, [token, fetchNotifications]);
 
+  // Auto mark all read as soon as page opens — reset bell to 0
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${API_URL}/api/notifications/read-all`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(() => {
+      window.dispatchEvent(new CustomEvent('notifications-read-all'));
+    }).catch(() => {});
+  }, [token]);
+
   const handleMarkAllRead = async () => {
     if (!token) return;
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
