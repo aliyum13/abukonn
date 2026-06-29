@@ -418,11 +418,11 @@ function StoryViewer({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ touchAction: "none" }} onTouchMove={e => e.preventDefault()}>
       {/* Backdrop — dedicated element so content clicks never bubble here */}
       <div className="absolute inset-0 bg-black" onClick={onClose} />
       {/* Progress bars */}
-      <div className="absolute top-0 left-0 right-0 z-10 flex gap-1 p-3">
+      <div className="absolute top-0 left-0 right-0 z-20 flex gap-1 p-3">
         {group.stories.map((s, i) => (
           <div key={i} className="h-0.5 flex-1 rounded-full bg-white/30">
             {i < index ? (
@@ -441,7 +441,7 @@ function StoryViewer({
         ))}
       </div>
       {/* Header */}
-      <div className="absolute top-6 left-0 right-0 z-10 flex items-center justify-between px-4">
+      <div className="absolute top-6 left-0 right-0 z-20 flex items-center justify-between px-4">
         <div className="flex items-center gap-2">
           <Avatar src={group.user_photo} name={group.user_name} size="sm" />
           <span className="text-sm font-medium text-white">{group.user_name}</span>
