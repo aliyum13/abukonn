@@ -1275,14 +1275,40 @@ export default function FeedPage() {
       const endpoint = selectedChannelId
         ? `${API_URL}/api/channels/${selectedChannelId}/posts`
         : `${API_URL}/api/posts`;
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
+
+      // Use XHR with timeout when uploading images to avoid Railway 30s proxy limit
+      const hasImage = !!imageFile;
+      const resData = await new Promise<{ ok: boolean; data: { message?: string; post?: Post } }>((resolve) => {
+        if (!hasImage) {
+          // No image — plain fetch is fine
+          fetch(endpoint, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            body: formData,
+          }).then(async r => {
+            const d = await r.json().catch(() => ({}));
+            resolve({ ok: r.ok, data: d });
+          }).catch(() => resolve({ ok: false, data: { message: 'Network error' } }));
+          return;
+        }
+        // Image upload — XHR with 90s timeout
+        const xhr = new XMLHttpRequest();
+        const tid = setTimeout(() => xhr.abort(), 90000);
+        xhr.onload = () => {
+          clearTimeout(tid);
+          try { resolve({ ok: xhr.status >= 200 && xhr.status < 300, data: JSON.parse(xhr.responseText) }); }
+          catch { resolve({ ok: false, data: { message: 'Invalid response' } }); }
+        };
+        xhr.onerror = () => { clearTimeout(tid); resolve({ ok: false, data: { message: 'Network error — check your connection' } }); };
+        xhr.onabort = () => { clearTimeout(tid); resolve({ ok: false, data: { message: 'Upload timed out — try a smaller image' } }); };
+        xhr.open('POST', endpoint);
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        xhr.send(formData);
       });
+
+      const res = resData;
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({})) as { message?: string };
-        throw new Error(errData.message || 'Failed to create post');
+        throw new Error((res.data as { message?: string }).message || 'Failed to create post');
       }
       setNewPost('');
       setNewPostCategory('GENERAL');
