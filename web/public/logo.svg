@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Outer speech bubble (back) -->
+  <path d="M140 30 C165 30 185 50 185 75 C185 100 165 120 140 120 L130 120 L120 140 L110 120 L80 120 C55 120 35 100 35 75 C35 50 55 30 80 30 Z" fill="#16a34a" opacity="0.3"/>
+  
+  <!-- Inner speech bubble (front) -->
+  <path d="M125 45 C148 45 166 63 166 86 C166 109 148 127 125 127 L116 127 L107 145 L98 127 L75 127 C52 127 34 109 34 86 C34 63 52 45 75 45 Z" fill="#16a34a"/>
+  
+  <!-- Chain link left circle -->
+  <circle cx="88" cy="86" r="18" fill="none" stroke="white" stroke-width="7"/>
+  
+  <!-- Chain link right circle -->  
+  <circle cx="112" cy="86" r="18" fill="none" stroke="white" stroke-width="7"/>
+  
+  <!-- Cover overlap to create chain effect -->
+  <path d="M100 70 L100 102" stroke="#16a34a" stroke-width="10" fill="none"/>
+  
+  <!-- Person dot on top -->
+  <circle cx="125" cy="52" r="7" fill="white"/>
+  
+  <!-- Person body arc -->
+  <path d="M113 68 Q125 60 137 68" fill="none" stroke="white" stroke-width="5" stroke-linecap="round"/>
+</svg>
