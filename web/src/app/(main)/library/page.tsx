@@ -71,8 +71,9 @@ export default function LibraryPage() {
     try {
       const params = new URLSearchParams();
       if (typeFilter !== 'all') params.set('type', typeFilter);
-      if (department) params.set('department', department);
-      if (level) params.set('level', level);
+      if (department && department !== '') params.set('department', department);
+      if (level && level !== '') params.set('level', level);
+      console.log('[Library] fetching with params:', params.toString());
       if (search) params.set('search', search);
       params.set('page', page.toString());
 
