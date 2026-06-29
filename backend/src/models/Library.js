@@ -25,6 +25,7 @@ const createLibraryTable = async () => {
 };
 
 const getMaterials = async ({ type, department, level, course_code, search, page = 1 }) => {
+  console.log('[Library] getMaterials called with:', { type, department, level, course_code, search, page });
   const limit = 20;
   const offset = (page - 1) * limit;
   const conditions = [];
@@ -41,6 +42,7 @@ const getMaterials = async ({ type, department, level, course_code, search, page
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  console.log('[Library] WHERE clause:', where, 'params:', params);
   const { rows } = await pool.query(
     `SELECT lm.*, u.full_name AS uploader_name
      FROM abukonn.library_materials lm
@@ -95,4 +97,5 @@ const getAllMaterials = async () => {
 };
 
 module.exports = { createLibraryTable, getMaterials, getMaterialById, incrementDownload, createMaterial, deleteMaterial, getAllMaterials };
+
 
