@@ -33,6 +33,7 @@ const { createHighlightsTable } = require('./models/Highlight');
 const { createChannelTables } = require('./models/Channel');
 const { createPasswordResetsTable } = require('./models/PasswordReset');
 const { createTimetableTable } = require('./models/Timetable');
+const { createSupportTable } = require('./models/Support');
 const notificationRoutes = require('./routes/notifications');
 const adminRoutes = require('./routes/admin');
 const groupRoutes = require('./routes/groups');
