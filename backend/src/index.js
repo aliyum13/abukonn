@@ -34,6 +34,7 @@ const { createChannelTables } = require('./models/Channel');
 const { createPasswordResetsTable } = require('./models/PasswordReset');
 const { createTimetableTable } = require('./models/Timetable');
 const { createSupportTable } = require('./models/Support');
+const { createLibraryTable } = require('./models/Library');
 const notificationRoutes = require('./routes/notifications');
 const adminRoutes = require('./routes/admin');
 const groupRoutes = require('./routes/groups');
@@ -179,6 +180,7 @@ app.use('/api/highlights', highlightRoutes);
 app.use('/api/channels', channelRoutes);
 app.use('/api/timetable', require('./routes/timetable'));
 app.use('/api/support', require('./routes/support'));
+app.use('/api/library', require('./routes/library'));
 
 // Test route
 app.get('/', (req, res) => {
@@ -210,6 +212,7 @@ createUsersTable()
   .then(() => createPasswordResetsTable())
   .then(() => createTimetableTable())
   .then(() => createSupportTable())
+  .then(() => createLibraryTable())
   .then(() => {
     server.timeout = 120000;
     server.keepAliveTimeout = 120000;
@@ -223,4 +226,5 @@ createUsersTable()
   });
 
 module.exports = { app, server, io };
+
 
