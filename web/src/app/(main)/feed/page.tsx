@@ -1276,39 +1276,52 @@ export default function FeedPage() {
         ? `${API_URL}/api/channels/${selectedChannelId}/posts`
         : `${API_URL}/api/posts`;
 
-      // Use XHR with timeout when uploading images to avoid Railway 30s proxy limit
-      const hasImage = !!imageFile;
-      const resData = await new Promise<{ ok: boolean; data: { message?: string; post?: Post } }>((resolve) => {
-        if (!hasImage) {
-          // No image — plain fetch is fine
-          fetch(endpoint, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
-            body: formData,
-          }).then(async r => {
-            const d = await r.json().catch(() => ({}));
-            resolve({ ok: r.ok, data: d });
-          }).catch(() => resolve({ ok: false, data: { message: 'Network error' } }));
-          return;
-        }
-        // Image upload — XHR with 90s timeout
-        const xhr = new XMLHttpRequest();
-        const tid = setTimeout(() => xhr.abort(), 90000);
-        xhr.onload = () => {
-          clearTimeout(tid);
-          try { resolve({ ok: xhr.status >= 200 && xhr.status < 300, data: JSON.parse(xhr.responseText) }); }
-          catch { resolve({ ok: false, data: { message: 'Invalid response' } }); }
+      // If there is an image, upload it directly to Cloudinary first (bypasses Railway 30s timeout)
+      if (imageFile) {
+        const sigRes = await fetch(`${API_URL}/api/stories/upload-signature`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!sigRes.ok) throw new Error('Failed to get upload signature');
+        const { signature, timestamp, api_key, cloud_name } = await sigRes.json() as {
+          signature: string; timestamp: number; api_key: string; cloud_name: string; folder: string;
         };
-        xhr.onerror = () => { clearTimeout(tid); resolve({ ok: false, data: { message: 'Network error — check your connection' } }); };
-        xhr.onabort = () => { clearTimeout(tid); resolve({ ok: false, data: { message: 'Upload timed out — try a smaller image' } }); };
-        xhr.open('POST', endpoint);
-        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-        xhr.send(formData);
-      });
+        const cloudinaryUrl = await new Promise<string>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          const tid = setTimeout(() => xhr.abort(), 120000);
+          xhr.onload = () => {
+            clearTimeout(tid);
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try { resolve((JSON.parse(xhr.responseText) as { secure_url: string }).secure_url); }
+              catch { reject(new Error('Invalid Cloudinary response')); }
+            } else {
+              try { reject(new Error((JSON.parse(xhr.responseText) as { error?: { message: string } }).error?.message || 'Image upload failed')); }
+              catch { reject(new Error('Image upload failed')); }
+            }
+          };
+          xhr.onerror = () => { clearTimeout(tid); reject(new Error('Network error — check your connection')); };
+          xhr.onabort = () => { clearTimeout(tid); reject(new Error('Upload timed out — try a smaller image')); };
+          const fd = new FormData();
+          fd.append('file', imageFile);
+          fd.append('api_key', api_key);
+          fd.append('timestamp', String(timestamp));
+          fd.append('signature', signature);
+          fd.append('folder', 'abukonn/posts');
+          xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloud_name}/image/upload`);
+          xhr.send(fd);
+        });
+        // Replace the image in formData with the Cloudinary URL
+        formData.delete('image');
+        formData.append('image_url', cloudinaryUrl);
+      }
 
-      const res = resData;
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
       if (!res.ok) {
-        throw new Error((res.data as { message?: string }).message || 'Failed to create post');
+        const errData = await res.json().catch(() => ({})) as { message?: string };
+        throw new Error(errData.message || 'Failed to create post');
       }
       setNewPost('');
       setNewPostCategory('GENERAL');
