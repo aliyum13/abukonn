@@ -499,7 +499,8 @@ function StoryViewer({
             muted={false}
             controls={false}
             playsInline
-            className="max-h-full w-full object-contain"
+            className="w-full object-contain"
+            style={{ maxHeight: 'calc(100vh - 140px)', marginTop: '80px' }}
             onTimeUpdate={(e) => {
               const vid = e.currentTarget;
               if (vid.duration && !isNaN(vid.duration)) {
@@ -524,10 +525,10 @@ function StoryViewer({
           </div>
         </div>
       )}
-      {/* Tap zones */}
-      <button type="button" className="absolute left-0 top-0 z-10 h-full w-1/3" onClick={onPrev} aria-label="Previous" />
-      <button type="button" className="absolute left-1/3 right-1/3 top-0 z-10 h-full" onClick={handleCenterTap} aria-label="Pause/Resume" />
-      <button type="button" className="absolute right-0 top-0 z-10 h-full w-1/3" onClick={onNext} aria-label="Next" />
+      {/* Tap zones — z-[5] so header buttons at z-10 remain clickable */}
+      <button type="button" className="absolute left-0 top-0 z-[5] h-full w-1/3" onClick={onPrev} aria-label="Previous" />
+      <button type="button" className="absolute left-1/3 right-1/3 top-0 z-[5] h-full" onClick={handleCenterTap} aria-label="Pause/Resume" />
+      <button type="button" className="absolute right-0 top-0 z-[5] h-full w-1/3" onClick={onNext} aria-label="Next" />
       {/* Pause/play icon — brief overlay feedback */}
       {showPauseIcon && (
         <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
