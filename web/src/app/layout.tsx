@@ -14,6 +14,11 @@ export const metadata: Metadata = {
   title: 'ABUkonn — ABU\'s Digital Campus',
   description:
     'The official digital hub for Ahmadu Bello University students. Connect, share, and stay informed on campus.',
+  icons: {
+    icon: '/logo.svg',
+    apple: '/logo.svg',
+    shortcut: '/logo.svg',
+  },
 };
 
 export default function RootLayout({
