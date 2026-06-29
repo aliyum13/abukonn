@@ -66,15 +66,16 @@ async function createStory(req, res) {
       return res.status(201).json({ story });
     }
 
-    // Direct upload: video was uploaded straight to Cloudinary from the browser
+    // Direct upload: image or video was uploaded straight to Cloudinary from the browser
     if (req.body?.direct_upload) {
       const mediaUrl = req.body?.media_url;
+      const directStoryType = req.body?.story_type || 'image';
       if (!mediaUrl) return res.status(400).json({ message: 'media_url is required for direct upload' });
       const story = await Story.createStory({
         userId: req.user.id,
         mediaUrl,
-        mediaType: 'video',
-        storyType: 'video',
+        mediaType: directStoryType,
+        storyType: directStoryType,
         caption,
       });
       return res.status(201).json({ story });
