@@ -6,10 +6,15 @@ const Hashtag = require('../models/Hashtag');
 const cloudinary = require('../config/cloudinary');
 
 async function uploadBufferToCloudinary(buffer, mimetype) {
-  const dataUri = `data:${mimetype};base64,${buffer.toString('base64')}`;
-  return cloudinary.uploader.upload(dataUri, {
-    folder: 'abukonn/posts',
-    resource_type: 'image',
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { folder: 'abukonn/posts', resource_type: 'image', timeout: 120000 },
+      (error, result) => {
+        if (error) reject(error);
+        else resolve(result);
+      }
+    );
+    stream.end(buffer);
   });
 }
 
