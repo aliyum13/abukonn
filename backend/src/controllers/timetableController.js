@@ -115,11 +115,16 @@ async function uploadTimetable(req, res) {
 async function deleteTimetable(req, res) {
   try {
     const { department, level } = req.params;
-    await Timetable.clearTimetable(decodeURIComponent(department), decodeURIComponent(level));
-    res.json({ message: 'Timetable cleared' });
+    const dept = decodeURIComponent(department);
+    const lvl = decodeURIComponent(level);
+    console.log('[deleteTimetable] deleting:', dept, lvl);
+    await Timetable.clearTimetable(dept, lvl);
+    await Timetable.deleteUploadRecord(dept, lvl);
+    console.log('[deleteTimetable] done');
+    res.json({ message: 'Timetable deleted' });
   } catch (err) {
-    console.error('deleteTimetable:', err.message);
-    res.status(500).json({ message: 'Server error' });
+    console.error('[deleteTimetable] error:', err.message);
+    res.status(500).json({ message: 'Server error: ' + err.message });
   }
 }
 
@@ -149,3 +154,4 @@ module.exports = {
   getTodayClasses, getWeekClasses, getTimetableByDeptLevel,
   uploadTimetable, deleteTimetable, getUploads, previewCSV,
 };
+
