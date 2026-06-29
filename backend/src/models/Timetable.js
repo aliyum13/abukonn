@@ -28,6 +28,11 @@ const createTimetableTable = async () => {
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  await pool.query(`
+    ALTER TABLE abukonn.timetable_uploads
+    ADD CONSTRAINT IF NOT EXISTS timetable_uploads_dept_level_unique
+    UNIQUE (department, level)
+  `).catch(() => {}); -- ignore if already exists
   console.log('Timetable tables ready');
 };
 
@@ -112,8 +117,14 @@ const bulkInsert = async (entries, createdBy) => {
 
 const saveUploadRecord = async ({ department, level, uploadedBy, fileName, rowCount }) => {
   await pool.query(
-    `INSERT INTO abukonn.timetable_uploads (department, level, uploaded_by, file_name, row_count)
-     VALUES ($1, $2, $3, $4, $5)`,
+    `INSERT INTO abukonn.timetable_uploads (department, level, uploaded_by, file_name, row_count, created_at)
+     VALUES ($1, $2, $3, $4, $5, NOW())
+     ON CONFLICT (department, level)
+     DO UPDATE SET
+       uploaded_by = EXCLUDED.uploaded_by,
+       file_name = EXCLUDED.file_name,
+       row_count = EXCLUDED.row_count,
+       created_at = NOW()`,
     [department, level, uploadedBy, fileName, rowCount]
   );
 };
@@ -142,4 +153,5 @@ module.exports = {
   createTimetableTable, getTodayClasses, getWeekClasses, getTimetable,
   clearTimetable, bulkInsert, saveUploadRecord, getUploads, deleteUploadRecord,
 };
+
 
