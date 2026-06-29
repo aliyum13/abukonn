@@ -33,7 +33,7 @@ const getMaterials = async ({ type, department, level, course_code, search, page
 
   if (type && type !== 'all') { conditions.push(`type = $${idx++}`); params.push(type); }
   if (department) { conditions.push(`department ILIKE $${idx++}`); params.push(`%${department}%`); }
-  if (level) { conditions.push(`level = $${idx++}`); params.push(level); }
+  if (level) { conditions.push(`level ILIKE $${idx++}`); params.push(`%${level.replace(' Level', '')}%`); }
   if (course_code) { conditions.push(`course_code ILIKE $${idx++}`); params.push(`%${course_code}%`); }
   if (search) {
     conditions.push(`(title ILIKE $${idx} OR course_title ILIKE $${idx} OR course_code ILIKE $${idx} OR description ILIKE $${idx})`);
@@ -95,3 +95,4 @@ const getAllMaterials = async () => {
 };
 
 module.exports = { createLibraryTable, getMaterials, getMaterialById, incrementDownload, createMaterial, deleteMaterial, getAllMaterials };
+
