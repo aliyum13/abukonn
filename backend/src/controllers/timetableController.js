@@ -27,9 +27,12 @@ async function getTodayClasses(req, res) {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
     if (!user.department || !user.level) {
+      console.log('[timetable] user has no department/level:', req.user.id);
       return res.json({ classes: [], day: null, no_profile: true });
     }
+    console.log('[timetable] fetching for:', user.department, '|', user.level);
     const result = await Timetable.getTodayClasses(user.department, user.level);
+    console.log('[timetable] found', result.classes.length, 'classes for day:', result.day);
     res.json(result);
   } catch (err) {
     console.error('getTodayClasses:', err.message);
@@ -154,4 +157,5 @@ module.exports = {
   getTodayClasses, getWeekClasses, getTimetableByDeptLevel,
   uploadTimetable, deleteTimetable, getUploads, previewCSV,
 };
+
 
