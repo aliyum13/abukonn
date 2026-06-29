@@ -145,20 +145,22 @@ export function AppNav() {
     }
   }, [token]);
 
-  // Poll unread count every 30 s
+  // Poll unread count every 30 s — but not when on /notifications page
   useEffect(() => {
     if (!token) return;
+    // If already on notifications page, reset to 0 and don't poll
+    if (pathname === '/notifications') {
+      setUnreadCount(0);
+      return;
+    }
     fetchUnreadCount();
     const id = setInterval(fetchUnreadCount, 30_000);
     return () => clearInterval(id);
-  }, [token, fetchUnreadCount]);
+  }, [token, fetchUnreadCount, pathname]);
 
   // Listen for mark-all-read event from notifications page — reset bell immediately
   useEffect(() => {
-    const handler = () => {
-      setUnreadCount(0);
-      setConnectCount(0);
-    };
+    const handler = () => setUnreadCount(0);
     window.addEventListener('notifications-read-all', handler);
     return () => window.removeEventListener('notifications-read-all', handler);
   }, []);
