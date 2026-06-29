@@ -32,7 +32,7 @@ const createTimetableTable = async () => {
     ALTER TABLE abukonn.timetable_uploads
     ADD CONSTRAINT IF NOT EXISTS timetable_uploads_dept_level_unique
     UNIQUE (department, level)
-  `).catch(() => {}); -- ignore if already exists
+  `).catch(() => {});
   console.log('Timetable tables ready');
 };
 
@@ -153,5 +153,6 @@ module.exports = {
   createTimetableTable, getTodayClasses, getWeekClasses, getTimetable,
   clearTimetable, bulkInsert, saveUploadRecord, getUploads, deleteUploadRecord,
 };
+
 
 
