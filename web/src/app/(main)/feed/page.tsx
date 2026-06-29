@@ -941,6 +941,11 @@ export default function FeedPage() {
   const [birthdayUsers, setBirthdayUsers] = useState<BirthdayUser[]>([]);
   const [isMyBirthday, setIsMyBirthday] = useState(false);
 
+  // Today's classes
+  interface TodayClass { id: number; course_code: string | null; course_title: string; start_time: string; end_time: string; venue: string | null; lecturer: string | null; }
+  const [todayClasses, setTodayClasses] = useState<TodayClass[]>([]);
+  const [noTimetableProfile, setNoTimetableProfile] = useState(false);
+
   // Category filter
   const [categoryFilter, setCategoryFilter] = useState<PostCategory | 'ALL'>('ALL');
   const [newPostCategory, setNewPostCategory] = useState<PostCategory>('GENERAL');
@@ -996,6 +1001,18 @@ export default function FeedPage() {
     fetch(`${API_URL}/api/highlights`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(d => setHighlights(d.highlights || []))
+      .catch(() => {});
+  }, [token]);
+
+  // Fetch today's classes
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${API_URL}/api/timetable/today`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => {
+        setTodayClasses(d.classes || []);
+        setNoTimetableProfile(!!d.no_profile);
+      })
       .catch(() => {});
   }, [token]);
 
@@ -1938,6 +1955,41 @@ export default function FeedPage() {
               viewedStoryIds={viewedStoryIds}
             />
           </div>
+
+          {/* Your Classes Today */}
+          {(todayClasses.length > 0 || noTimetableProfile) && (
+            <div className="border-b border-border px-4 py-3">
+              <div className="mb-2.5 flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">Your Classes Today</p>
+                  <span className="text-[14px]">📚</span>
+                </div>
+                <Link href="/timetable" className="text-[11px] font-medium text-brand-600 hover:text-brand-700 transition dark:text-brand-400">
+                  View full timetable →
+                </Link>
+              </div>
+              {noTimetableProfile ? (
+                <p className="text-[12px] text-ink-muted">
+                  <Link href="/settings#account" className="text-brand-600 hover:underline">Set your department in Settings</Link> to see your timetable
+                </p>
+              ) : (
+                <div className="flex gap-3 overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none' }}>
+                  {todayClasses.map(cls => (
+                    <div key={cls.id} className="flex min-w-[200px] max-w-[240px] shrink-0 flex-col gap-1.5 rounded-2xl bg-indigo-50 p-3.5 dark:bg-indigo-950/40">
+                      <p className="text-[13px] font-bold text-indigo-800 dark:text-indigo-200 leading-snug">
+                        {cls.course_code && <span className="mr-1">{cls.course_code}</span>}{cls.course_title}
+                      </p>
+                      <p className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
+                        {cls.start_time} – {cls.end_time}
+                      </p>
+                      {cls.venue && <p className="text-[11px] text-indigo-500 dark:text-indigo-400">📍 {cls.venue}</p>}
+                      {cls.lecturer && <p className="text-[11px] text-indigo-500 dark:text-indigo-400">👨‍🏫 {cls.lecturer}</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Today's Highlights */}
           {highlights.length > 0 && (

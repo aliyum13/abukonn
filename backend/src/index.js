@@ -32,6 +32,7 @@ const { createUserSettingsTable } = require('./models/UserSettings');
 const { createHighlightsTable } = require('./models/Highlight');
 const { createChannelTables } = require('./models/Channel');
 const { createPasswordResetsTable } = require('./models/PasswordReset');
+const { createTimetableTable } = require('./models/Timetable');
 const notificationRoutes = require('./routes/notifications');
 const adminRoutes = require('./routes/admin');
 const groupRoutes = require('./routes/groups');
@@ -175,6 +176,7 @@ app.use('/api/hashtags', hashtagRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/highlights', highlightRoutes);
 app.use('/api/channels', channelRoutes);
+app.use('/api/timetable', require('./routes/timetable'));
 
 // Test route
 app.get('/', (req, res) => {
@@ -204,6 +206,7 @@ createUsersTable()
   .then(() => createHighlightsTable())
   .then(() => createChannelTables())
   .then(() => createPasswordResetsTable())
+  .then(() => createTimetableTable())
   .then(() => {
     server.timeout = 120000;
     server.keepAliveTimeout = 120000;
