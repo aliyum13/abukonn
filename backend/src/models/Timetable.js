@@ -106,16 +106,16 @@ const clearTimetable = async (department, level) => {
 const bulkInsert = async (entries, createdBy) => {
   if (!entries.length) return 0;
   const values = entries.map((e, i) => {
-    const base = i * 9;
-    return `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8},$${base + 9})`;
+    const base = i * 10;
+    return `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8},$${base + 9},$${base + 10})`;
   }).join(',');
   const params = entries.flatMap(e => [
     e.department, e.level, e.day, e.start_time, e.end_time,
-    e.course_code || null, e.course_title, e.venue || null, createdBy,
+    e.course_code || null, e.course_title, e.venue || null, e.lecturer || null, createdBy,
   ]);
   await pool.query(
     `INSERT INTO abukonn.timetables
-     (department, level, day, start_time, end_time, course_code, course_title, venue, created_by)
+     (department, level, day, start_time, end_time, course_code, course_title, venue, lecturer, created_by)
      VALUES ${values}`,
     params
   );
@@ -160,6 +160,7 @@ module.exports = {
   createTimetableTable, getTodayClasses, getWeekClasses, getTimetable,
   clearTimetable, bulkInsert, saveUploadRecord, getUploads, deleteUploadRecord,
 };
+
 
 
 
