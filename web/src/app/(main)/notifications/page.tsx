@@ -163,6 +163,8 @@ export default function NotificationsPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) fetchNotifications();
+      // Force bell badge to reset immediately by dispatching a custom event
+      window.dispatchEvent(new CustomEvent('notifications-read-all'));
     } catch {
       fetchNotifications();
     } finally {
