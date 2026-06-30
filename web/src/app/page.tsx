@@ -366,7 +366,7 @@ export default function Home() {
                 <Link href="/register">
                   <Button
                     size="lg"
-                    className="min-w-[200px] bg-white text-brand-700 hover:bg-brand-50 shadow-none"
+                    className="min-w-[200px] !bg-white !text-brand-700 hover:!bg-brand-50 !shadow-none"
                   >
                     Join ABUkonn
                   </Button>
@@ -375,7 +375,7 @@ export default function Home() {
                   <Button
                     variant="outline"
                     size="lg"
-                    className="min-w-[200px] border-brand-700 text-white hover:bg-brand-900"
+                    className="min-w-[200px] !border-white/30 !bg-transparent !text-white hover:!bg-white/10"
                   >
                     I have an account
                   </Button>
