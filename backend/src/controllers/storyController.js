@@ -24,10 +24,13 @@ async function uploadToCloudinary(buffer, mimetype) {
   });
 }
 
+const ALLOWED_UPLOAD_FOLDERS = new Set(['abukonn/stories', 'abukonn/posts', 'abukonn/messages']);
+
 async function getUploadSignature(req, res) {
   try {
+    const requested = typeof req.query.folder === 'string' ? req.query.folder : 'abukonn/stories';
+    const folder = ALLOWED_UPLOAD_FOLDERS.has(requested) ? requested : 'abukonn/stories';
     const timestamp = Math.round(Date.now() / 1000);
-    const folder = 'abukonn/stories';
     const signature = cloudinary.utils.api_sign_request(
       { folder, timestamp },
       process.env.CLOUDINARY_API_SECRET

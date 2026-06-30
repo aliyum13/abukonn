@@ -1265,11 +1265,11 @@ export default function FeedPage() {
 
       // If there is an image, upload it directly to Cloudinary first (bypasses Railway 30s timeout)
       if (imageFile) {
-        const sigRes = await fetch(`${API_URL}/api/stories/upload-signature`, {
+        const sigRes = await fetch(`${API_URL}/api/stories/upload-signature?folder=abukonn/posts`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!sigRes.ok) throw new Error('Failed to get upload signature');
-        const { signature, timestamp, api_key, cloud_name } = await sigRes.json() as {
+        const { signature, timestamp, api_key, cloud_name, folder } = await sigRes.json() as {
           signature: string; timestamp: number; api_key: string; cloud_name: string; folder: string;
         };
         const cloudinaryUrl = await new Promise<string>((resolve, reject) => {
@@ -1292,7 +1292,7 @@ export default function FeedPage() {
           fd.append('api_key', api_key);
           fd.append('timestamp', String(timestamp));
           fd.append('signature', signature);
-          fd.append('folder', 'abukonn/posts');
+          fd.append('folder', folder);
           xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloud_name}/image/upload`);
           xhr.send(fd);
         });
