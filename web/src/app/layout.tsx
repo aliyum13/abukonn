@@ -15,9 +15,9 @@ export const metadata: Metadata = {
   description:
     'The official digital hub for Ahmadu Bello University students. Connect, share, and stay informed on campus.',
   icons: {
-    icon: '/logo.svg',
-    apple: '/logo.svg',
-    shortcut: '/logo.svg',
+    icon: '/logo.png',
+    apple: '/logo.png',
+    shortcut: '/logo.png',
   },
 };
 
