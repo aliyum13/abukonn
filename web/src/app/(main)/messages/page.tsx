@@ -225,6 +225,18 @@ function StoryReplyCard({ data, isSent }: { data: StoryReplyData; isSent: boolea
   );
 }
 
+/** Returns clean, human-readable text for a message (used for copy/forward) — never raw JSON envelopes. */
+function plainMessageText(content: string | null): string {
+  if (!content) return '';
+  const shared = parseSharedPost(content);
+  if (shared) return shared.content || '';
+  const storyReply = parseStoryReply(content);
+  if (storyReply) return storyReply.reply;
+  const messageReply = parseMessageReply(content);
+  if (messageReply) return messageReply.reply;
+  return content;
+}
+
 function MessageReplyCard({ data, isSent }: { data: MessageReplyData; isSent: boolean }) {
   return (
     <div className="w-full">
@@ -240,15 +252,27 @@ function MessageReplyCard({ data, isSent }: { data: MessageReplyData; isSent: bo
   );
 }
 
-// ── Swipe-to-reply ───────────────────────────────────────────────────────────
+// ── Swipe-to-reply + long-press actions ─────────────────────────────────────
 
 const SWIPE_TRIGGER_PX = 46;
 const SWIPE_MAX_PX = 68;
+const LONG_PRESS_MS = 450;
+const LONG_PRESS_MOVE_TOLERANCE = 10;
 
-function SwipeRow({ onReply, disabled, children }: { onReply: () => void; disabled?: boolean; children: React.ReactNode }) {
+function SwipeRow({ onReply, onLongPress, disabled, children }: { onReply: () => void; onLongPress: () => void; disabled?: boolean; children: React.ReactNode }) {
   const [dx, setDx] = useState(0);
+  const [pressed, setPressed] = useState(false);
   const startRef = useRef<{ x: number; y: number; dir: 'h' | 'v' | null } | null>(null);
   const triggeredRef = useRef(false);
+  const longPressFiredRef = useRef(false);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearLongPressTimer = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
 
   if (disabled) return <>{children}</>;
 
@@ -256,6 +280,14 @@ function SwipeRow({ onReply, disabled, children }: { onReply: () => void; disabl
     const t = e.touches[0];
     startRef.current = { x: t.clientX, y: t.clientY, dir: null };
     triggeredRef.current = false;
+    longPressFiredRef.current = false;
+    setPressed(true);
+    longPressTimerRef.current = setTimeout(() => {
+      longPressFiredRef.current = true;
+      setPressed(false);
+      if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(15);
+      onLongPress();
+    }, LONG_PRESS_MS);
   };
 
   const onTouchMove = (e: React.TouchEvent) => {
@@ -263,6 +295,10 @@ function SwipeRow({ onReply, disabled, children }: { onReply: () => void; disabl
     const t = e.touches[0];
     const deltaX = t.clientX - startRef.current.x;
     const deltaY = t.clientY - startRef.current.y;
+    if (Math.abs(deltaX) > LONG_PRESS_MOVE_TOLERANCE || Math.abs(deltaY) > LONG_PRESS_MOVE_TOLERANCE) {
+      clearLongPressTimer();
+      setPressed(false);
+    }
     if (startRef.current.dir === null && (Math.abs(deltaX) > 6 || Math.abs(deltaY) > 6)) {
       startRef.current.dir = Math.abs(deltaX) > Math.abs(deltaY) ? 'h' : 'v';
     }
@@ -277,14 +313,29 @@ function SwipeRow({ onReply, disabled, children }: { onReply: () => void; disabl
   };
 
   const onTouchEnd = () => {
-    if (triggeredRef.current) onReply();
+    clearLongPressTimer();
+    setPressed(false);
+    if (!longPressFiredRef.current && triggeredRef.current) onReply();
     setDx(0);
     startRef.current = null;
     triggeredRef.current = false;
+    longPressFiredRef.current = false;
+  };
+
+  const onContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    onLongPress();
   };
 
   return (
-    <div className="relative" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
+    <div
+      className="relative"
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      onTouchCancel={onTouchEnd}
+      onContextMenu={onContextMenu}
+    >
       <div
         className="pointer-events-none absolute left-0 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-brand-100 text-brand-700 transition-opacity dark:bg-brand-950 dark:text-brand-400"
         style={{ opacity: Math.min(dx / SWIPE_TRIGGER_PX, 1) }}
@@ -293,7 +344,10 @@ function SwipeRow({ onReply, disabled, children }: { onReply: () => void; disabl
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 016 6v2" />
         </svg>
       </div>
-      <div style={{ transform: `translateX(${dx}px)`, transition: dx === 0 ? 'transform 0.2s ease' : 'none' }}>
+      <div
+        className={cn('rounded-2xl transition-[transform,filter] duration-150', pressed && 'brightness-95 dark:brightness-110')}
+        style={{ transform: `translateX(${dx}px) scale(${pressed ? 0.985 : 1})`, transition: dx === 0 ? 'transform 0.2s ease' : 'none' }}
+      >
         {children}
       </div>
     </div>
@@ -773,7 +827,6 @@ export default function MessagesPage() {
   };
 
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; kind: 'dm' | 'group' } | null>(null);
-  const [openMsgMenuId, setOpenMsgMenuId] = useState<number | null>(null);
   const [deletingMsg, setDeletingMsg] = useState(false);
   const [replyTo, setReplyTo] = useState<{ id: number; senderName: string; preview: string } | null>(null);
 
@@ -785,12 +838,79 @@ export default function MessagesPage() {
     setTimeout(() => textareaRef.current?.focus(), 50);
   };
 
-  useEffect(() => {
-    if (openMsgMenuId === null) return;
-    const close = () => setOpenMsgMenuId(null);
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
-  }, [openMsgMenuId]);
+  // ── Press-and-hold message actions ──────────────────────────────────────
+  type ActionSheetTarget = { msg: ChatMessage | GroupMessage; kind: 'dm' | 'group'; senderName: string };
+  const [actionSheet, setActionSheet] = useState<ActionSheetTarget | null>(null);
+  const [copyToast, setCopyToast] = useState(false);
+  const [forwardMsg, setForwardMsg] = useState<ChatMessage | GroupMessage | null>(null);
+  const [forwardQuery, setForwardQuery] = useState('');
+  const [forwardingTo, setForwardingTo] = useState<string | null>(null);
+  const [forwardedToast, setForwardedToast] = useState(false);
+
+  const openMessageActions = (msg: ChatMessage | GroupMessage, kind: 'dm' | 'group', senderName: string) => {
+    setActionSheet({ msg, kind, senderName });
+  };
+
+  const handleCopyMessage = async () => {
+    if (!actionSheet) return;
+    const { msg } = actionSheet;
+    const text = plainMessageText(msg.content) || (('image_url' in msg && msg.image_url) ? msg.image_url : '');
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard && text) {
+        await navigator.clipboard.writeText(text);
+        setCopyToast(true);
+        setTimeout(() => setCopyToast(false), 1800);
+      }
+    } catch { /* clipboard unavailable */ }
+    setActionSheet(null);
+  };
+
+  const openForward = () => {
+    if (!actionSheet) return;
+    setForwardMsg(actionSheet.msg);
+    setForwardQuery('');
+    setActionSheet(null);
+  };
+
+  const sendForward = async (target: { kind: 'dm' | 'group'; id: number; key: string }) => {
+    if (!forwardMsg || !token || forwardingTo) return;
+    const text = plainMessageText(forwardMsg.content);
+    const imageUrl = 'image_url' in forwardMsg ? (forwardMsg.image_url ?? null) : null;
+    if (!text && !imageUrl) { setForwardMsg(null); return; }
+    setForwardingTo(target.key);
+    try {
+      if (target.kind === 'dm') {
+        const res = await fetch(`${API_URL}/api/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ conversation_id: target.id, content: text, image_url: imageUrl }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (target.id === activeId) setMessages(prev => prev.some(m => m.id === data.data.id) ? prev : [...prev, data.data]);
+          setConversations(prev => prev.map(c => c.id === target.id ? { ...c, last_message: text || '📷 Image', last_message_at: new Date().toISOString() } : c));
+        }
+      } else {
+        const groupText = text || (imageUrl ? '📷 Photo' : '');
+        const res = await fetch(`${API_URL}/api/groups/${target.id}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ content: groupText }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (target.id === activeGroupId) setGroupMessages(prev => prev.some(m => m.id === data.message.id) ? prev : [...prev, data.message]);
+          setGroups(prev => prev.map(g => g.id === target.id ? { ...g, last_message: groupText, last_message_at: new Date().toISOString() } : g));
+        }
+      }
+      setForwardedToast(true);
+      setTimeout(() => setForwardedToast(false), 1800);
+    } finally {
+      setForwardingTo(null);
+      setForwardMsg(null);
+      setForwardQuery('');
+    }
+  };
 
   const handleDeleteMessage = async () => {
     if (!deleteTarget || !token) return;
@@ -817,7 +937,6 @@ export default function MessagesPage() {
     } finally {
       setDeletingMsg(false);
       setDeleteTarget(null);
-      setOpenMsgMenuId(null);
     }
   };
 
@@ -1018,37 +1137,19 @@ export default function MessagesPage() {
                         const showAvatar = !isSent && (idx === 0 || prevMsg?.sender_id !== msg.sender_id);
                         const isDeleted = !!msg.is_deleted;
                         return (
-                          <SwipeRow key={msg.id} disabled={isDeleted} onReply={() => triggerReply(msg, isSent ? 'You' : activeConversation.other_user_name)}>
+                          <SwipeRow key={msg.id} disabled={isDeleted} onReply={() => triggerReply(msg, isSent ? 'You' : activeConversation.other_user_name)} onLongPress={() => openMessageActions(msg, 'dm', isSent ? 'You' : activeConversation.other_user_name)}>
                           <div className={cn('group/msg flex items-end gap-2', isSent ? 'justify-end' : 'justify-start')}>
                             {!isSent && <div className="w-7 shrink-0">{showAvatar && <Avatar src={activeConversation.other_user_photo} name={activeConversation.other_user_name} size="sm" className="h-7 w-7" />}</div>}
                             {isSent && !isDeleted && (
                               <div className="relative shrink-0 self-center">
                                 <button
                                   type="button"
-                                  onClick={(e) => { e.stopPropagation(); setOpenMsgMenuId(openMsgMenuId === msg.id ? null : msg.id); }}
+                                  onClick={(e) => { e.stopPropagation(); openMessageActions(msg, 'dm', 'You'); }}
                                   className="flex h-6 w-6 items-center justify-center rounded-full text-ink-muted opacity-60 transition hover:bg-surface-muted hover:opacity-100 sm:opacity-0 sm:group-hover/msg:opacity-100"
                                   aria-label="Message options"
                                 >
                                   <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
                                 </button>
-                                {openMsgMenuId === msg.id && (
-                                  <div onClick={(e) => e.stopPropagation()} className="absolute bottom-full right-0 z-20 mb-1 w-32 rounded-xl border border-border bg-white py-1 shadow-lg dark:bg-[#1a1a1a] dark:border-[#333]">
-                                    <button
-                                      type="button"
-                                      onClick={() => { setOpenMsgMenuId(null); triggerReply(msg, isSent ? 'You' : activeConversation.other_user_name); }}
-                                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-caption font-medium text-ink hover:bg-surface-muted dark:hover:bg-[#222]"
-                                    >
-                                      Reply
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => { setOpenMsgMenuId(null); setDeleteTarget({ id: msg.id, kind: 'dm' }); }}
-                                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-caption font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
-                                    >
-                                      Delete
-                                    </button>
-                                  </div>
-                                )}
                               </div>
                             )}
                             {(() => {
@@ -1195,7 +1296,7 @@ export default function MessagesPage() {
                         const showSenderInfo = !isSent && (idx === 0 || prevMsg?.sender_id !== msg.sender_id);
                         const isDeleted = !!msg.is_deleted;
                         return (
-                          <SwipeRow key={msg.id} disabled={isDeleted} onReply={() => triggerReply(msg, isSent ? 'You' : msg.sender_name)}>
+                          <SwipeRow key={msg.id} disabled={isDeleted} onReply={() => triggerReply(msg, isSent ? 'You' : msg.sender_name)} onLongPress={() => openMessageActions(msg, 'group', isSent ? 'You' : msg.sender_name)}>
                           <div className={cn('group/msg flex items-end gap-2', isSent ? 'justify-end' : 'justify-start')}>
                             {!isSent && (
                               <div className="w-7 shrink-0">
@@ -1206,30 +1307,12 @@ export default function MessagesPage() {
                               <div className="relative shrink-0 self-center">
                                 <button
                                   type="button"
-                                  onClick={(e) => { e.stopPropagation(); setOpenMsgMenuId(openMsgMenuId === msg.id ? null : msg.id); }}
+                                  onClick={(e) => { e.stopPropagation(); openMessageActions(msg, 'group', 'You'); }}
                                   className="flex h-6 w-6 items-center justify-center rounded-full text-ink-muted opacity-60 transition hover:bg-surface-muted hover:opacity-100 sm:opacity-0 sm:group-hover/msg:opacity-100"
                                   aria-label="Message options"
                                 >
                                   <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
                                 </button>
-                                {openMsgMenuId === msg.id && (
-                                  <div onClick={(e) => e.stopPropagation()} className="absolute bottom-full right-0 z-20 mb-1 w-32 rounded-xl border border-border bg-white py-1 shadow-lg dark:bg-[#1a1a1a] dark:border-[#333]">
-                                    <button
-                                      type="button"
-                                      onClick={() => { setOpenMsgMenuId(null); triggerReply(msg, isSent ? 'You' : msg.sender_name); }}
-                                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-caption font-medium text-ink hover:bg-surface-muted dark:hover:bg-[#222]"
-                                    >
-                                      Reply
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => { setOpenMsgMenuId(null); setDeleteTarget({ id: msg.id, kind: 'group' }); }}
-                                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-caption font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
-                                    >
-                                      Delete
-                                    </button>
-                                  </div>
-                                )}
                               </div>
                             )}
                             <div className={cn('max-w-[75%] min-w-0', isSent ? 'items-end' : 'items-start', 'flex flex-col')}>
@@ -1622,6 +1705,133 @@ export default function MessagesPage() {
               </Button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Press-and-hold message action sheet ─────────────────────────── */}
+      {actionSheet && (() => {
+        const { msg, kind, senderName } = actionSheet;
+        const isOwn = msg.sender_id === user.id;
+        const hasCopyableText = !!plainMessageText(msg.content) || ('image_url' in msg && !!msg.image_url);
+        return (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center" onClick={e => { if (e.target === e.currentTarget) setActionSheet(null); }}>
+            <div className="w-full max-w-sm rounded-t-2xl bg-white pb-[env(safe-area-inset-bottom)] shadow-2xl dark:bg-[#161616] dark:border dark:border-[#222] sm:rounded-2xl sm:pb-0">
+              <div className="flex items-center justify-between border-b border-border px-4 py-3 dark:border-[#222]">
+                <p className="truncate text-caption font-medium text-ink-muted">{senderName === 'You' ? 'Your message' : `Message from ${senderName}`}</p>
+                <button type="button" onClick={() => setActionSheet(null)} className="rounded-full p-1 text-ink-muted hover:bg-surface-muted dark:hover:bg-[#222]" aria-label="Close">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div className="py-1.5">
+                <button
+                  type="button"
+                  onClick={() => { triggerReply(msg, senderName); setActionSheet(null); }}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-body-sm font-medium text-ink hover:bg-surface-muted dark:hover:bg-[#222]"
+                >
+                  <svg className="h-4.5 w-4.5 text-ink-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 016 6v2" /></svg>
+                  Reply
+                </button>
+                {hasCopyableText && (
+                  <button
+                    type="button"
+                    onClick={handleCopyMessage}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-body-sm font-medium text-ink hover:bg-surface-muted dark:hover:bg-[#222]"
+                  >
+                    <svg className="h-4.5 w-4.5 text-ink-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75" /></svg>
+                    Copy
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={openForward}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-body-sm font-medium text-ink hover:bg-surface-muted dark:hover:bg-[#222]"
+                >
+                  <svg className="h-4.5 w-4.5 text-ink-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17.25 8.25L21 12m0 0l-3.75 3.75M21 12H7.5M3 6.75v10.5" /></svg>
+                  Forward
+                </button>
+                {isOwn && (
+                  <button
+                    type="button"
+                    onClick={() => { setDeleteTarget({ id: msg.id, kind }); setActionSheet(null); }}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-body-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                  >
+                    <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                    Delete Message
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Forward message modal ───────────────────────────────────────── */}
+      {forwardMsg && (() => {
+        const text = plainMessageText(forwardMsg.content);
+        const targets = [
+          ...conversations.map(c => ({ kind: 'dm' as const, id: c.id, key: `dm-${c.id}`, name: c.other_user_name || 'Unknown User', photo: c.other_user_photo ?? null, isGroup: false })),
+          ...groups.map(g => ({ kind: 'group' as const, id: g.id, key: `group-${g.id}`, name: g.name, photo: null, isGroup: true })),
+        ].filter(t => t.name.toLowerCase().includes(forwardQuery.trim().toLowerCase()));
+        return (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center" onClick={e => { if (e.target === e.currentTarget && !forwardingTo) setForwardMsg(null); }}>
+            <div className="flex max-h-[80vh] w-full max-w-sm flex-col rounded-t-2xl bg-white shadow-2xl dark:bg-[#161616] dark:border dark:border-[#222] sm:rounded-2xl">
+              <div className="flex items-center justify-between border-b border-border px-4 py-3 dark:border-[#222]">
+                <h3 className="font-semibold text-ink">Forward message</h3>
+                <button type="button" onClick={() => !forwardingTo && setForwardMsg(null)} className="rounded-full p-1 text-ink-muted hover:bg-surface-muted dark:hover:bg-[#222]" aria-label="Close">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              {text && (
+                <div className="border-b border-border px-4 py-2.5 dark:border-[#222]">
+                  <p className="line-clamp-2 text-caption text-ink-muted">{text}</p>
+                </div>
+              )}
+              <div className="border-b border-border px-3 py-2.5 dark:border-[#222]">
+                <input
+                  type="text"
+                  value={forwardQuery}
+                  onChange={e => setForwardQuery(e.target.value)}
+                  placeholder="Search conversations and groups..."
+                  className="h-9 w-full rounded-lg border border-border bg-surface-muted px-3 text-[13px] text-ink placeholder:text-ink-muted focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:bg-[#1a1a1a] dark:border-[#333]"
+                  autoFocus
+                />
+              </div>
+              <div className="flex-1 overflow-y-auto py-1">
+                {targets.length === 0 ? (
+                  <p className="px-4 py-6 text-center text-body-sm text-ink-muted">No matches found.</p>
+                ) : (
+                  targets.map(t => (
+                    <button
+                      key={t.key}
+                      type="button"
+                      disabled={!!forwardingTo}
+                      onClick={() => sendForward(t)}
+                      className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition hover:bg-surface-muted disabled:opacity-60 dark:hover:bg-[#222]"
+                    >
+                      {t.isGroup ? (
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 dark:bg-brand-950">
+                          <GroupIcon className="h-4.5 w-4.5 text-brand-600" />
+                        </div>
+                      ) : (
+                        <Avatar src={t.photo} name={t.name} size="sm" className="h-9 w-9 shrink-0" />
+                      )}
+                      <span className="min-w-0 flex-1 truncate text-body-sm font-medium text-ink">{t.name}</span>
+                      {forwardingTo === t.key && (
+                        <svg className="h-4 w-4 shrink-0 animate-spin text-brand-600" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" /></svg>
+                      )}
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Toasts ───────────────────────────────────────────────────────── */}
+      {(copyToast || forwardedToast) && (
+        <div className="fixed bottom-20 left-1/2 z-[60] -translate-x-1/2 rounded-full bg-ink px-4 py-2 text-caption font-medium text-white shadow-lg sm:bottom-6 dark:bg-[#222]">
+          {copyToast ? 'Copied to clipboard' : 'Message forwarded'}
         </div>
       )}
     </>
