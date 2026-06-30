@@ -3,57 +3,178 @@
 import { useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { IBM_Plex_Mono } from 'next/font/google';
 import { useAuth } from '@/context/AuthContext';
-import { Button, Badge, Card, CardContent } from '@/components/ui';
+import { Button, Card, CardContent } from '@/components/ui';
+import { cn } from '@/lib/utils';
+
+const plexMono = IBM_Plex_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  variable: '--font-plex-mono',
+});
 
 const FEATURES = [
   {
-    title: 'Campus Feed',
-    description:
-      'Share moments, ask questions, and stay in the loop with what\'s happening across ABU.',
+    tag: 'FEED',
+    title: 'Campus feed',
+    description: 'Posts, polls, questions and events from coursemates across every faculty.',
     icon: (
-      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 01.778-.332 48.294 48.294 0 005.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
       </svg>
     ),
   },
   {
-    title: 'Direct Messages',
-    description:
-      'Chat with coursemates and friends in real time — no more scattered WhatsApp groups.',
+    tag: 'CHAT',
+    title: 'Direct & group messaging',
+    description: 'Real-time chats and group threads — no more scattered WhatsApp groups per class.',
     icon: (
-      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
       </svg>
     ),
   },
   {
-    title: 'Campus News',
-    description:
-      'Official announcements, faculty updates, and events — all in one trusted place.',
+    tag: 'STORY',
+    title: 'Stories',
+    description: 'Share photo, video and text stories with reactions and replies that disappear in a day.',
     icon: (
-      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+  },
+  {
+    tag: 'CHANNEL',
+    title: 'Campus channels',
+    description: 'Follow faculty, hostel and department channels for the updates that matter to you.',
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+      </svg>
+    ),
+  },
+  {
+    tag: 'NEWS',
+    title: 'Campus news',
+    description: 'Official announcements and faculty updates, verified and in one trusted place.',
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 01-2.25 2.25M16.5 7.5V18a2.25 2.25 0 002.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 002.25 2.25h13.5M6 7.5h3v3H6v-3z" />
       </svg>
     ),
   },
   {
-    title: 'Your Profile',
-    description:
-      'Build your campus identity with a profile photo, bio, and matric-verified badge.',
+    tag: 'TIMETABLE',
+    title: 'Department timetable',
+    description: 'Class schedules with live holding and cancelled status, so you never walk in for nothing.',
     icon: (
-      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
       </svg>
     ),
   },
 ];
 
-const STATS = [
-  { value: '40K+', label: 'Students at ABU' },
-  { value: '12', label: 'Faculties connected' },
-  { value: '24/7', label: 'Always accessible' },
+const FACULTIES = [
+  'Engineering', 'Medicine', 'Agriculture', 'Arts', 'Education', 'Law',
+  'Science', 'Social Sciences', 'Environmental Design', 'Pharmaceutical Sciences',
+  'Administration', 'Veterinary Medicine',
 ];
+
+/** Faint recurring contour-line motif — the page's connective tissue between hero and CTA. */
+function TopoLines({ className, opacity = 0.08 }: { className?: string; opacity?: number }) {
+  return (
+    <svg className={className} viewBox="0 0 800 400" fill="none" preserveAspectRatio="none" aria-hidden>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <path
+          key={i}
+          d={`M-20 ${60 + i * 70} C 180 ${10 + i * 70}, 320 ${130 + i * 60}, 500 ${50 + i * 65} S 760 ${20 + i * 70}, 860 ${90 + i * 65}`}
+          stroke="currentColor"
+          strokeWidth="1"
+          opacity={opacity}
+        />
+      ))}
+    </svg>
+  );
+}
+
+/** Signature hero visual: a verified student ID card, the concrete object the whole brand promise rests on. */
+function VerifiedIdCard() {
+  return (
+    <div className="relative mx-auto w-full max-w-sm select-none">
+      {/* Floating chip: new message */}
+      <div className="absolute -left-4 top-6 z-20 hidden animate-[float_6s_ease-in-out_infinite] items-center gap-2 rounded-xl border border-border bg-white px-3 py-2 shadow-elevated dark:border-[#222] dark:bg-[#151515] sm:flex">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-400">
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
+          </svg>
+        </span>
+        <div>
+          <div className={cn(plexMono.className, 'text-[10px] font-medium text-ink-muted')}>2 NEW</div>
+          <div className="text-[11px] font-semibold text-ink">CSC group chat</div>
+        </div>
+      </div>
+
+      {/* Floating chip: news */}
+      <div className="absolute -right-3 bottom-16 z-20 hidden animate-[float_7s_ease-in-out_infinite_0.8s] items-center gap-2 rounded-xl border border-border bg-white px-3 py-2 shadow-elevated dark:border-[#222] dark:bg-[#151515] sm:flex">
+        <span className={cn(plexMono.className, 'text-[10px] font-semibold tracking-wide text-[#C8932F]')}>NEWS</span>
+        <div className="text-[11px] font-medium text-ink">Senate exam timetable released</div>
+      </div>
+
+      {/* The card itself */}
+      <div className="animate-[float_8s_ease-in-out_infinite] [transform:rotate(-5deg)]">
+        <div
+          className="relative overflow-hidden rounded-[1.4rem] border border-white/10 p-5 shadow-elevated"
+          style={{ background: 'linear-gradient(150deg, #14532d 0%, #052e16 65%, #03190c 100%)' }}
+        >
+          <TopoLines className="absolute inset-0 h-full w-full text-white" opacity={0.06} />
+
+          <div className="relative flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <img src="/logo-white.png" alt="" className="h-6 w-6 object-contain" />
+              <span className="text-[13px] font-bold tracking-tight text-white">ABUkonn</span>
+            </div>
+            <span className={cn(plexMono.className, 'rounded-full border border-[#C8932F]/40 bg-[#C8932F]/10 px-2 py-0.5 text-[9px] font-semibold tracking-widest text-[#E8C170]')}>
+              VERIFIED
+            </span>
+          </div>
+
+          <div className="relative mt-6 flex items-center gap-4">
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-white/5">
+              <svg className="h-8 w-8 text-white/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+              </svg>
+            </div>
+            <div className="min-w-0">
+              <div className="h-3 w-32 rounded-full bg-white/25" />
+              <div className={cn(plexMono.className, 'mt-2 text-[10px] tracking-wide text-white/50')}>MATRIC NO.</div>
+              <div className={cn(plexMono.className, 'text-[13px] font-medium tracking-wider text-white/90')}>U21CSC••••</div>
+            </div>
+          </div>
+
+          <div className="relative mt-6 grid grid-cols-2 gap-3 border-t border-white/10 pt-4">
+            <div>
+              <div className={cn(plexMono.className, 'text-[9px] tracking-wide text-white/40')}>FACULTY</div>
+              <div className="text-[12px] font-medium text-white/85">Computer Science</div>
+            </div>
+            <div>
+              <div className={cn(plexMono.className, 'text-[9px] tracking-wide text-white/40')}>CAMPUS</div>
+              <div className="text-[12px] font-medium text-white/85">Samaru</div>
+            </div>
+          </div>
+
+          <div className="relative mt-5 flex items-center gap-1.5">
+            {Array.from({ length: 28 }).map((_, i) => (
+              <span key={i} className="bg-white/25" style={{ width: i % 4 === 0 ? 2 : 1, height: 16 }} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Home() {
   const { token, loading } = useAuth();
@@ -75,6 +196,14 @@ export default function Home() {
 
   return (
     <div className="flex min-h-screen flex-col bg-white dark:bg-[#0a0a0a]">
+      <style>{`
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+        @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+        @media (prefers-reduced-motion: reduce) {
+          .animate-marquee, [class*="animate-[float"] { animation: none !important; }
+        }
+      `}</style>
+
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border/60 bg-white/80 dark:bg-[#0a0a0a]/90 dark:border-[#222] backdrop-blur-lg">
         <div className="mx-auto flex h-16 max-w-content items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -108,35 +237,33 @@ export default function Home() {
       <main className="flex-1">
         {/* Hero */}
         <section className="relative overflow-hidden">
-          <div className="absolute inset-0 -z-10">
-            <div className="absolute -top-24 left-1/2 h-[500px] w-[800px] -translate-x-1/2 rounded-full bg-brand-100/60 blur-3xl" />
-            <div className="absolute top-32 -right-32 h-64 w-64 rounded-full bg-brand-50 blur-2xl" />
-            <div
-              className="absolute inset-0 opacity-[0.03]"
-              style={{
-                backgroundImage: 'radial-gradient(circle, #16a34a 1px, transparent 1px)',
-                backgroundSize: '24px 24px',
-              }}
-            />
-          </div>
+          <TopoLines className="pointer-events-none absolute inset-x-0 top-0 h-[520px] w-full text-brand-600" opacity={0.05} />
+          <div
+            className="pointer-events-none absolute inset-0 -z-10 opacity-[0.04]"
+            style={{
+              backgroundImage: 'radial-gradient(circle, #16a34a 1px, transparent 1px)',
+              backgroundSize: '24px 24px',
+            }}
+          />
 
-          <div className="mx-auto max-w-content px-4 pt-16 pb-20 sm:px-6 sm:pt-24 sm:pb-28 lg:px-8 lg:pt-30">
-            <div className="mx-auto max-w-3xl text-center animate-fade-in">
-              <Badge variant="brand" className="mb-6 px-3 py-1 text-body-sm">
-                Ahmadu Bello University
-              </Badge>
-
-              <h1 className="text-display-md sm:text-display-lg lg:text-display-xl text-ink">
-                ABU&apos;s Digital{' '}
-                <span className="text-brand-600">Campus</span>
-              </h1>
-
-              <p className="mx-auto mt-6 max-w-2xl text-body-lg text-ink-secondary sm:text-xl sm:leading-relaxed">
-                Connect with your coursemates, discover campus news, and build your
-                university community — all in one place built for ABU students.
+          <div className="mx-auto grid max-w-content items-center gap-12 px-4 pt-16 pb-20 sm:px-6 sm:pt-24 sm:pb-28 lg:grid-cols-[1.05fr_0.95fr] lg:gap-8 lg:px-8 lg:pt-28">
+            <div className="animate-fade-in text-center lg:text-left">
+              <p className={cn(plexMono.className, 'text-[12px] font-medium tracking-[0.18em] text-brand-600')}>
+                AHMADU BELLO UNIVERSITY · ZARIA, KADUNA STATE
               </p>
 
-              <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
+              <h1 className="mt-4 text-display-md text-ink sm:text-display-lg lg:text-display-xl">
+                One app for{' '}
+                <span className="text-brand-600">every corner</span>{' '}
+                of campus.
+              </h1>
+
+              <p className="mx-auto mt-6 max-w-xl text-body-lg text-ink-secondary sm:text-xl sm:leading-relaxed lg:mx-0">
+                From Samaru to Kongo — share, chat, and stay informed with coursemates
+                across every faculty, verified with your matric number.
+              </p>
+
+              <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4 lg:justify-start">
                 <Link href="/register">
                   <Button size="lg" className="min-w-[180px]">
                     Create free account
@@ -149,78 +276,33 @@ export default function Home() {
                 </Link>
               </div>
 
-              <p className="mt-6 text-caption text-ink-muted">
-                Verified with your matric number · Free for all ABU students
+              <p className={cn(plexMono.className, 'mt-6 text-[11px] tracking-wide text-ink-muted')}>
+                VERIFIED WITH YOUR MATRIC NUMBER · FREE FOR ALL ABU STUDENTS
               </p>
             </div>
 
-            {/* Hero preview card */}
-            <div className="mx-auto mt-16 max-w-4xl animate-slide-up sm:mt-20">
-              <div className="rounded-2xl border border-border bg-white/60 dark:bg-[#111]/60 p-2 shadow-elevated backdrop-blur-sm sm:rounded-3xl sm:p-3">
-                <div className="overflow-hidden rounded-xl border border-border bg-surface-muted sm:rounded-2xl">
-                  <div className="flex items-center gap-2 border-b border-border bg-white dark:bg-[#111] px-4 py-3">
-                    <div className="flex gap-1.5">
-                      <span className="h-3 w-3 rounded-full bg-red-400/80" />
-                      <span className="h-3 w-3 rounded-full bg-amber-400/80" />
-                      <span className="h-3 w-3 rounded-full bg-brand-400/80" />
-                    </div>
-                    <span className="flex-1 text-center text-caption text-ink-muted">
-                      abukonn.app/feed
-                    </span>
-                  </div>
-                  <div className="grid gap-4 p-4 sm:grid-cols-3 sm:p-6">
-                    <div className="space-y-3 sm:col-span-2">
-                      <div className="rounded-xl border border-border bg-white p-4 shadow-soft">
-                        <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-full bg-brand-100" />
-                          <div>
-                            <div className="h-3 w-28 rounded bg-ink/10" />
-                            <div className="mt-1.5 h-2 w-20 rounded bg-ink/5" />
-                          </div>
-                        </div>
-                        <div className="mt-3 space-y-2">
-                          <div className="h-2.5 w-full rounded bg-ink/5" />
-                          <div className="h-2.5 w-4/5 rounded bg-ink/5" />
-                        </div>
-                      </div>
-                      <div className="rounded-xl border border-border bg-white p-4 shadow-soft">
-                        <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-full bg-brand-200" />
-                          <div>
-                            <div className="h-3 w-32 rounded bg-ink/10" />
-                            <div className="mt-1.5 h-2 w-16 rounded bg-ink/5" />
-                          </div>
-                        </div>
-                        <div className="mt-3 h-2.5 w-3/4 rounded bg-ink/5" />
-                      </div>
-                    </div>
-                    <div className="space-y-3">
-                      <div className="rounded-xl border border-border bg-white p-4 shadow-soft">
-                        <div className="text-caption font-semibold text-brand-600">Campus News</div>
-                        <div className="mt-2 h-2.5 w-full rounded bg-ink/5" />
-                        <div className="mt-1.5 h-2.5 w-2/3 rounded bg-ink/5" />
-                      </div>
-                      <div className="rounded-xl border border-brand-200 bg-brand-50 p-4">
-                        <div className="text-caption font-semibold text-brand-700">New message</div>
-                        <div className="mt-2 h-2.5 w-full rounded bg-brand-200/50" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+            <div className="animate-slide-up">
+              <VerifiedIdCard />
             </div>
           </div>
         </section>
 
-        {/* Stats */}
-        <section className="border-y border-border bg-surface-muted">
-          <div className="mx-auto grid max-w-content grid-cols-1 divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-            {STATS.map((stat) => (
-              <div key={stat.label} className="px-6 py-10 text-center sm:py-12">
-                <div className="text-display-sm text-brand-600">{stat.value}</div>
-                <div className="mt-1 text-body-sm text-ink-secondary">{stat.label}</div>
-              </div>
-            ))}
+        {/* Faculties marquee — real content in place of a generic stats row */}
+        <section className="border-y border-border bg-surface-muted py-7 dark:border-[#222]">
+          <div className="mb-3 px-4 text-center sm:px-6">
+            <span className={cn(plexMono.className, 'text-[11px] tracking-[0.18em] text-ink-muted')}>
+              CONNECTING STUDENTS ACROSS
+            </span>
+          </div>
+          <div className="overflow-hidden">
+            <div className="animate-marquee flex w-max items-center gap-10" style={{ animation: 'marquee 32s linear infinite' }}>
+              {[...FACULTIES, ...FACULTIES].map((f, i) => (
+                <span key={i} className="flex items-center gap-10 whitespace-nowrap">
+                  <span className="text-body-md font-medium text-ink-secondary">{f}</span>
+                  <span className="h-1 w-1 rounded-full bg-brand-400" />
+                </span>
+              ))}
+            </div>
           </div>
         </section>
 
@@ -228,8 +310,10 @@ export default function Home() {
         <section id="features" className="py-20 sm:py-28">
           <div className="mx-auto max-w-content px-4 sm:px-6 lg:px-8">
             <div className="mx-auto max-w-2xl text-center">
-              <Badge variant="brand" className="mb-4">Features</Badge>
-              <h2 className="text-display-sm sm:text-display-md text-ink">
+              <p className={cn(plexMono.className, 'text-[12px] font-medium tracking-[0.18em] text-brand-600')}>
+                WHAT&apos;S INSIDE
+              </p>
+              <h2 className="mt-3 text-display-sm text-ink sm:text-display-md">
                 Everything you need on campus
               </h2>
               <p className="mt-4 text-body-lg text-ink-secondary">
@@ -238,17 +322,22 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:gap-8">
+            <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {FEATURES.map((feature) => (
                 <Card
                   key={feature.title}
-                  className="group transition-all duration-300 hover:border-brand-200 hover:shadow-elevated"
+                  className="group transition-all duration-300 hover:border-brand-200 hover:shadow-elevated dark:hover:border-brand-800"
                 >
-                  <CardContent className="p-6 sm:p-8">
-                    <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-brand-50 text-brand-600 transition-colors group-hover:bg-brand-600 group-hover:text-white">
-                      {feature.icon}
+                  <CardContent className="p-6 sm:p-7">
+                    <div className="flex items-center justify-between">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-50 text-brand-600 transition-colors group-hover:bg-brand-600 group-hover:text-white dark:bg-brand-950 dark:text-brand-400">
+                        {feature.icon}
+                      </div>
+                      <span className={cn(plexMono.className, 'text-[10px] tracking-widest text-ink-faint')}>
+                        [{feature.tag}]
+                      </span>
                     </div>
-                    <h3 className="text-lg font-semibold text-ink">{feature.title}</h3>
+                    <h3 className="mt-4 text-lg font-semibold text-ink">{feature.title}</h3>
                     <p className="mt-2 text-body-sm leading-relaxed text-ink-secondary">
                       {feature.description}
                     </p>
@@ -260,15 +349,19 @@ export default function Home() {
         </section>
 
         {/* About / CTA */}
-        <section id="about" className="bg-brand-950 py-20 sm:py-28">
-          <div className="mx-auto max-w-content px-4 sm:px-6 lg:px-8">
+        <section id="about" className="relative overflow-hidden bg-brand-950 py-20 sm:py-28">
+          <TopoLines className="pointer-events-none absolute inset-0 h-full w-full text-white" opacity={0.06} />
+          <div className="relative mx-auto max-w-content px-4 sm:px-6 lg:px-8">
             <div className="mx-auto max-w-2xl text-center">
-              <h2 className="text-display-sm sm:text-display-md text-white">
+              <p className={cn(plexMono.className, 'text-[12px] font-medium tracking-[0.18em] text-[#E8C170]')}>
+                JOIN THE NETWORK
+              </p>
+              <h2 className="mt-3 text-display-sm text-white sm:text-display-md">
                 Ready to join your campus community?
               </h2>
               <p className="mt-4 text-body-lg text-brand-200">
                 Sign up with your ABU matric number and start connecting with
-                thousands of students across Zaria today.
+                students across every faculty today.
               </p>
               <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
                 <Link href="/register">
@@ -302,7 +395,9 @@ export default function Home() {
               <img src="/logo.png" alt="ABUkonn" className="h-8 w-8 object-contain" />
               <div>
                 <div className="font-semibold text-ink dark:text-[#f5f5f5]">ABUkonn</div>
-                <div className="text-caption text-ink-muted">ABU&apos;s Digital Campus</div>
+                <div className={cn(plexMono.className, 'text-[11px] tracking-wide text-ink-muted')}>
+                  ZARIA, KADUNA STATE, NIGERIA
+                </div>
               </div>
             </div>
 
@@ -322,7 +417,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="mt-8 border-t border-border pt-8 text-center text-caption text-ink-muted">
+          <div className="mt-8 border-t border-border pt-8 text-center text-caption text-ink-muted dark:border-[#222]">
             © {new Date().getFullYear()} ABUkonn · Ahmadu Bello University, Zaria
           </div>
         </div>
