@@ -261,6 +261,7 @@ export default function UserProfilePage() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [photoLightboxOpen, setPhotoLightboxOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('posts');
 
   useEffect(() => {
@@ -341,9 +342,15 @@ export default function UserProfilePage() {
         <div className="flex items-start justify-between gap-4">
           {/* Avatar */}
           <div className="h-24 w-24 shrink-0 rounded-full bg-gradient-to-tr from-brand-500 to-emerald-400 p-[2.5px]">
-            <div className="h-full w-full rounded-full bg-white dark:bg-[#0a0a0a] p-[2px]">
+            <button
+              type="button"
+              onClick={() => profile.profile_photo_url && setPhotoLightboxOpen(true)}
+              disabled={!profile.profile_photo_url}
+              className="h-full w-full rounded-full bg-white dark:bg-[#0a0a0a] p-[2px] disabled:cursor-default"
+              aria-label={profile.profile_photo_url ? 'View profile photo' : undefined}
+            >
               <Avatar src={profile.profile_photo_url} name={profile.full_name} size="xl" className="h-full w-full" />
-            </div>
+            </button>
           </div>
 
           {/* Action buttons */}
@@ -487,6 +494,30 @@ export default function UserProfilePage() {
           </svg>
           <p className="font-semibold text-[15px] text-ink">No replies yet</p>
           <p className="mt-1 text-[14px] text-ink-muted">{profile.full_name} hasn&apos;t replied to any posts yet.</p>
+        </div>
+      )}
+
+      {/* Profile photo lightbox */}
+      {photoLightboxOpen && profile.profile_photo_url && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+          onClick={() => setPhotoLightboxOpen(false)}
+        >
+          <button
+            type="button"
+            onClick={() => setPhotoLightboxOpen(false)}
+            className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+            aria-label="Close"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          <img
+            src={profile.profile_photo_url}
+            alt={profile.full_name}
+            className="max-h-[90vh] max-w-full rounded-xl object-contain shadow-2xl"
+          />
         </div>
       )}
     </div>
