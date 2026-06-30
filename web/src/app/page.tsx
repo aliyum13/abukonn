@@ -78,9 +78,9 @@ export default function Home() {
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border/60 bg-white/80 dark:bg-[#0a0a0a]/90 dark:border-[#222] backdrop-blur-lg">
         <div className="mx-auto flex h-16 max-w-content items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link href="/" className="flex items-center gap-2.5">
-            <img src="/logo.png" alt="ABUkonn" className="h-9 w-9 object-contain" />
-            <span className="text-lg font-bold text-ink dark:text-[#f5f5f5]">ABUkonn</span>
+          <Link href="/" className="flex items-center">
+            <img src="/logo-lockup-light.png" alt="ABUkonn" className="h-8 object-contain dark:hidden" />
+            <img src="/logo-lockup-dark.png" alt="ABUkonn" className="hidden h-8 object-contain dark:block" />
           </Link>
 
           <nav className="hidden items-center gap-8 md:flex">

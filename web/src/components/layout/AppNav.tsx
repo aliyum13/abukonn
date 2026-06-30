@@ -266,8 +266,11 @@ export function AppNav() {
           href="/feed"
           className={`flex shrink-0 items-center gap-2 ${searchOpen ? 'hidden sm:flex' : 'flex'}`}
         >
-          <img src="/logo.png" alt="ABUkonn" className="h-8 w-8 object-contain" />
-          <span className="hidden text-lg font-bold text-ink sm:block dark:text-[#f5f5f5]">ABU<span className="text-brand-600">konn</span></span>
+          <img src="/logo.png" alt="ABUkonn" className="h-8 w-8 object-contain sm:hidden" />
+          <span className="hidden sm:block">
+            <img src="/logo-lockup-light.png" alt="ABUkonn" className="h-7 object-contain dark:hidden" />
+            <img src="/logo-lockup-dark.png" alt="ABUkonn" className="hidden h-7 object-contain dark:block" />
+          </span>
         </Link>
 
         {/* Desktop nav links — hide when search open */}
