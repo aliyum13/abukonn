@@ -58,7 +58,7 @@ const FEATURES = [
   {
     tag: 'NEWS',
     title: 'Campus news',
-    description: 'Official announcements and faculty updates, verified and in one trusted place.',
+    description: 'Official announcements and faculty updates, all in one trusted place.',
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 01-2.25 2.25M16.5 7.5V18a2.25 2.25 0 002.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 002.25 2.25h13.5M6 7.5h3v3H6v-3z" />
@@ -100,8 +100,8 @@ function TopoLines({ className, opacity = 0.08 }: { className?: string; opacity?
   );
 }
 
-/** Signature hero visual: a verified student ID card, the concrete object the whole brand promise rests on. */
-function VerifiedIdCard() {
+/** Signature hero visual: a campus profile card, the concrete object the whole product centers on. */
+function CampusProfileCard() {
   return (
     <div className="relative mx-auto w-full max-w-sm select-none">
       {/* Floating chip: new message */}
@@ -136,8 +136,8 @@ function VerifiedIdCard() {
               <img src="/logo-white.png" alt="" className="h-6 w-6 object-contain" />
               <span className="text-[13px] font-bold tracking-tight text-white">ABUkonn</span>
             </div>
-            <span className={cn(plexMono.className, 'rounded-full border border-[#C8932F]/40 bg-[#C8932F]/10 px-2 py-0.5 text-[9px] font-semibold tracking-widest text-[#E8C170]')}>
-              VERIFIED
+            <span className={cn(plexMono.className, 'rounded-full border border-brand-400/30 bg-brand-400/10 px-2 py-0.5 text-[9px] font-semibold tracking-widest text-brand-300')}>
+              ACTIVE
             </span>
           </div>
 
@@ -149,8 +149,7 @@ function VerifiedIdCard() {
             </div>
             <div className="min-w-0">
               <div className="h-3 w-32 rounded-full bg-white/25" />
-              <div className={cn(plexMono.className, 'mt-2 text-[10px] tracking-wide text-white/50')}>MATRIC NO.</div>
-              <div className={cn(plexMono.className, 'text-[13px] font-medium tracking-wider text-white/90')}>U21CSC••••</div>
+              <div className={cn(plexMono.className, 'mt-2 text-[11px] tracking-wide text-white/50')}>@student.abu</div>
             </div>
           </div>
 
@@ -260,7 +259,7 @@ export default function Home() {
 
               <p className="mx-auto mt-6 max-w-xl text-body-lg text-ink-secondary sm:text-xl sm:leading-relaxed lg:mx-0">
                 From Samaru to Kongo — share, chat, and stay informed with coursemates
-                across every faculty, verified with your matric number.
+                across every faculty at ABU.
               </p>
 
               <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4 lg:justify-start">
@@ -277,12 +276,12 @@ export default function Home() {
               </div>
 
               <p className={cn(plexMono.className, 'mt-6 text-[11px] tracking-wide text-ink-muted')}>
-                VERIFIED WITH YOUR MATRIC NUMBER · FREE FOR ALL ABU STUDENTS
+                FREE FOR ALL ABU STUDENTS · OPEN REGISTRATION
               </p>
             </div>
 
             <div className="animate-slide-up">
-              <VerifiedIdCard />
+              <CampusProfileCard />
             </div>
           </div>
         </section>
@@ -360,7 +359,7 @@ export default function Home() {
                 Ready to join your campus community?
               </h2>
               <p className="mt-4 text-body-lg text-brand-200">
-                Sign up with your ABU matric number and start connecting with
+                Create your free account and start connecting with
                 students across every faculty today.
               </p>
               <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
