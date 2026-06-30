@@ -93,6 +93,7 @@ async function uploadTimetable(req, res) {
         course_title: r.course_title?.trim(),
         venue: r.venue?.trim() || null,
         lecturer: r.lecturer?.trim() || null,
+        status: r.status?.trim().toLowerCase() === 'cancelled' ? 'cancelled' : 'holding',
       }))
       .filter(e => VALID_DAYS.has(e.day));
 
@@ -154,19 +155,24 @@ async function previewCSV(req, res) {
   }
 }
 
+const VALID_STATUSES = new Set(['holding', 'cancelled']);
+
 async function updateClass(req, res) {
   try {
     const { id } = req.params;
-    const { day, start_time, end_time, course_code, course_title, venue, lecturer } = req.body;
+    const { day, start_time, end_time, course_code, course_title, venue, lecturer, status } = req.body;
     if (!course_title || !day || !start_time) {
       return res.status(400).json({ message: 'day, start_time and course_title are required' });
+    }
+    if (status !== undefined && !VALID_STATUSES.has(status)) {
+      return res.status(400).json({ message: 'Invalid status' });
     }
     const { rows } = await pool.query(
       `UPDATE abukonn.timetables
        SET day=$1, start_time=$2, end_time=$3, course_code=$4,
-           course_title=$5, venue=$6, lecturer=$7
-       WHERE id=$8 RETURNING *`,
-      [day, start_time, end_time || null, course_code || null, course_title, venue || null, lecturer || null, id]
+           course_title=$5, venue=$6, lecturer=$7, status=COALESCE($8, status)
+       WHERE id=$9 RETURNING *`,
+      [day, start_time, end_time || null, course_code || null, course_title, venue || null, lecturer || null, status || null, id]
     );
     if (!rows.length) return res.status(404).json({ message: 'Class not found' });
     res.json({ class: rows[0] });
@@ -176,17 +182,39 @@ async function updateClass(req, res) {
   }
 }
 
+async function setClassStatus(req, res) {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    if (!VALID_STATUSES.has(status)) {
+      return res.status(400).json({ message: 'Invalid status' });
+    }
+    const { rows } = await pool.query(
+      `UPDATE abukonn.timetables SET status=$1 WHERE id=$2 RETURNING *`,
+      [status, id]
+    );
+    if (!rows.length) return res.status(404).json({ message: 'Class not found' });
+    res.json({ class: rows[0] });
+  } catch (err) {
+    console.error('setClassStatus:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
 async function addClass(req, res) {
   try {
-    const { department, level, day, start_time, end_time, course_code, course_title, venue, lecturer } = req.body;
+    const { department, level, day, start_time, end_time, course_code, course_title, venue, lecturer, status } = req.body;
     if (!department || !level || !course_title || !day || !start_time) {
       return res.status(400).json({ message: 'department, level, day, start_time and course_title are required' });
     }
+    if (status !== undefined && !VALID_STATUSES.has(status)) {
+      return res.status(400).json({ message: 'Invalid status' });
+    }
     const { rows } = await pool.query(
       `INSERT INTO abukonn.timetables
-       (department, level, day, start_time, end_time, course_code, course_title, venue, lecturer, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-      [department, level, day, start_time, end_time || null, course_code || null, course_title, venue || null, lecturer || null, req.user.id]
+       (department, level, day, start_time, end_time, course_code, course_title, venue, lecturer, status, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [department, level, day, start_time, end_time || null, course_code || null, course_title, venue || null, lecturer || null, status || 'holding', req.user.id]
     );
     // Update row count in uploads
     await pool.query(
@@ -226,7 +254,7 @@ async function deleteClass(req, res) {
 
 module.exports = {
   getTodayClasses, getWeekClasses, getTimetableByDeptLevel,
-  uploadTimetable, deleteTimetable, getUploads, previewCSV, updateClass, addClass, deleteClass,
+  uploadTimetable, deleteTimetable, getUploads, previewCSV, updateClass, addClass, deleteClass, setClassStatus,
 };
 
 

@@ -191,7 +191,9 @@ interface Highlight {
   id: number;
   title: string;
   description: string | null;
-  type: 'announcement' | 'exam' | 'deadline' | 'event';
+  type: string;
+  icon: string;
+  color: string;
   start_date: string | null;
   end_date: string | null;
   priority: number;
@@ -199,31 +201,16 @@ interface Highlight {
   created_at: string;
 }
 
-const HIGHLIGHT_CONFIG: Record<string, { icon: string; bg: string; titleColor: string; badgeCls: string }> = {
-  announcement: {
-    icon: '📢',
-    bg: 'bg-blue-50 dark:bg-blue-950/40',
-    titleColor: 'text-blue-800 dark:text-blue-200',
-    badgeCls: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
-  },
-  exam: {
-    icon: '📝',
-    bg: 'bg-red-50 dark:bg-red-950/40',
-    titleColor: 'text-red-800 dark:text-red-200',
-    badgeCls: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
-  },
-  deadline: {
-    icon: '⏰',
-    bg: 'bg-orange-50 dark:bg-orange-950/40',
-    titleColor: 'text-orange-800 dark:text-orange-200',
-    badgeCls: 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300',
-  },
-  event: {
-    icon: '🎉',
-    bg: 'bg-green-50 dark:bg-green-950/40',
-    titleColor: 'text-green-800 dark:text-green-200',
-    badgeCls: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
-  },
+const HIGHLIGHT_COLOR_CONFIG: Record<string, { bg: string; titleColor: string; badgeCls: string }> = {
+  blue: { bg: 'bg-blue-50 dark:bg-blue-950/40', titleColor: 'text-blue-800 dark:text-blue-200', badgeCls: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' },
+  red: { bg: 'bg-red-50 dark:bg-red-950/40', titleColor: 'text-red-800 dark:text-red-200', badgeCls: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' },
+  orange: { bg: 'bg-orange-50 dark:bg-orange-950/40', titleColor: 'text-orange-800 dark:text-orange-200', badgeCls: 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300' },
+  green: { bg: 'bg-green-50 dark:bg-green-950/40', titleColor: 'text-green-800 dark:text-green-200', badgeCls: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' },
+  purple: { bg: 'bg-purple-50 dark:bg-purple-950/40', titleColor: 'text-purple-800 dark:text-purple-200', badgeCls: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300' },
+  pink: { bg: 'bg-pink-50 dark:bg-pink-950/40', titleColor: 'text-pink-800 dark:text-pink-200', badgeCls: 'bg-pink-100 text-pink-700 dark:bg-pink-900 dark:text-pink-300' },
+  yellow: { bg: 'bg-yellow-50 dark:bg-yellow-950/40', titleColor: 'text-yellow-800 dark:text-yellow-200', badgeCls: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300' },
+  teal: { bg: 'bg-teal-50 dark:bg-teal-950/40', titleColor: 'text-teal-800 dark:text-teal-200', badgeCls: 'bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300' },
+  gray: { bg: 'bg-gray-50 dark:bg-gray-900/40', titleColor: 'text-gray-800 dark:text-gray-200', badgeCls: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' },
 };
 
 function highlightCountdown(startDate: string | null): string {
@@ -944,7 +931,7 @@ export default function FeedPage() {
   const [isMyBirthday, setIsMyBirthday] = useState(false);
 
   // Today's classes
-  interface TodayClass { id: number; course_code: string | null; course_title: string; start_time: string; end_time: string; venue: string | null; lecturer: string | null; }
+  interface TodayClass { id: number; course_code: string | null; course_title: string; start_time: string; end_time: string; venue: string | null; lecturer: string | null; status?: 'holding' | 'cancelled'; }
   const [todayClasses, setTodayClasses] = useState<TodayClass[]>([]);
   const [noTimetableProfile, setNoTimetableProfile] = useState(false);
 
@@ -1989,18 +1976,34 @@ export default function FeedPage() {
                 </p>
               ) : (
                 <div className="flex gap-3 overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none' }}>
-                  {todayClasses.map(cls => (
-                    <div key={cls.id} className="flex min-w-[200px] max-w-[240px] shrink-0 flex-col gap-1.5 rounded-2xl bg-indigo-50 p-3.5 dark:bg-indigo-950/40">
-                      <p className="text-[13px] font-bold text-indigo-800 dark:text-indigo-200 leading-snug">
-                        {cls.course_code && <span className="mr-1">{cls.course_code}</span>}{cls.course_title}
-                      </p>
-                      <p className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
-                        {cls.start_time} – {cls.end_time}
-                      </p>
-                      {cls.venue && <p className="text-[11px] text-indigo-500 dark:text-indigo-400">📍 {cls.venue}</p>}
-                      {cls.lecturer && <p className="text-[11px] text-indigo-500 dark:text-indigo-400">👨‍🏫 {cls.lecturer}</p>}
-                    </div>
-                  ))}
+                  {todayClasses.map(cls => {
+                    const isCancelled = cls.status === 'cancelled';
+                    return (
+                      <div key={cls.id} className={cn(
+                        'flex min-w-[200px] max-w-[240px] shrink-0 flex-col gap-1.5 rounded-2xl p-3.5',
+                        isCancelled ? 'bg-red-50 dark:bg-red-950/30' : 'bg-indigo-50 dark:bg-indigo-950/40'
+                      )}>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className={cn(
+                            'text-[13px] font-bold leading-snug',
+                            isCancelled ? 'text-red-800 line-through dark:text-red-200' : 'text-indigo-800 dark:text-indigo-200'
+                          )}>
+                            {cls.course_code && <span className="mr-1">{cls.course_code}</span>}{cls.course_title}
+                          </p>
+                          {isCancelled && (
+                            <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700 dark:bg-red-900 dark:text-red-300">
+                              Cancelled
+                            </span>
+                          )}
+                        </div>
+                        <p className={cn('text-[11px] font-semibold', isCancelled ? 'text-red-600 dark:text-red-400' : 'text-indigo-600 dark:text-indigo-400')}>
+                          {cls.start_time} – {cls.end_time}
+                        </p>
+                        {cls.venue && <p className={cn('text-[11px]', isCancelled ? 'text-red-500 dark:text-red-400' : 'text-indigo-500 dark:text-indigo-400')}>📍 {cls.venue}</p>}
+                        {cls.lecturer && <p className={cn('text-[11px]', isCancelled ? 'text-red-500 dark:text-red-400' : 'text-indigo-500 dark:text-indigo-400')}>👨‍🏫 {cls.lecturer}</p>}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -2014,7 +2017,7 @@ export default function FeedPage() {
               </p>
               <div className="flex gap-3 overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none' }}>
                 {highlights.map((h) => {
-                  const cfg = HIGHLIGHT_CONFIG[h.type] ?? HIGHLIGHT_CONFIG.announcement;
+                  const cfg = HIGHLIGHT_COLOR_CONFIG[h.color] ?? HIGHLIGHT_COLOR_CONFIG.blue;
                   const countdown = highlightCountdown(h.start_date);
                   return (
                     <div
@@ -2022,7 +2025,7 @@ export default function FeedPage() {
                       className={cn('flex min-w-[200px] max-w-[240px] shrink-0 flex-col gap-1.5 rounded-2xl p-3.5', cfg.bg)}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-xl leading-none">{cfg.icon}</span>
+                        <span className="text-xl leading-none">{h.icon || '📌'}</span>
                         {countdown && (
                           <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold', cfg.badgeCls)}>
                             {countdown}

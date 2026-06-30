@@ -13,10 +13,24 @@ const createTimetableTable = async () => {
       course_title VARCHAR(200) NOT NULL,
       venue VARCHAR(100),
       lecturer VARCHAR(100),
+      status VARCHAR(20) NOT NULL DEFAULT 'holding' CHECK (status IN ('holding', 'cancelled')),
       created_by INTEGER REFERENCES abukonn.users(id) ON DELETE SET NULL,
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  await pool.query(`
+    ALTER TABLE abukonn.timetables ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'holding'
+  `).catch(() => {});
+  await pool.query(`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'timetables_status_check'
+      ) THEN
+        ALTER TABLE abukonn.timetables
+        ADD CONSTRAINT timetables_status_check CHECK (status IN ('holding', 'cancelled'));
+      END IF;
+    END $$;
+  `).catch(() => {});
   await pool.query(`
     CREATE TABLE IF NOT EXISTS abukonn.timetable_uploads (
       id SERIAL PRIMARY KEY,
@@ -106,16 +120,17 @@ const clearTimetable = async (department, level) => {
 const bulkInsert = async (entries, createdBy) => {
   if (!entries.length) return 0;
   const values = entries.map((e, i) => {
-    const base = i * 10;
-    return `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8},$${base + 9},$${base + 10})`;
+    const base = i * 11;
+    return `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8},$${base + 9},$${base + 10},$${base + 11})`;
   }).join(',');
   const params = entries.flatMap(e => [
     e.department, e.level, e.day, e.start_time, e.end_time,
-    e.course_code || null, e.course_title, e.venue || null, e.lecturer || null, createdBy,
+    e.course_code || null, e.course_title, e.venue || null, e.lecturer || null,
+    e.status === 'cancelled' ? 'cancelled' : 'holding', createdBy,
   ]);
   await pool.query(
     `INSERT INTO abukonn.timetables
-     (department, level, day, start_time, end_time, course_code, course_title, venue, lecturer, created_by)
+     (department, level, day, start_time, end_time, course_code, course_title, venue, lecturer, status, created_by)
      VALUES ${values}`,
     params
   );

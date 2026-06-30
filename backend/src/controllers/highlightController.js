@@ -1,6 +1,6 @@
 const { getActiveHighlights, getAllHighlights, createHighlight, updateHighlight, deleteHighlight } = require('../models/Highlight');
 
-const VALID_TYPES = ['announcement', 'exam', 'deadline', 'event'];
+const VALID_COLORS = new Set(['blue', 'red', 'orange', 'green', 'purple', 'pink', 'yellow', 'teal', 'gray']);
 
 async function listHighlights(req, res) {
   try {
@@ -24,13 +24,16 @@ async function adminListHighlights(req, res) {
 
 async function createHighlightHandler(req, res) {
   try {
-    const { title, description, type, start_date, end_date, priority } = req.body;
+    const { title, description, type, icon, color, start_date, end_date, priority } = req.body;
     if (!title?.trim()) return res.status(400).json({ message: 'Title is required' });
-    if (!VALID_TYPES.includes(type)) return res.status(400).json({ message: 'Invalid type' });
+    if (!type?.trim()) return res.status(400).json({ message: 'Type/category is required' });
+    if (color && !VALID_COLORS.has(color)) return res.status(400).json({ message: 'Invalid color' });
     const highlight = await createHighlight({
       title: title.trim(),
       description: description?.trim() || null,
-      type,
+      type: type.trim().toLowerCase(),
+      icon: icon?.trim() || '📌',
+      color: color || 'blue',
       startDate: start_date || null,
       endDate: end_date || null,
       priority: parseInt(priority) || 0,
@@ -46,14 +49,16 @@ async function createHighlightHandler(req, res) {
 async function updateHighlightHandler(req, res) {
   try {
     const id = parseInt(req.params.id, 10);
-    const { title, description, type, start_date, end_date, priority, is_active } = req.body;
-    if (type !== undefined && !VALID_TYPES.includes(type)) {
-      return res.status(400).json({ message: 'Invalid type' });
+    const { title, description, type, icon, color, start_date, end_date, priority, is_active } = req.body;
+    if (color !== undefined && color !== null && !VALID_COLORS.has(color)) {
+      return res.status(400).json({ message: 'Invalid color' });
     }
     const highlight = await updateHighlight(id, {
       title: title?.trim(),
       description: description?.trim(),
-      type,
+      type: type?.trim().toLowerCase(),
+      icon: icon?.trim(),
+      color,
       startDate: start_date,
       endDate: end_date,
       priority: priority !== undefined ? parseInt(priority) : undefined,

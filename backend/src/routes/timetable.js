@@ -5,7 +5,7 @@ const uploadAny = require('../middleware/uploadAny');
 const {
   getTodayClasses, getWeekClasses, getTimetableByDeptLevel,
   uploadTimetable, deleteTimetable, getUploads, previewCSV,
-  updateClass, addClass, deleteClass,
+  updateClass, addClass, deleteClass, setClassStatus,
 } = require('../controllers/timetableController');
 
 const router = express.Router();
@@ -23,6 +23,7 @@ router.delete('/admin/:department/:level', adminAuth, deleteTimetable);
 // Individual class CRUD (admin)
 router.post('/admin/class', adminAuth, addClass);
 router.put('/admin/class/:id', adminAuth, updateClass);
+router.patch('/admin/class/:id/status', adminAuth, setClassStatus);
 router.delete('/admin/class/:id', adminAuth, deleteClass);
 
 // Dynamic route LAST

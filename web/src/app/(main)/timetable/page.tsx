@@ -25,6 +25,7 @@ interface TimetableClass {
   course_title: string;
   venue: string | null;
   lecturer: string | null;
+  status: 'holding' | 'cancelled';
 }
 
 export default function TimetablePage() {
@@ -116,29 +117,50 @@ export default function TimetablePage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {dayClasses.map(cls => (
-                <div key={cls.id}
-                  className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-900/40 dark:bg-indigo-950/30">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-bold text-[15px] text-indigo-900 dark:text-indigo-100 leading-snug">
-                        {cls.course_code && <span className="mr-1.5">{cls.course_code}</span>}
-                        {cls.course_title}
-                      </p>
-                      {cls.venue && (
-                        <p className="mt-1 text-[13px] text-indigo-600 dark:text-indigo-400">📍 {cls.venue}</p>
-                      )}
-                      {cls.lecturer && (
-                        <p className="text-[13px] text-indigo-600 dark:text-indigo-400">👨‍🏫 {cls.lecturer}</p>
-                      )}
-                    </div>
-                    <div className="shrink-0 rounded-xl bg-indigo-100 dark:bg-indigo-900/50 px-3 py-1.5 text-center">
-                      <p className="text-[12px] font-bold text-indigo-700 dark:text-indigo-300">{cls.start_time}</p>
-                      <p className="text-[10px] text-indigo-500">to {cls.end_time}</p>
+              {dayClasses.map(cls => {
+                const isCancelled = cls.status === 'cancelled';
+                return (
+                  <div key={cls.id}
+                    className={cn(
+                      'rounded-2xl border p-4',
+                      isCancelled
+                        ? 'border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-950/20'
+                        : 'border-indigo-200 bg-indigo-50 dark:border-indigo-900/40 dark:bg-indigo-950/30'
+                    )}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className={cn(
+                            'font-bold text-[15px] leading-snug',
+                            isCancelled ? 'text-red-900 line-through dark:text-red-200' : 'text-indigo-900 dark:text-indigo-100'
+                          )}>
+                            {cls.course_code && <span className="mr-1.5">{cls.course_code}</span>}
+                            {cls.course_title}
+                          </p>
+                          {isCancelled && (
+                            <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700 dark:bg-red-900 dark:text-red-300">
+                              Cancelled
+                            </span>
+                          )}
+                        </div>
+                        {cls.venue && (
+                          <p className={cn('mt-1 text-[13px]', isCancelled ? 'text-red-600 dark:text-red-400' : 'text-indigo-600 dark:text-indigo-400')}>📍 {cls.venue}</p>
+                        )}
+                        {cls.lecturer && (
+                          <p className={cn('text-[13px]', isCancelled ? 'text-red-600 dark:text-red-400' : 'text-indigo-600 dark:text-indigo-400')}>👨‍🏫 {cls.lecturer}</p>
+                        )}
+                      </div>
+                      <div className={cn(
+                        'shrink-0 rounded-xl px-3 py-1.5 text-center',
+                        isCancelled ? 'bg-red-100 dark:bg-red-900/50' : 'bg-indigo-100 dark:bg-indigo-900/50'
+                      )}>
+                        <p className={cn('text-[12px] font-bold', isCancelled ? 'text-red-700 dark:text-red-300' : 'text-indigo-700 dark:text-indigo-300')}>{cls.start_time}</p>
+                        <p className={cn('text-[10px]', isCancelled ? 'text-red-500' : 'text-indigo-500')}>to {cls.end_time}</p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </>

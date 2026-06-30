@@ -3,32 +3,40 @@
 import { useEffect, useState, FormEvent } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Input, Select, Skeleton } from '@/components/ui';
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Input, Skeleton } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
-const TYPES = ['announcement', 'exam', 'deadline', 'event'] as const;
-type HighlightType = (typeof TYPES)[number];
+const COLORS = ['blue', 'red', 'orange', 'green', 'purple', 'pink', 'yellow', 'teal', 'gray'] as const;
+type HighlightColor = (typeof COLORS)[number];
 
-const TYPE_LABELS: Record<HighlightType, string> = {
-  announcement: '📢 Announcement',
-  exam: '📝 Exam',
-  deadline: '⏰ Deadline',
-  event: '🎉 Event',
+const COLOR_SWATCH: Record<HighlightColor, string> = {
+  blue: 'bg-blue-500', red: 'bg-red-500', orange: 'bg-orange-500',
+  green: 'bg-green-500', purple: 'bg-purple-500', pink: 'bg-pink-500',
+  yellow: 'bg-yellow-500', teal: 'bg-teal-500', gray: 'bg-gray-500',
 };
 
-const TYPE_BADGE: Record<HighlightType, string> = {
-  announcement: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
-  exam: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
-  deadline: 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300',
-  event: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
+const COLOR_BADGE: Record<HighlightColor, string> = {
+  blue: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
+  red: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
+  orange: 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300',
+  green: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
+  purple: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
+  pink: 'bg-pink-100 text-pink-700 dark:bg-pink-900 dark:text-pink-300',
+  yellow: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300',
+  teal: 'bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300',
+  gray: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
 };
+
+const SUGGESTED_ICONS = ['📢', '📝', '⏰', '🎉', '📌', '🏆', '🔔', '📅', '⚠️', '💡', '🎓', '🩺'];
 
 interface Highlight {
   id: number;
   title: string;
   description: string | null;
-  type: HighlightType;
+  type: string;
+  icon: string;
+  color: HighlightColor;
   start_date: string | null;
   end_date: string | null;
   priority: number;
@@ -40,7 +48,9 @@ interface Highlight {
 interface FormState {
   title: string;
   description: string;
-  type: HighlightType | '';
+  type: string;
+  icon: string;
+  color: HighlightColor;
   start_date: string;
   end_date: string;
   priority: string;
@@ -50,6 +60,8 @@ const EMPTY_FORM: FormState = {
   title: '',
   description: '',
   type: '',
+  icon: '📌',
+  color: 'blue',
   start_date: '',
   end_date: '',
   priority: '0',
@@ -119,6 +131,8 @@ export default function AdminHighlightsPage() {
       title: h.title,
       description: h.description || '',
       type: h.type,
+      icon: h.icon || '📌',
+      color: h.color || 'blue',
       start_date: toInputDate(h.start_date),
       end_date: toInputDate(h.end_date),
       priority: String(h.priority),
@@ -138,14 +152,16 @@ export default function AdminHighlightsPage() {
     e.preventDefault();
     if (!token) return;
     if (!form.title.trim()) { setFormError('Title is required'); return; }
-    if (!form.type) { setFormError('Type is required'); return; }
+    if (!form.type.trim()) { setFormError('Category is required'); return; }
     setSubmitting(true);
     setFormError('');
     try {
       const body = {
         title: form.title.trim(),
         description: form.description.trim() || null,
-        type: form.type,
+        type: form.type.trim(),
+        icon: form.icon.trim() || '📌',
+        color: form.color,
         start_date: form.start_date || null,
         end_date: form.end_date || null,
         priority: parseInt(form.priority) || 0,
@@ -270,17 +286,65 @@ export default function AdminHighlightsPage() {
                 />
               </div>
 
-              <Select
-                label="Type"
+              <Input
+                label="Category"
                 value={form.type}
-                onChange={(e) => setForm({ ...form, type: e.target.value as HighlightType | '' })}
+                onChange={(e) => setForm({ ...form, type: e.target.value })}
+                placeholder="e.g. announcement, exam, sports, scholarship..."
                 required
-              >
-                <option value="">Select type</option>
-                {TYPES.map((t) => (
-                  <option key={t} value={t}>{TYPE_LABELS[t]}</option>
-                ))}
-              </Select>
+              />
+              <p className="-mt-2.5 text-caption text-ink-muted">
+                Any label works — categories aren&apos;t limited to a fixed list.
+              </p>
+
+              <div>
+                <label className="mb-1.5 block text-label text-ink-secondary">Icon</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={form.icon}
+                    onChange={(e) => setForm({ ...form, icon: e.target.value })}
+                    maxLength={4}
+                    className={cn(
+                      'w-16 rounded-xl border border-border bg-white px-3 py-2.5 text-center text-xl dark:bg-[#0a0a0a]',
+                      'focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20'
+                    )}
+                  />
+                  <div className="flex flex-wrap gap-1.5">
+                    {SUGGESTED_ICONS.map((ic) => (
+                      <button
+                        key={ic}
+                        type="button"
+                        onClick={() => setForm({ ...form, icon: ic })}
+                        className={cn(
+                          'flex h-8 w-8 items-center justify-center rounded-lg border text-base transition',
+                          form.icon === ic ? 'border-brand-500 bg-brand-50 dark:bg-brand-950/30' : 'border-border hover:border-brand-300'
+                        )}
+                      >
+                        {ic}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-label text-ink-secondary">Color</label>
+                <div className="flex flex-wrap gap-2">
+                  {COLORS.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setForm({ ...form, color: c })}
+                      title={c}
+                      className={cn(
+                        'h-8 w-8 rounded-full transition ring-offset-2 ring-offset-white dark:ring-offset-[#0a0a0a]',
+                        COLOR_SWATCH[c],
+                        form.color === c ? 'ring-2 ring-ink' : ''
+                      )}
+                    />
+                  ))}
+                </div>
+              </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -356,11 +420,11 @@ export default function AdminHighlightsPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <span
                         className={cn(
-                          'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
-                          TYPE_BADGE[h.type]
+                          'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold capitalize',
+                          COLOR_BADGE[h.color] || COLOR_BADGE.blue
                         )}
                       >
-                        {TYPE_LABELS[h.type]}
+                        {h.icon} {h.type}
                       </span>
                       {!h.is_active && (
                         <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500 dark:bg-gray-800 dark:text-gray-400">

@@ -6,7 +6,9 @@ const createHighlightsTable = async () => {
       id SERIAL PRIMARY KEY,
       title VARCHAR(200) NOT NULL,
       description TEXT,
-      type VARCHAR(20) NOT NULL CHECK (type IN ('announcement', 'exam', 'deadline', 'event')),
+      type VARCHAR(30) NOT NULL DEFAULT 'announcement',
+      icon VARCHAR(10) NOT NULL DEFAULT '📌',
+      color VARCHAR(20) NOT NULL DEFAULT 'blue',
       start_date TIMESTAMP WITH TIME ZONE,
       end_date TIMESTAMP WITH TIME ZONE,
       priority INTEGER DEFAULT 0,
@@ -15,6 +17,37 @@ const createHighlightsTable = async () => {
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Migrate older deployments: drop the old hardcoded type CHECK constraint
+  // and widen the column, then backfill icon/color for existing rows.
+  await pool.query(`
+    DO $$
+    DECLARE c RECORD;
+    BEGIN
+      FOR c IN
+        SELECT conname FROM pg_constraint
+        WHERE conrelid = 'abukonn.highlights'::regclass
+        AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%type%IN%'
+      LOOP
+        EXECUTE format('ALTER TABLE abukonn.highlights DROP CONSTRAINT %I', c.conname);
+      END LOOP;
+    END $$;
+  `).catch(() => {});
+  await pool.query(`ALTER TABLE abukonn.highlights ALTER COLUMN type TYPE VARCHAR(30)`).catch(() => {});
+  await pool.query(`ALTER TABLE abukonn.highlights ADD COLUMN IF NOT EXISTS icon VARCHAR(10) NOT NULL DEFAULT '📌'`).catch(() => {});
+  await pool.query(`ALTER TABLE abukonn.highlights ADD COLUMN IF NOT EXISTS color VARCHAR(20) NOT NULL DEFAULT 'blue'`).catch(() => {});
+  await pool.query(`
+    UPDATE abukonn.highlights SET icon = CASE type
+      WHEN 'announcement' THEN '📢' WHEN 'exam' THEN '📝'
+      WHEN 'deadline' THEN '⏰' WHEN 'event' THEN '🎉' ELSE icon END
+    WHERE icon = '📌'
+  `).catch(() => {});
+  await pool.query(`
+    UPDATE abukonn.highlights SET color = CASE type
+      WHEN 'announcement' THEN 'blue' WHEN 'exam' THEN 'red'
+      WHEN 'deadline' THEN 'orange' WHEN 'event' THEN 'green' ELSE color END
+    WHERE color = 'blue' AND type NOT IN ('announcement')
+  `).catch(() => {});
 };
 
 const getActiveHighlights = async () => {
@@ -39,18 +72,18 @@ const getAllHighlights = async () => {
   return result.rows;
 };
 
-const createHighlight = async ({ title, description, type, startDate, endDate, priority, createdBy }) => {
+const createHighlight = async ({ title, description, type, icon, color, startDate, endDate, priority, createdBy }) => {
   const result = await pool.query(
-    `INSERT INTO abukonn.highlights (title, description, type, start_date, end_date, priority, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-    [title, description || null, type, startDate || null, endDate || null, priority || 0, createdBy]
+    `INSERT INTO abukonn.highlights (title, description, type, icon, color, start_date, end_date, priority, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+    [title, description || null, type, icon || '📌', color || 'blue', startDate || null, endDate || null, priority || 0, createdBy]
   );
   return result.rows[0];
 };
 
 const updateHighlight = async (id, fields) => {
-  const cols = ['title', 'description', 'type', 'start_date', 'end_date', 'priority', 'is_active'];
-  const keys = ['title', 'description', 'type', 'startDate', 'endDate', 'priority', 'isActive'];
+  const cols = ['title', 'description', 'type', 'icon', 'color', 'start_date', 'end_date', 'priority', 'is_active'];
+  const keys = ['title', 'description', 'type', 'icon', 'color', 'startDate', 'endDate', 'priority', 'isActive'];
   const setClauses = [];
   const values = [];
   let idx = 1;
