@@ -1,6 +1,7 @@
 const express = require('express');
 const auth = require('../middleware/auth');
 const upload = require('../middleware/upload');
+const { verifyFileSignature } = require('../middleware/verifyFileSignature');
 const {
   createPost,
   getFeed,
@@ -23,7 +24,7 @@ const router = express.Router();
 router.use(auth);
 
 router.get('/', getFeed);
-router.post('/', upload.single('image'), createPost);
+router.post('/', upload.single('image'), verifyFileSignature, createPost);
 router.get('/:id', getSinglePost);
 router.post('/:id/like', likePost);
 router.get('/:id/comments', getComments);

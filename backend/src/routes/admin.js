@@ -2,6 +2,7 @@ const express = require('express');
 const adminAuth = require('../middleware/adminAuth');
 const upload = require('../middleware/upload');
 const uploadAny = require('../middleware/uploadAny');
+const { verifyFileSignature } = require('../middleware/verifyFileSignature');
 const {
   getStats,
   getUsers,
@@ -34,8 +35,8 @@ router.patch('/users/:id/role', setUserRole);
 
 // News
 router.get('/news', adminGetAllNews);
-router.post('/news', upload.single('image'), adminCreateNews);
-router.put('/news/:id', upload.single('image'), adminUpdateNews);
+router.post('/news', upload.single('image'), verifyFileSignature, adminCreateNews);
+router.put('/news/:id', upload.single('image'), verifyFileSignature, adminUpdateNews);
 router.delete('/news/:id', adminDeleteNews);
 
 // Whitelist

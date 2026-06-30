@@ -1,6 +1,7 @@
 const express = require('express');
 const auth = require('../middleware/auth');
 const upload = require('../middleware/upload');
+const { verifyFileSignature } = require('../middleware/verifyFileSignature');
 const {
   getSettings,
   updateSettings,
@@ -19,7 +20,7 @@ router.patch('/', updateSettings);
 router.patch('/password', changePassword);
 router.patch('/email', changeEmail);
 router.patch('/profile', updateProfile);
-router.post('/photo', upload.single('photo'), uploadPhoto);
+router.post('/photo', upload.single('photo'), verifyFileSignature, uploadPhoto);
 router.post('/deactivate', deactivateAccount);
 router.delete('/account', deleteAccount);
 

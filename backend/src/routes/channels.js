@@ -2,6 +2,7 @@ const express = require('express');
 const auth = require('../middleware/auth');
 const adminAuth = require('../middleware/adminAuth');
 const upload = require('../middleware/upload');
+const { verifyFileSignature } = require('../middleware/verifyFileSignature');
 const {
   listChannels, listMyChannels, getChannel, createUserChannel,
   joinChannel, leaveChannel, getChannelPosts, postToChannel,
@@ -24,6 +25,6 @@ router.get('/:slug', getChannel);
 router.post('/:id/join', joinChannel);
 router.delete('/:id/leave', leaveChannel);
 router.get('/:id/posts', getChannelPosts);
-router.post('/:id/posts', upload.single('image'), postToChannel);
+router.post('/:id/posts', upload.single('image'), verifyFileSignature, postToChannel);
 
 module.exports = router;

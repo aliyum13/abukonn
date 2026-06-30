@@ -1,6 +1,7 @@
 const express = require('express');
 const auth = require('../middleware/auth');
 const upload = require('../middleware/upload');
+const { verifyFileSignature } = require('../middleware/verifyFileSignature');
 const {
   getConversations,
   getMessages,
@@ -19,7 +20,7 @@ router.use(auth);
 router.get('/conversations', getConversations);
 router.get('/unread-count', getUnreadCountHandler);
 router.post('/start', startConversation);
-router.post('/upload-image', upload.single('image'), uploadMessageImage);
+router.post('/upload-image', upload.single('image'), verifyFileSignature, uploadMessageImage);
 router.delete('/:id', deleteMessageHandler);
 router.get('/:conversationId', getMessages);
 router.post('/', sendMessageHandler);
