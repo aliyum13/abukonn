@@ -51,9 +51,17 @@ const channelRoutes = require('./routes/channels');
 const app = express();
 const server = http.createServer(app);
 
-const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:3001')
+// Known-good production origins are always allowed, regardless of whether
+// CLIENT_URL is set correctly on the host — this is what abukonn.com
+// actually is, so it should never depend on an env var being configured
+// right to keep working. CLIENT_URL can still add extra origins
+// (staging, www, etc.) on top of these via a comma-separated list.
+const PRODUCTION_ORIGINS = ['https://abukonn.com', 'https://www.abukonn.com'];
+const envOrigins = (process.env.CLIENT_URL || 'http://localhost:3001')
   .split(',')
-  .map(o => o.trim());
+  .map(o => o.trim())
+  .filter(Boolean);
+const allowedOrigins = [...new Set([...PRODUCTION_ORIGINS, ...envOrigins])];
 
 const io = new Server(server, {
   cors: {
