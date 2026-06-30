@@ -121,6 +121,21 @@ function parseStoryReply(content: string): StoryReplyData | null {
   return null;
 }
 
+interface MessageReplyData {
+  type: 'message_reply';
+  quoted_sender: string;
+  quoted_text: string;
+  reply: string;
+}
+
+function parseMessageReply(content: string): MessageReplyData | null {
+  try {
+    const data = JSON.parse(content);
+    if (data?.type === 'message_reply') return data as MessageReplyData;
+  } catch { /* not JSON */ }
+  return null;
+}
+
 /** Returns a friendly preview string for the conversation list. */
 function friendlyPreview(content: string | null): string {
   if (!content) return 'No messages yet';
@@ -128,6 +143,8 @@ function friendlyPreview(content: string | null): string {
   if (shared) return `📌 Shared a post`;
   const storyReply = parseStoryReply(content);
   if (storyReply) return `↩ ${storyReply.reply}`;
+  const messageReply = parseMessageReply(content);
+  if (messageReply) return `↩ ${messageReply.reply}`;
   return content;
 }
 
@@ -203,6 +220,81 @@ function StoryReplyCard({ data, isSent }: { data: StoryReplyData; isSent: boolea
             {data.reply}
           </p>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function MessageReplyCard({ data, isSent }: { data: MessageReplyData; isSent: boolean }) {
+  return (
+    <div className="w-full">
+      <div className={cn(
+        'mb-1.5 rounded-lg border-l-2 px-2.5 py-1.5',
+        isSent ? 'border-white/60 bg-white/10' : 'border-brand-500 bg-surface-muted dark:bg-[#222]'
+      )}>
+        <p className={cn('text-[11px] font-semibold', isSent ? 'text-brand-100' : 'text-brand-600')}>{data.quoted_sender}</p>
+        <p className={cn('line-clamp-2 text-[12px]', isSent ? 'text-white/80' : 'text-ink-muted')}>{data.quoted_text}</p>
+      </div>
+      {data.reply && <p className="whitespace-pre-wrap break-words">{data.reply}</p>}
+    </div>
+  );
+}
+
+// ── Swipe-to-reply ───────────────────────────────────────────────────────────
+
+const SWIPE_TRIGGER_PX = 46;
+const SWIPE_MAX_PX = 68;
+
+function SwipeRow({ onReply, disabled, children }: { onReply: () => void; disabled?: boolean; children: React.ReactNode }) {
+  const [dx, setDx] = useState(0);
+  const startRef = useRef<{ x: number; y: number; dir: 'h' | 'v' | null } | null>(null);
+  const triggeredRef = useRef(false);
+
+  if (disabled) return <>{children}</>;
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    startRef.current = { x: t.clientX, y: t.clientY, dir: null };
+    triggeredRef.current = false;
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (!startRef.current) return;
+    const t = e.touches[0];
+    const deltaX = t.clientX - startRef.current.x;
+    const deltaY = t.clientY - startRef.current.y;
+    if (startRef.current.dir === null && (Math.abs(deltaX) > 6 || Math.abs(deltaY) > 6)) {
+      startRef.current.dir = Math.abs(deltaX) > Math.abs(deltaY) ? 'h' : 'v';
+    }
+    if (startRef.current.dir !== 'h') return;
+    if (e.cancelable) e.preventDefault();
+    const clamped = Math.max(0, Math.min(deltaX, SWIPE_MAX_PX));
+    setDx(clamped);
+    if (clamped > SWIPE_TRIGGER_PX && !triggeredRef.current) {
+      triggeredRef.current = true;
+      if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(8);
+    }
+  };
+
+  const onTouchEnd = () => {
+    if (triggeredRef.current) onReply();
+    setDx(0);
+    startRef.current = null;
+    triggeredRef.current = false;
+  };
+
+  return (
+    <div className="relative" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
+      <div
+        className="pointer-events-none absolute left-0 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-brand-100 text-brand-700 transition-opacity dark:bg-brand-950 dark:text-brand-400"
+        style={{ opacity: Math.min(dx / SWIPE_TRIGGER_PX, 1) }}
+      >
+        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 016 6v2" />
+        </svg>
+      </div>
+      <div style={{ transform: `translateX(${dx}px)`, transition: dx === 0 ? 'transform 0.2s ease' : 'none' }}>
+        {children}
       </div>
     </div>
   );
@@ -563,6 +655,7 @@ export default function MessagesPage() {
     setActiveGroupId(null);
     setMobileShowChat(true);
     setTypingText('');
+    setReplyTo(null);
     setTimeout(() => textareaRef.current?.focus(), 100);
   };
 
@@ -571,6 +664,7 @@ export default function MessagesPage() {
     setActiveId(null);
     setMobileShowChat(true);
     setTypingText('');
+    setReplyTo(null);
     setTimeout(() => textareaRef.current?.focus(), 100);
   };
 
@@ -609,11 +703,17 @@ export default function MessagesPage() {
 
     const capturedText = text;
     const capturedImage = msgImage;
+    const capturedReply = replyTo;
     setNewMessage('');
     setMsgImage(null);
     setMsgImagePreview(null);
+    setReplyTo(null);
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
     setSending(true);
+
+    const outgoingContent = capturedReply
+      ? JSON.stringify({ type: 'message_reply', quoted_sender: capturedReply.senderName, quoted_text: capturedReply.preview, reply: capturedText })
+      : capturedText;
 
     try {
       // Upload image if present
@@ -637,7 +737,7 @@ export default function MessagesPage() {
         const res = await fetch(`${API_URL}/api/messages`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ conversation_id: activeId, content: capturedText, image_url: imageUrl }),
+          body: JSON.stringify({ conversation_id: activeId, content: outgoingContent, image_url: imageUrl }),
         });
         if (!res.ok) throw new Error('Failed');
         const data = await res.json();
@@ -650,7 +750,7 @@ export default function MessagesPage() {
         const res = await fetch(`${API_URL}/api/groups/${activeGroupId}/messages`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ content: capturedText }),
+          body: JSON.stringify({ content: outgoingContent }),
         });
         if (!res.ok) throw new Error('Failed');
         const data = await res.json();
@@ -662,6 +762,7 @@ export default function MessagesPage() {
     } catch {
       if (capturedText) setNewMessage(capturedText);
       if (capturedImage) { setMsgImage(capturedImage); setMsgImagePreview(msgImagePreview); }
+      if (capturedReply) setReplyTo(capturedReply);
     } finally {
       setSending(false);
     }
@@ -674,6 +775,15 @@ export default function MessagesPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; kind: 'dm' | 'group' } | null>(null);
   const [openMsgMenuId, setOpenMsgMenuId] = useState<number | null>(null);
   const [deletingMsg, setDeletingMsg] = useState(false);
+  const [replyTo, setReplyTo] = useState<{ id: number; senderName: string; preview: string } | null>(null);
+
+  const triggerReply = (msg: ChatMessage | GroupMessage, senderName: string) => {
+    const preview = msg.content
+      ? friendlyPreview(msg.content)
+      : ('image_url' in msg && msg.image_url) ? '📷 Photo' : '';
+    setReplyTo({ id: msg.id, senderName, preview });
+    setTimeout(() => textareaRef.current?.focus(), 50);
+  };
 
   useEffect(() => {
     if (openMsgMenuId === null) return;
@@ -908,7 +1018,8 @@ export default function MessagesPage() {
                         const showAvatar = !isSent && (idx === 0 || prevMsg?.sender_id !== msg.sender_id);
                         const isDeleted = !!msg.is_deleted;
                         return (
-                          <div key={msg.id} className={cn('group/msg flex items-end gap-2', isSent ? 'justify-end' : 'justify-start')}>
+                          <SwipeRow key={msg.id} disabled={isDeleted} onReply={() => triggerReply(msg, isSent ? 'You' : activeConversation.other_user_name)}>
+                          <div className={cn('group/msg flex items-end gap-2', isSent ? 'justify-end' : 'justify-start')}>
                             {!isSent && <div className="w-7 shrink-0">{showAvatar && <Avatar src={activeConversation.other_user_photo} name={activeConversation.other_user_name} size="sm" className="h-7 w-7" />}</div>}
                             {isSent && !isDeleted && (
                               <div className="relative shrink-0 self-center">
@@ -922,6 +1033,13 @@ export default function MessagesPage() {
                                 </button>
                                 {openMsgMenuId === msg.id && (
                                   <div onClick={(e) => e.stopPropagation()} className="absolute bottom-full right-0 z-20 mb-1 w-32 rounded-xl border border-border bg-white py-1 shadow-lg dark:bg-[#1a1a1a] dark:border-[#333]">
+                                    <button
+                                      type="button"
+                                      onClick={() => { setOpenMsgMenuId(null); triggerReply(msg, isSent ? 'You' : activeConversation.other_user_name); }}
+                                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-caption font-medium text-ink hover:bg-surface-muted dark:hover:bg-[#222]"
+                                    >
+                                      Reply
+                                    </button>
                                     <button
                                       type="button"
                                       onClick={() => { setOpenMsgMenuId(null); setDeleteTarget({ id: msg.id, kind: 'dm' }); }}
@@ -949,6 +1067,7 @@ export default function MessagesPage() {
                               }
                               const shared = parseSharedPost(msg.content);
                               const storyReply = !shared ? parseStoryReply(msg.content) : null;
+                              const messageReply = !shared && !storyReply ? parseMessageReply(msg.content) : null;
                               const isCard = shared || storyReply;
                               return (
                                 <div className={cn(
@@ -960,6 +1079,8 @@ export default function MessagesPage() {
                                     ? <SharedPostCard data={shared} isSent={isSent} />
                                     : storyReply
                                     ? <StoryReplyCard data={storyReply} isSent={isSent} />
+                                    : messageReply
+                                    ? <MessageReplyCard data={messageReply} isSent={isSent} />
                                     : <>
                                         {msg.image_url && (
                                           <a href={msg.image_url} target="_blank" rel="noopener noreferrer" className="mb-1.5 block">
@@ -977,6 +1098,7 @@ export default function MessagesPage() {
                               );
                             })()}
                           </div>
+                          </SwipeRow>
                         );
                       })}
                       {typingText && (
@@ -994,6 +1116,19 @@ export default function MessagesPage() {
                 </div>
 
                 <div className="border-t border-border">
+                  {replyTo && (
+                    <div className="flex items-center justify-between gap-2 border-b border-border bg-surface-muted/60 px-4 py-2 dark:border-[#222] dark:bg-[#161616]">
+                      <div className="flex min-w-0 items-center gap-2 border-l-2 border-brand-500 pl-2.5">
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-semibold text-brand-600">Replying to {replyTo.senderName}</p>
+                          <p className="truncate text-caption text-ink-muted">{replyTo.preview}</p>
+                        </div>
+                      </div>
+                      <button type="button" onClick={() => setReplyTo(null)} className="shrink-0 rounded-full p-1 text-ink-muted hover:bg-surface-muted dark:hover:bg-[#222]" aria-label="Cancel reply">
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                  )}
                   {msgImagePreview && (
                     <div className="relative mx-4 mt-3 w-24">
                       <img src={msgImagePreview} alt="Preview" className="h-20 w-24 rounded-xl object-cover" />
@@ -1060,7 +1195,8 @@ export default function MessagesPage() {
                         const showSenderInfo = !isSent && (idx === 0 || prevMsg?.sender_id !== msg.sender_id);
                         const isDeleted = !!msg.is_deleted;
                         return (
-                          <div key={msg.id} className={cn('group/msg flex items-end gap-2', isSent ? 'justify-end' : 'justify-start')}>
+                          <SwipeRow key={msg.id} disabled={isDeleted} onReply={() => triggerReply(msg, isSent ? 'You' : msg.sender_name)}>
+                          <div className={cn('group/msg flex items-end gap-2', isSent ? 'justify-end' : 'justify-start')}>
                             {!isSent && (
                               <div className="w-7 shrink-0">
                                 {showSenderInfo && <Avatar src={msg.sender_photo} name={msg.sender_name} size="sm" className="h-7 w-7" />}
@@ -1078,6 +1214,13 @@ export default function MessagesPage() {
                                 </button>
                                 {openMsgMenuId === msg.id && (
                                   <div onClick={(e) => e.stopPropagation()} className="absolute bottom-full right-0 z-20 mb-1 w-32 rounded-xl border border-border bg-white py-1 shadow-lg dark:bg-[#1a1a1a] dark:border-[#333]">
+                                    <button
+                                      type="button"
+                                      onClick={() => { setOpenMsgMenuId(null); triggerReply(msg, isSent ? 'You' : msg.sender_name); }}
+                                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-caption font-medium text-ink hover:bg-surface-muted dark:hover:bg-[#222]"
+                                    >
+                                      Reply
+                                    </button>
                                     <button
                                       type="button"
                                       onClick={() => { setOpenMsgMenuId(null); setDeleteTarget({ id: msg.id, kind: 'group' }); }}
@@ -1107,6 +1250,7 @@ export default function MessagesPage() {
                                 }
                                 const shared = parseSharedPost(msg.content);
                                 const storyReply = !shared ? parseStoryReply(msg.content) : null;
+                                const messageReply = !shared && !storyReply ? parseMessageReply(msg.content) : null;
                                 const isCard = shared || storyReply;
                                 return (
                                   <div className={cn(
@@ -1118,6 +1262,8 @@ export default function MessagesPage() {
                                       ? <SharedPostCard data={shared} isSent={isSent} />
                                       : storyReply
                                       ? <StoryReplyCard data={storyReply} isSent={isSent} />
+                                      : messageReply
+                                      ? <MessageReplyCard data={messageReply} isSent={isSent} />
                                       : <p className="whitespace-pre-wrap break-words">{msg.content}</p>
                                     }
                                     <p className={cn('mt-1 text-caption', isSent ? 'text-brand-200 text-right' : 'text-ink-muted')}>{formatTime(msg.created_at)}</p>
@@ -1126,6 +1272,7 @@ export default function MessagesPage() {
                               })()}
                             </div>
                           </div>
+                          </SwipeRow>
                         );
                       })}
                     </div>
@@ -1133,6 +1280,19 @@ export default function MessagesPage() {
                   <div ref={messagesEndRef} />
                 </div>
 
+                {replyTo && (
+                  <div className="flex items-center justify-between gap-2 border-t border-border bg-surface-muted/60 px-4 py-2 dark:border-[#222] dark:bg-[#161616]">
+                    <div className="flex min-w-0 items-center gap-2 border-l-2 border-brand-500 pl-2.5">
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-semibold text-brand-600">Replying to {replyTo.senderName}</p>
+                        <p className="truncate text-caption text-ink-muted">{replyTo.preview}</p>
+                      </div>
+                    </div>
+                    <button type="button" onClick={() => setReplyTo(null)} className="shrink-0 rounded-full p-1 text-ink-muted hover:bg-surface-muted dark:hover:bg-[#222]" aria-label="Cancel reply">
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </div>
+                )}
                 <form onSubmit={handleSend} className="flex items-end gap-2 border-t border-border p-4">
                   <textarea ref={textareaRef} value={newMessage} onChange={handleTypingChange} onKeyDown={handleKeyDown}
                     placeholder="Message group… (Enter to send)" rows={1} disabled={sending}
