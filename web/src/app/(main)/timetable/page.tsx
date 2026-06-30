@@ -137,11 +137,14 @@ export default function TimetablePage() {
                             {cls.course_code && <span className="mr-1.5">{cls.course_code}</span>}
                             {cls.course_title}
                           </p>
-                          {isCancelled && (
-                            <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700 dark:bg-red-900 dark:text-red-300">
-                              Cancelled
-                            </span>
-                          )}
+                          <span className={cn(
+                            'rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                            isCancelled
+                              ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
+                              : 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                          )}>
+                            {isCancelled ? 'Cancelled' : 'Holding'}
+                          </span>
                         </div>
                         {cls.venue && (
                           <p className={cn('mt-1 text-[13px]', isCancelled ? 'text-red-600 dark:text-red-400' : 'text-indigo-600 dark:text-indigo-400')}>📍 {cls.venue}</p>
