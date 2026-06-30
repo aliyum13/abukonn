@@ -1056,7 +1056,7 @@ export default function MessagesPage() {
                     const isActive = activeId === conv.id;
                     return (
                       <button key={`dm-${conv.id}`} type="button" onClick={() => selectDM(conv.id)}
-                        className={cn('flex w-full items-center gap-3 px-4 py-3 text-left transition', isActive ? 'border-r-2 border-brand-600 bg-brand-50' : 'hover:bg-surface-muted')}>
+                        className={cn('flex w-full items-center gap-3 px-4 py-3 text-left transition', isActive ? 'border-r-2 border-brand-600 bg-brand-50 dark:bg-brand-950/40' : 'hover:bg-surface-muted dark:hover:bg-[#1a1a1a]')}>
                         <div className="relative shrink-0">
                           <Avatar src={conv.other_user_photo} name={conv.other_user_name || 'User'} size="md" />
                           {onlineUsers.has(conv.other_user_id) && (
@@ -1080,7 +1080,7 @@ export default function MessagesPage() {
                     const isActive = activeGroupId === grp.id;
                     return (
                       <button key={`group-${grp.id}`} type="button" onClick={() => selectGroup(grp.id)}
-                        className={cn('flex w-full items-center gap-3 px-4 py-3 text-left transition', isActive ? 'border-r-2 border-brand-600 bg-brand-50' : 'hover:bg-surface-muted')}>
+                        className={cn('flex w-full items-center gap-3 px-4 py-3 text-left transition', isActive ? 'border-r-2 border-brand-600 bg-brand-50 dark:bg-brand-950/40' : 'hover:bg-surface-muted dark:hover:bg-[#1a1a1a]')}>
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-100">
                           <GroupIcon className="h-5 w-5 text-brand-600" />
                         </div>
@@ -1443,7 +1443,7 @@ export default function MessagesPage() {
             </div>
 
             {groupInfoToast && (
-              <div className="mx-4 mt-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-2.5 text-sm text-brand-700">{groupInfoToast}</div>
+              <div className="mx-4 mt-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-2.5 text-sm text-brand-700 dark:border-brand-800 dark:bg-brand-950/40 dark:text-brand-400">{groupInfoToast}</div>
             )}
 
             <div className="flex-1 overflow-y-auto">
