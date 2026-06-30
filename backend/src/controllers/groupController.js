@@ -57,13 +57,13 @@ async function getGroupMessages(req, res) {
 async function sendGroupMessage(req, res) {
   try {
     const groupId = parseInt(req.params.id, 10);
-    const { content } = req.body;
-    if (!content?.trim()) return res.status(400).json({ message: 'Content is required' });
+    const { content, image_url } = req.body;
+    if (!content?.trim() && !image_url) return res.status(400).json({ message: 'Message content is required' });
 
     const member = await Group.isMember(groupId, req.user.id);
     if (!member) return res.status(403).json({ message: 'Not a member' });
 
-    const saved = await Group.sendGroupMessage({ groupId, senderId: req.user.id, content: content.trim() });
+    const saved = await Group.sendGroupMessage({ groupId, senderId: req.user.id, content: content?.trim() || '', imageUrl: image_url || null });
     const sender = await User.findById(req.user.id);
     const message = { ...saved, sender_name: sender.full_name, sender_photo: sender.profile_photo_url };
 

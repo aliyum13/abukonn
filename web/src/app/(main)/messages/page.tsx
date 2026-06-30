@@ -61,6 +61,7 @@ interface GroupMessage {
   sender_name: string;
   sender_photo: string | null;
   content: string;
+  image_url?: string | null;
   created_at: string;
   is_deleted?: boolean;
 }
@@ -804,13 +805,13 @@ export default function MessagesPage() {
         const res = await fetch(`${API_URL}/api/groups/${activeGroupId}/messages`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ content: outgoingContent }),
+          body: JSON.stringify({ content: outgoingContent, image_url: imageUrl }),
         });
         if (!res.ok) throw new Error('Failed');
         const data = await res.json();
         setGroupMessages(prev => prev.some(m => m.id === data.message.id) ? prev : [...prev, data.message]);
         setGroups(prev =>
-          prev.map(g => g.id === activeGroupId ? { ...g, last_message: capturedText, last_message_at: new Date().toISOString() } : g)
+          prev.map(g => g.id === activeGroupId ? { ...g, last_message: capturedText || '📷 Image', last_message_at: new Date().toISOString() } : g)
         );
       }
     } catch {
@@ -891,16 +892,15 @@ export default function MessagesPage() {
           setConversations(prev => prev.map(c => c.id === target.id ? { ...c, last_message: text || '📷 Image', last_message_at: new Date().toISOString() } : c));
         }
       } else {
-        const groupText = text || (imageUrl ? '📷 Photo' : '');
         const res = await fetch(`${API_URL}/api/groups/${target.id}/messages`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ content: groupText }),
+          body: JSON.stringify({ content: text, image_url: imageUrl }),
         });
         if (res.ok) {
           const data = await res.json();
           if (target.id === activeGroupId) setGroupMessages(prev => prev.some(m => m.id === data.message.id) ? prev : [...prev, data.message]);
-          setGroups(prev => prev.map(g => g.id === target.id ? { ...g, last_message: groupText, last_message_at: new Date().toISOString() } : g));
+          setGroups(prev => prev.map(g => g.id === target.id ? { ...g, last_message: text || '📷 Image', last_message_at: new Date().toISOString() } : g));
         }
       }
       setForwardedToast(true);
@@ -1347,7 +1347,14 @@ export default function MessagesPage() {
                                       ? <StoryReplyCard data={storyReply} isSent={isSent} />
                                       : messageReply
                                       ? <MessageReplyCard data={messageReply} isSent={isSent} />
-                                      : <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                                      : <>
+                                          {msg.image_url && (
+                                            <a href={msg.image_url} target="_blank" rel="noopener noreferrer" className="mb-1.5 block">
+                                              <img src={msg.image_url} alt="Image" className="max-h-60 w-full rounded-xl object-cover" />
+                                            </a>
+                                          )}
+                                          {msg.content && <p className="whitespace-pre-wrap break-words">{msg.content}</p>}
+                                        </>
                                     }
                                     <p className={cn('mt-1 text-caption', isSent ? 'text-brand-200 text-right' : 'text-ink-muted')}>{formatTime(msg.created_at)}</p>
                                   </div>
@@ -1376,12 +1383,30 @@ export default function MessagesPage() {
                     </button>
                   </div>
                 )}
+                {msgImagePreview && (
+                  <div className="relative mx-4 mt-3 w-24">
+                    <img src={msgImagePreview} alt="Preview" className="h-20 w-24 rounded-xl object-cover" />
+                    <button type="button" onClick={() => { setMsgImage(null); setMsgImagePreview(null); }}
+                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white">
+                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
                 <form onSubmit={handleSend} className="flex items-end gap-2 border-t border-border p-4">
+                  <input ref={imgInputRef} type="file" accept="image/*" onChange={handleImgSelect} className="hidden" />
+                  <button type="button" onClick={() => imgInputRef.current?.click()} disabled={sending}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink-muted transition hover:bg-surface-muted hover:text-brand-600 disabled:opacity-40">
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                    </svg>
+                  </button>
                   <textarea ref={textareaRef} value={newMessage} onChange={handleTypingChange} onKeyDown={handleKeyDown}
                     placeholder="Message group… (Enter to send)" rows={1} disabled={sending}
                     className="flex-1 resize-none rounded-xl border border-border bg-white dark:bg-[#1a1a1a] dark:border-[#333] px-4 py-2.5 text-body-sm text-ink placeholder:text-ink-muted focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-60"
                     style={{ maxHeight: '120px' }} />
-                  <Button type="submit" size="sm" disabled={sending || !newMessage.trim()} loading={sending} className="shrink-0">
+                  <Button type="submit" size="sm" disabled={sending || (!newMessage.trim() && !msgImage)} loading={sending} className="shrink-0">
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" /></svg>
                   </Button>
                 </form>

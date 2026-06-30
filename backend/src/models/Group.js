@@ -48,6 +48,7 @@ async function createGroupTables() {
   await pool.query(`ALTER TABLE abukonn.groups ADD COLUMN IF NOT EXISTS only_admins_can_add BOOLEAN DEFAULT FALSE`);
   await pool.query(`ALTER TABLE abukonn.groups ADD COLUMN IF NOT EXISTS description TEXT`);
   await pool.query(`ALTER TABLE abukonn.group_messages ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE`);
+  await pool.query(`ALTER TABLE abukonn.group_messages ADD COLUMN IF NOT EXISTS image_url TEXT`);
 
   // Backfill invite codes
   await pool.query(`
@@ -146,7 +147,8 @@ async function getMyGroups(userId) {
             g.invite_code, g.invite_enabled, g.require_approval, g.only_admins_can_add,
             COUNT(DISTINCT CASE WHEN gm.status = 'active' THEN gm.user_id END)::int AS member_count,
             COUNT(DISTINCT CASE WHEN gm.status = 'pending' THEN gm.user_id END)::int AS pending_count,
-            (SELECT msg.content FROM abukonn.group_messages msg
+            (SELECT CASE WHEN msg.content IS NULL OR msg.content = '' THEN '📷 Image' ELSE msg.content END
+             FROM abukonn.group_messages msg
              WHERE msg.group_id = g.id ORDER BY msg.created_at DESC LIMIT 1) AS last_message,
             (SELECT msg.created_at FROM abukonn.group_messages msg
              WHERE msg.group_id = g.id ORDER BY msg.created_at DESC LIMIT 1) AS last_message_at,
@@ -228,7 +230,7 @@ async function deleteGroup(groupId) {
 
 async function getGroupMessages(groupId) {
   const { rows } = await pool.query(
-    `SELECT gm.id, gm.group_id, gm.sender_id, gm.content, gm.created_at, gm.is_deleted,
+    `SELECT gm.id, gm.group_id, gm.sender_id, gm.content, gm.image_url, gm.created_at, gm.is_deleted,
             u.full_name AS sender_name, u.profile_photo_url AS sender_photo
      FROM abukonn.group_messages gm
      JOIN abukonn.users u ON gm.sender_id = u.id
@@ -239,11 +241,11 @@ async function getGroupMessages(groupId) {
   return rows;
 }
 
-async function sendGroupMessage({ groupId, senderId, content }) {
+async function sendGroupMessage({ groupId, senderId, content, imageUrl }) {
   const { rows } = await pool.query(
-    `INSERT INTO abukonn.group_messages (group_id, sender_id, content)
-     VALUES ($1, $2, $3) RETURNING *`,
-    [groupId, senderId, content]
+    `INSERT INTO abukonn.group_messages (group_id, sender_id, content, image_url)
+     VALUES ($1, $2, $3, $4) RETURNING *`,
+    [groupId, senderId, content || '', imageUrl || null]
   );
   return rows[0];
 }
