@@ -79,10 +79,8 @@ export default function Home() {
       <header className="sticky top-0 z-50 border-b border-border/60 bg-white/80 dark:bg-[#0a0a0a]/90 dark:border-[#222] backdrop-blur-lg">
         <div className="mx-auto flex h-16 max-w-content items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 text-sm font-bold text-white shadow-brand">
-              AB
-            </div>
-            <span className="text-lg font-bold text-ink">ABUkonn</span>
+            <img src="/logo.png" alt="ABUkonn" className="h-9 w-9 object-contain" />
+            <span className="text-lg font-bold text-ink dark:text-[#f5f5f5]">ABUkonn</span>
           </Link>
 
           <nav className="hidden items-center gap-8 md:flex">
@@ -301,11 +299,9 @@ export default function Home() {
         <div className="mx-auto max-w-content px-4 py-12 sm:px-6 lg:px-8">
           <div className="flex flex-col items-center justify-between gap-6 sm:flex-row">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-xs font-bold text-white">
-                AB
-              </div>
+              <img src="/logo.png" alt="ABUkonn" className="h-8 w-8 object-contain" />
               <div>
-                <div className="font-semibold text-ink">ABUkonn</div>
+                <div className="font-semibold text-ink dark:text-[#f5f5f5]">ABUkonn</div>
                 <div className="text-caption text-ink-muted">ABU&apos;s Digital Campus</div>
               </div>
             </div>

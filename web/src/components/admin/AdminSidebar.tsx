@@ -67,9 +67,7 @@ export function AdminSidebar() {
     <aside className="flex h-full w-64 shrink-0 flex-col bg-brand-950">
       {/* Logo */}
       <div className="flex h-16 items-center gap-3 border-b border-brand-800 px-5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-sm font-bold text-brand-700">
-          AB
-        </div>
+        <img src="/logo-white.png" alt="ABUkonn" className="h-9 w-9 object-contain" />
         <div>
           <p className="text-sm font-bold text-white">ABUkonn</p>
           <p className="text-[10px] font-medium uppercase tracking-widest text-brand-400">

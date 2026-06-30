@@ -32,9 +32,7 @@ export function AuthSplitLayout({
         <div className="pointer-events-none absolute bottom-0 left-0 h-48 w-48 rounded-full bg-brand-800/30 blur-2xl" />
 
         <Link href="/" className="relative z-10 flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-sm font-bold text-brand-700 shadow-lg">
-            AB
-          </div>
+          <img src="/logo-white.png" alt="ABUkonn" className="h-11 w-11 object-contain drop-shadow-lg" />
           <span className="text-xl font-bold text-white">ABUkonn</span>
         </Link>
 
