@@ -522,7 +522,7 @@ export default function MessagesPage() {
       const data = await res.json();
       setMessages(data.messages || []);
       setConversations(prev => prev.map(c => c.id === conversationId ? { ...c, unread_count: 0 } : c));
-      socketRef.current?.emit('mark_read', { conversationId, token });
+      socketRef.current?.emit('mark_read', { conversationId });
     } catch { setMessages([]); }
     finally { setMessagesLoading(false); }
   }, [token]);
@@ -566,7 +566,7 @@ export default function MessagesPage() {
   // ── Socket.io ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!token) return;
-    const socket = io(API_URL, { autoConnect: true });
+    const socket = io(API_URL, { autoConnect: true, auth: { token } });
     socketRef.current = socket;
 
     const joinCurrentRoom = () => {
@@ -575,14 +575,13 @@ export default function MessagesPage() {
     };
 
     socket.on('connect', () => {
-      socket.emit('user_online', token);
       joinCurrentRoom();
     });
 
     socket.on('receive_message', (msg: ChatMessage) => {
       if (msg.conversation_id === activeIdRef.current) {
         setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
-        socket.emit('mark_read', { conversationId: msg.conversation_id, token });
+        socket.emit('mark_read', { conversationId: msg.conversation_id });
       }
       fetchConversations();
     });
@@ -730,10 +729,10 @@ export default function MessagesPage() {
     ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`;
 
     if (!activeId || !token) return;
-    socketRef.current?.emit('typing_start', { conversationId: activeId, token });
+    socketRef.current?.emit('typing_start', { conversationId: activeId });
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {
-      socketRef.current?.emit('typing_stop', { conversationId: activeId, token });
+      socketRef.current?.emit('typing_stop', { conversationId: activeId });
     }, 2500);
   };
 
@@ -754,7 +753,7 @@ export default function MessagesPage() {
     if (!token || sending) return;
 
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    if (activeId) socketRef.current?.emit('typing_stop', { conversationId: activeId, token });
+    if (activeId) socketRef.current?.emit('typing_stop', { conversationId: activeId });
 
     const capturedText = text;
     const capturedImage = msgImage;

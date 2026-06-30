@@ -189,7 +189,6 @@ function toPublicUser(user) {
     id: user.id,
     username: user.username,
     full_name: user.full_name,
-    email: user.email,
     department: user.department,
     level: user.level,
     profile_photo_url: user.profile_photo_url,
@@ -203,6 +202,7 @@ function toPublicUser(user) {
 function toPrivateUser(user) {
   return {
     ...toPublicUser(user),
+    email: user.email,
     date_of_birth: user.date_of_birth ?? null,
   };
 }

@@ -4,6 +4,8 @@ require('./config/db');
 const express = require('express');
 const http = require('http');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
 const { Server } = require('socket.io');
 const authRoutes = require('./routes/auth');
@@ -14,7 +16,8 @@ const messageRoutes = require('./routes/messages');
 const searchRoutes = require('./routes/search');
 const followRoutes = require('./routes/follows');
 const { saveMessage } = require('./controllers/messageController');
-const { markConversationRead } = require('./models/Message');
+const { markConversationRead, getConversationById } = require('./models/Message');
+const { isMember: isGroupMember } = require('./models/Group');
 const { createUsersTable } = require('./models/User');
 const { createPostsTable, createPostLikesTable } = require('./models/Post');
 const { createCommentsTable } = require('./models/Comment');
@@ -48,11 +51,30 @@ const channelRoutes = require('./routes/channels');
 const app = express();
 const server = http.createServer(app);
 
+const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:3001')
+  .split(',')
+  .map(o => o.trim());
+
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:3001',
+    origin: allowedOrigins,
     methods: ['GET', 'POST'],
   },
+});
+
+// Require a valid JWT before a socket connection is allowed at all.
+// Without this, anyone could open a websocket and call join_conversation /
+// join_group with a guessed ID to silently receive other people's messages.
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+  if (!token) return next(new Error('Authentication required'));
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    socket.data.userId = decoded.id;
+    next();
+  } catch {
+    next(new Error('Invalid or expired token'));
+  }
 });
 
 // Make io accessible from route controllers
@@ -62,20 +84,13 @@ app.set('io', io);
 const onlineUsers = new Map();
 
 io.on('connection', (socket) => {
-  // ── Presence ────────────────────────────────────────────────────────
-  socket.on('user_online', (token) => {
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const uid = decoded.id;
-      socket.data.userId = uid;
-      if (!onlineUsers.has(uid)) onlineUsers.set(uid, new Set());
-      onlineUsers.get(uid).add(socket.id);
-      socket.broadcast.emit('user_status', { userId: uid, online: true });
-    } catch {
-      // invalid token — ignore
-    }
-  });
+  // socket.data.userId is set and verified by the io.use() auth middleware above.
+  const uid = socket.data.userId;
+  if (!onlineUsers.has(uid)) onlineUsers.set(uid, new Set());
+  onlineUsers.get(uid).add(socket.id);
+  socket.broadcast.emit('user_status', { userId: uid, online: true });
 
+  // ── Presence ────────────────────────────────────────────────────────
   socket.on('get_online_status', (userIds, callback) => {
     if (typeof callback !== 'function') return;
     const statuses = (userIds || []).map((id) => ({
@@ -86,18 +101,32 @@ io.on('connection', (socket) => {
   });
 
   // ── Conversations ────────────────────────────────────────────────────
-  socket.on('join_conversation', (conversationId) => {
-    socket.join(`conversation_${conversationId}`);
-  });
-
-  socket.on('join_group', (groupId) => {
-    socket.join(`group_${groupId}`);
-  });
-
-  socket.on('send_message', async ({ conversationId, content, token }) => {
+  // Verify the connected user is actually a participant before letting them
+  // join the room — otherwise anyone could guess a conversation/group ID and
+  // silently receive every message broadcast to it.
+  socket.on('join_conversation', async (conversationId) => {
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const message = await saveMessage(conversationId, decoded.id, content);
+      const conversation = await getConversationById(conversationId, socket.data.userId);
+      if (!conversation) return;
+      socket.join(`conversation_${conversationId}`);
+    } catch (err) {
+      console.error('Socket join_conversation error:', err.message);
+    }
+  });
+
+  socket.on('join_group', async (groupId) => {
+    try {
+      const member = await isGroupMember(groupId, socket.data.userId);
+      if (!member) return;
+      socket.join(`group_${groupId}`);
+    } catch (err) {
+      console.error('Socket join_group error:', err.message);
+    }
+  });
+
+  socket.on('send_message', async ({ conversationId, content }) => {
+    try {
+      const message = await saveMessage(conversationId, socket.data.userId, content);
       io.to(`conversation_${conversationId}`).emit('receive_message', message);
     } catch (err) {
       console.error('Socket send_message error:', err.message);
@@ -106,33 +135,22 @@ io.on('connection', (socket) => {
   });
 
   // ── Typing indicators ────────────────────────────────────────────────
-  socket.on('typing_start', ({ conversationId, token }) => {
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      socket
-        .to(`conversation_${conversationId}`)
-        .emit('user_typing', { conversationId, userId: decoded.id });
-    } catch {
-      // ignore
-    }
+  socket.on('typing_start', ({ conversationId }) => {
+    socket
+      .to(`conversation_${conversationId}`)
+      .emit('user_typing', { conversationId, userId: socket.data.userId });
   });
 
-  socket.on('typing_stop', ({ conversationId, token }) => {
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      socket
-        .to(`conversation_${conversationId}`)
-        .emit('user_stopped_typing', { conversationId, userId: decoded.id });
-    } catch {
-      // ignore
-    }
+  socket.on('typing_stop', ({ conversationId }) => {
+    socket
+      .to(`conversation_${conversationId}`)
+      .emit('user_stopped_typing', { conversationId, userId: socket.data.userId });
   });
 
   // ── Read receipts ────────────────────────────────────────────────────
-  socket.on('mark_read', async ({ conversationId, token }) => {
+  socket.on('mark_read', async ({ conversationId }) => {
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      await markConversationRead(conversationId, decoded.id);
+      await markConversationRead(conversationId, socket.data.userId);
       socket
         .to(`conversation_${conversationId}`)
         .emit('messages_read', { conversationId });
@@ -157,7 +175,34 @@ io.on('connection', (socket) => {
 });
 
 // Middleware
-app.use(cors());
+app.use(helmet());
+app.use(cors({
+  origin: allowedOrigins,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
+// Rate limiting — a sane default ceiling on the whole API, with a much
+// stricter limit on auth endpoints (login/register/password-reset) since
+// those are the ones worth protecting against brute force.
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many requests. Please try again shortly.' },
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many attempts. Please try again in a few minutes.' },
+});
+
+app.use('/api', apiLimiter);
+app.use('/api/auth', authLimiter);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

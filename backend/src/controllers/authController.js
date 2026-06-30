@@ -62,7 +62,7 @@ async function register(req, res) {
     res.status(201).json({
       message: 'Registration successful',
       token,
-      user: User.toPublicUser(user),
+      user: User.toPrivateUser(user),
     });
   } catch (err) {
     console.error('Register error:', err.message);
@@ -98,7 +98,7 @@ async function login(req, res) {
     res.json({
       message: 'Login successful',
       token,
-      user: User.toPublicUser(user),
+      user: User.toPrivateUser(user),
     });
   } catch (err) {
     console.error('Login error:', err.message);
