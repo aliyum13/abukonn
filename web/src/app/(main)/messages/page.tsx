@@ -855,7 +855,7 @@ export default function MessagesPage() {
   if (authLoading || !user) {
     return (
       <div className="mx-auto max-w-5xl px-4 py-4 sm:px-6">
-        <Card className="h-[calc(100vh-8rem)]">
+        <Card className="h-[calc(100svh-8rem)]">
           <div className="flex h-full">
             <div className="w-full max-w-sm border-r border-border p-4 space-y-2">
               <ConversationSkeleton /><ConversationSkeleton />
@@ -869,7 +869,7 @@ export default function MessagesPage() {
   return (
     <>
       <div className="mx-auto max-w-5xl px-4 py-4 sm:px-6">
-        <Card className="flex h-[calc(100vh-8rem)] overflow-hidden">
+        <Card className="flex h-[calc(100svh-8rem)] overflow-hidden">
           {/* ── Conversation / Group list ──────────────────────────────── */}
           <div className={cn('flex w-full flex-col border-r border-border sm:w-80 sm:shrink-0', mobileShowChat && (activeId || activeGroupId) ? 'hidden sm:flex' : 'flex')}>
             <div className="flex items-center justify-between border-b border-border px-4 py-3.5">
@@ -989,7 +989,7 @@ export default function MessagesPage() {
             {activeId && activeConversation ? (
               /* DM chat */
               <>
-                <div className="flex items-center gap-3 border-b border-border px-4 py-3">
+                <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
                   <button type="button" onClick={() => { setMobileShowChat(false); setTypingText(''); }} className="rounded-lg p-1 text-ink-secondary hover:bg-surface-subtle sm:hidden" aria-label="Back">
                     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
                   </button>
@@ -1161,7 +1161,7 @@ export default function MessagesPage() {
             ) : activeGroupId && activeGroupInfo ? (
               /* Group chat */
               <>
-                <div className="flex items-center gap-3 border-b border-border px-4 py-3">
+                <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
                   <button type="button" onClick={() => setMobileShowChat(false)} className="rounded-lg p-1 text-ink-secondary hover:bg-surface-subtle sm:hidden" aria-label="Back">
                     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
                   </button>
