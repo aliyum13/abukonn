@@ -49,6 +49,9 @@ async function createGroupTables() {
   await pool.query(`ALTER TABLE abukonn.groups ADD COLUMN IF NOT EXISTS description TEXT`);
   await pool.query(`ALTER TABLE abukonn.group_messages ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE`);
   await pool.query(`ALTER TABLE abukonn.group_messages ADD COLUMN IF NOT EXISTS image_url TEXT`);
+  await pool.query(`ALTER TABLE abukonn.group_messages ADD COLUMN IF NOT EXISTS file_url TEXT`);
+  await pool.query(`ALTER TABLE abukonn.group_messages ADD COLUMN IF NOT EXISTS file_name TEXT`);
+  await pool.query(`ALTER TABLE abukonn.group_messages ADD COLUMN IF NOT EXISTS file_size INTEGER`);
 
   // Backfill invite codes
   await pool.query(`
@@ -147,7 +150,13 @@ async function getMyGroups(userId) {
             g.invite_code, g.invite_enabled, g.require_approval, g.only_admins_can_add,
             COUNT(DISTINCT CASE WHEN gm.status = 'active' THEN gm.user_id END)::int AS member_count,
             COUNT(DISTINCT CASE WHEN gm.status = 'pending' THEN gm.user_id END)::int AS pending_count,
-            (SELECT CASE WHEN msg.content IS NULL OR msg.content = '' THEN '📷 Image' ELSE msg.content END
+            (SELECT
+               CASE
+                 WHEN msg.content IS NOT NULL AND msg.content != '' THEN msg.content
+                 WHEN msg.file_name IS NOT NULL THEN '📎 ' || msg.file_name
+                 WHEN msg.image_url IS NOT NULL THEN '📷 Image'
+                 ELSE msg.content
+               END
              FROM abukonn.group_messages msg
              WHERE msg.group_id = g.id ORDER BY msg.created_at DESC LIMIT 1) AS last_message,
             (SELECT msg.created_at FROM abukonn.group_messages msg
@@ -230,7 +239,7 @@ async function deleteGroup(groupId) {
 
 async function getGroupMessages(groupId) {
   const { rows } = await pool.query(
-    `SELECT gm.id, gm.group_id, gm.sender_id, gm.content, gm.image_url, gm.created_at, gm.is_deleted,
+    `SELECT gm.id, gm.group_id, gm.sender_id, gm.content, gm.image_url, gm.file_url, gm.file_name, gm.file_size, gm.created_at, gm.is_deleted,
             u.full_name AS sender_name, u.profile_photo_url AS sender_photo
      FROM abukonn.group_messages gm
      JOIN abukonn.users u ON gm.sender_id = u.id
@@ -241,11 +250,11 @@ async function getGroupMessages(groupId) {
   return rows;
 }
 
-async function sendGroupMessage({ groupId, senderId, content, imageUrl }) {
+async function sendGroupMessage({ groupId, senderId, content, imageUrl, fileUrl = null, fileName = null, fileSize = null }) {
   const { rows } = await pool.query(
-    `INSERT INTO abukonn.group_messages (group_id, sender_id, content, image_url)
-     VALUES ($1, $2, $3, $4) RETURNING *`,
-    [groupId, senderId, content || '', imageUrl || null]
+    `INSERT INTO abukonn.group_messages (group_id, sender_id, content, image_url, file_url, file_name, file_size)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [groupId, senderId, content || '', imageUrl || null, fileUrl, fileName, fileSize]
   );
   return rows[0];
 }
@@ -262,7 +271,7 @@ async function deleteGroupMessage(messageId, userId) {
 
   const result = await pool.query(
     `UPDATE abukonn.group_messages
-     SET is_deleted = TRUE, content = ''
+     SET is_deleted = TRUE, content = '', image_url = NULL, file_url = NULL, file_name = NULL, file_size = NULL
      WHERE id = $1
      RETURNING *`,
     [messageId]

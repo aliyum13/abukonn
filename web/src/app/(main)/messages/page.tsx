@@ -48,6 +48,9 @@ interface ChatMessage {
   sender_id: number;
   content: string;
   image_url?: string | null;
+  file_url?: string | null;
+  file_name?: string | null;
+  file_size?: number | null;
   created_at: string;
   sender_name: string;
   is_read: boolean;
@@ -62,6 +65,9 @@ interface GroupMessage {
   sender_photo: string | null;
   content: string;
   image_url?: string | null;
+  file_url?: string | null;
+  file_name?: string | null;
+  file_size?: number | null;
   created_at: string;
   is_deleted?: boolean;
 }
@@ -236,6 +242,43 @@ function plainMessageText(content: string | null): string {
   const messageReply = parseMessageReply(content);
   if (messageReply) return messageReply.reply;
   return content;
+}
+
+function formatFileSize(bytes?: number | null): string {
+  if (!bytes || bytes <= 0) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function FileAttachmentCard({ url, name, size, isSent }: { url: string; name: string; size?: number | null; isSent: boolean }) {
+  const ext = name.split('.').pop()?.toUpperCase() || 'FILE';
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      download={name}
+      className={cn(
+        'flex items-center gap-3 rounded-xl border px-3 py-2.5 transition',
+        isSent ? 'border-white/25 bg-white/10 hover:bg-white/15' : 'border-border bg-surface-muted hover:bg-surface-subtle dark:border-[#333] dark:bg-[#1a1a1a]'
+      )}
+    >
+      <span className={cn(
+        'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[10px] font-bold',
+        isSent ? 'bg-white/20 text-white' : 'bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-400'
+      )}>
+        {ext.slice(0, 4)}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className={cn('block truncate text-[13px] font-medium', isSent ? 'text-white' : 'text-ink')}>{name}</span>
+        {!!size && <span className={cn('text-[11px]', isSent ? 'text-white/70' : 'text-ink-muted')}>{formatFileSize(size)}</span>}
+      </span>
+      <svg className={cn('h-4 w-4 shrink-0', isSent ? 'text-white/80' : 'text-ink-muted')} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+      </svg>
+    </a>
+  );
 }
 
 function MessageReplyCard({ data, isSent }: { data: MessageReplyData; isSent: boolean }) {
@@ -437,10 +480,13 @@ export default function MessagesPage() {
 
   const [msgImage, setMsgImage] = useState<File | null>(null);
   const [msgImagePreview, setMsgImagePreview] = useState<string | null>(null);
+  const [msgFile, setMsgFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const imgInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const activeIdRef = useRef<number | null>(null);
   const activeGroupIdRef = useRef<number | null>(null);
   const conversationsRef = useRef<Conversation[]>([]);
@@ -739,6 +785,7 @@ export default function MessagesPage() {
   const handleImgSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setMsgFile(null);
     setMsgImage(file);
     const reader = new FileReader();
     reader.onloadend = () => setMsgImagePreview(reader.result as string);
@@ -746,10 +793,32 @@ export default function MessagesPage() {
     e.target.value = '';
   };
 
+  const MAX_FILE_SIZE = 25 * 1024 * 1024;
+  const ALLOWED_FILE_EXTENSIONS = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'csv'];
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    if (!ALLOWED_FILE_EXTENSIONS.includes(ext)) {
+      setFileError('Unsupported file type. Allowed: PDF, Word, PowerPoint, Excel, TXT, CSV.');
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      setFileError('File is too large. Maximum size is 25MB.');
+      return;
+    }
+    setFileError(null);
+    setMsgImage(null);
+    setMsgImagePreview(null);
+    setMsgFile(file);
+  };
+
   const handleSend = async (e?: FormEvent) => {
     e?.preventDefault();
     const text = newMessage.trim();
-    if (!text && !msgImage) return;
+    if (!text && !msgImage && !msgFile) return;
     if (!token || sending) return;
 
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -757,10 +826,13 @@ export default function MessagesPage() {
 
     const capturedText = text;
     const capturedImage = msgImage;
+    const capturedFile = msgFile;
     const capturedReply = replyTo;
     setNewMessage('');
     setMsgImage(null);
     setMsgImagePreview(null);
+    setMsgFile(null);
+    setFileError(null);
     setReplyTo(null);
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
     setSending(true);
@@ -786,36 +858,76 @@ export default function MessagesPage() {
         }
       }
 
+      // Upload document if present (direct-to-Cloudinary, same signed pattern as images/stories)
+      let fileUrl: string | null = null;
+      if (capturedFile) {
+        const sigRes = await fetch(`${API_URL}/api/stories/upload-signature?folder=abukonn/files`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!sigRes.ok) throw new Error('Failed to get upload signature');
+        const { signature, timestamp, api_key, cloud_name, folder } = await sigRes.json() as {
+          signature: string; timestamp: number; api_key: string; cloud_name: string; folder: string;
+        };
+        fileUrl = await new Promise<string>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          const tid = setTimeout(() => xhr.abort(), 120000);
+          xhr.onload = () => {
+            clearTimeout(tid);
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try { resolve((JSON.parse(xhr.responseText) as { secure_url: string }).secure_url); }
+              catch { reject(new Error('Invalid Cloudinary response')); }
+            } else {
+              try { reject(new Error((JSON.parse(xhr.responseText) as { error?: { message: string } }).error?.message || 'File upload failed')); }
+              catch { reject(new Error('File upload failed')); }
+            }
+          };
+          xhr.onerror = () => { clearTimeout(tid); reject(new Error('Network error — check your connection')); };
+          xhr.onabort = () => { clearTimeout(tid); reject(new Error('Upload timed out — try a smaller file')); };
+          const fd = new FormData();
+          fd.append('file', capturedFile);
+          fd.append('api_key', api_key);
+          fd.append('timestamp', String(timestamp));
+          fd.append('signature', signature);
+          fd.append('folder', folder);
+          xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloud_name}/raw/upload`);
+          xhr.send(fd);
+        });
+      }
+      const fileName = capturedFile?.name || null;
+      const fileSize = capturedFile?.size || null;
+      const filePreviewText = fileName ? `📎 ${fileName}` : null;
+
       if (activeId) {
         // DM send via REST
         const res = await fetch(`${API_URL}/api/messages`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ conversation_id: activeId, content: outgoingContent, image_url: imageUrl }),
+          body: JSON.stringify({ conversation_id: activeId, content: outgoingContent, image_url: imageUrl, file_url: fileUrl, file_name: fileName, file_size: fileSize }),
         });
         if (!res.ok) throw new Error('Failed');
         const data = await res.json();
         setMessages(prev => prev.some(m => m.id === data.data.id) ? prev : [...prev, data.data]);
         setConversations(prev =>
-          prev.map(c => c.id === activeId ? { ...c, last_message: capturedText || '📷 Image', last_message_at: new Date().toISOString() } : c)
+          prev.map(c => c.id === activeId ? { ...c, last_message: capturedText || filePreviewText || '📷 Image', last_message_at: new Date().toISOString() } : c)
         );
       } else if (activeGroupId) {
         // Group send via REST
         const res = await fetch(`${API_URL}/api/groups/${activeGroupId}/messages`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ content: outgoingContent, image_url: imageUrl }),
+          body: JSON.stringify({ content: outgoingContent, image_url: imageUrl, file_url: fileUrl, file_name: fileName, file_size: fileSize }),
         });
         if (!res.ok) throw new Error('Failed');
         const data = await res.json();
         setGroupMessages(prev => prev.some(m => m.id === data.message.id) ? prev : [...prev, data.message]);
         setGroups(prev =>
-          prev.map(g => g.id === activeGroupId ? { ...g, last_message: capturedText || '📷 Image', last_message_at: new Date().toISOString() } : g)
+          prev.map(g => g.id === activeGroupId ? { ...g, last_message: capturedText || filePreviewText || '📷 Image', last_message_at: new Date().toISOString() } : g)
         );
       }
-    } catch {
+    } catch (err) {
       if (capturedText) setNewMessage(capturedText);
       if (capturedImage) { setMsgImage(capturedImage); setMsgImagePreview(msgImagePreview); }
+      if (capturedFile) { setMsgFile(capturedFile); setFileError(err instanceof Error ? err.message : 'Failed to send file'); }
       if (capturedReply) setReplyTo(capturedReply);
     } finally {
       setSending(false);
@@ -833,6 +945,7 @@ export default function MessagesPage() {
   const triggerReply = (msg: ChatMessage | GroupMessage, senderName: string) => {
     const preview = msg.content
       ? friendlyPreview(msg.content)
+      : ('file_name' in msg && msg.file_name) ? `📎 ${msg.file_name}`
       : ('image_url' in msg && msg.image_url) ? '📷 Photo' : '';
     setReplyTo({ id: msg.id, senderName, preview });
     setTimeout(() => textareaRef.current?.focus(), 50);
@@ -854,7 +967,9 @@ export default function MessagesPage() {
   const handleCopyMessage = async () => {
     if (!actionSheet) return;
     const { msg } = actionSheet;
-    const text = plainMessageText(msg.content) || (('image_url' in msg && msg.image_url) ? msg.image_url : '');
+    const text = plainMessageText(msg.content)
+      || (('file_url' in msg && msg.file_url) ? msg.file_url : '')
+      || (('image_url' in msg && msg.image_url) ? msg.image_url : '');
     try {
       if (typeof navigator !== 'undefined' && navigator.clipboard && text) {
         await navigator.clipboard.writeText(text);
@@ -876,30 +991,34 @@ export default function MessagesPage() {
     if (!forwardMsg || !token || forwardingTo) return;
     const text = plainMessageText(forwardMsg.content);
     const imageUrl = 'image_url' in forwardMsg ? (forwardMsg.image_url ?? null) : null;
-    if (!text && !imageUrl) { setForwardMsg(null); return; }
+    const fileUrl = 'file_url' in forwardMsg ? (forwardMsg.file_url ?? null) : null;
+    const fileName = 'file_name' in forwardMsg ? (forwardMsg.file_name ?? null) : null;
+    const fileSize = 'file_size' in forwardMsg ? (forwardMsg.file_size ?? null) : null;
+    if (!text && !imageUrl && !fileUrl) { setForwardMsg(null); return; }
+    const previewText = text || (fileName ? `📎 ${fileName}` : '📷 Image');
     setForwardingTo(target.key);
     try {
       if (target.kind === 'dm') {
         const res = await fetch(`${API_URL}/api/messages`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ conversation_id: target.id, content: text, image_url: imageUrl }),
+          body: JSON.stringify({ conversation_id: target.id, content: text, image_url: imageUrl, file_url: fileUrl, file_name: fileName, file_size: fileSize }),
         });
         if (res.ok) {
           const data = await res.json();
           if (target.id === activeId) setMessages(prev => prev.some(m => m.id === data.data.id) ? prev : [...prev, data.data]);
-          setConversations(prev => prev.map(c => c.id === target.id ? { ...c, last_message: text || '📷 Image', last_message_at: new Date().toISOString() } : c));
+          setConversations(prev => prev.map(c => c.id === target.id ? { ...c, last_message: previewText, last_message_at: new Date().toISOString() } : c));
         }
       } else {
         const res = await fetch(`${API_URL}/api/groups/${target.id}/messages`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ content: text, image_url: imageUrl }),
+          body: JSON.stringify({ content: text, image_url: imageUrl, file_url: fileUrl, file_name: fileName, file_size: fileSize }),
         });
         if (res.ok) {
           const data = await res.json();
           if (target.id === activeGroupId) setGroupMessages(prev => prev.some(m => m.id === data.message.id) ? prev : [...prev, data.message]);
-          setGroups(prev => prev.map(g => g.id === target.id ? { ...g, last_message: text || '📷 Image', last_message_at: new Date().toISOString() } : g));
+          setGroups(prev => prev.map(g => g.id === target.id ? { ...g, last_message: previewText, last_message_at: new Date().toISOString() } : g));
         }
       }
       setForwardedToast(true);
@@ -1172,7 +1291,7 @@ export default function MessagesPage() {
                               return (
                                 <div className={cn(
                                   'min-w-0 rounded-2xl px-4 py-2.5 text-body-sm',
-                                  isCard ? 'max-w-[85%] w-72' : 'max-w-[75%]',
+                                  isCard || msg.file_url ? 'max-w-[85%] w-72' : 'max-w-[75%]',
                                   isSent ? 'rounded-br-md bg-brand-600 text-white' : 'rounded-bl-md border border-border bg-white dark:bg-[#1a1a1a] dark:border-[#333] text-ink'
                                 )}>
                                   {shared
@@ -1186,6 +1305,11 @@ export default function MessagesPage() {
                                           <a href={msg.image_url} target="_blank" rel="noopener noreferrer" className="mb-1.5 block">
                                             <img src={msg.image_url} alt="Image" className="max-h-60 w-full rounded-xl object-cover" />
                                           </a>
+                                        )}
+                                        {msg.file_url && msg.file_name && (
+                                          <div className="mb-1.5">
+                                            <FileAttachmentCard url={msg.file_url} name={msg.file_name} size={msg.file_size} isSent={isSent} />
+                                          </div>
                                         )}
                                         {msg.content && <p className="whitespace-pre-wrap break-words">{msg.content}</p>}
                                       </>
@@ -1240,19 +1364,44 @@ export default function MessagesPage() {
                       </button>
                     </div>
                   )}
+                  {msgFile && (
+                    <div className="mx-4 mt-3 flex items-center gap-2 rounded-xl border border-border bg-surface-muted px-3 py-2 dark:border-[#333] dark:bg-[#1a1a1a]">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-100 text-[9px] font-bold text-brand-700 dark:bg-brand-950 dark:text-brand-400">
+                        {(msgFile.name.split('.').pop() || 'FILE').toUpperCase().slice(0, 4)}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-medium text-ink">{msgFile.name}</span>
+                        <span className="text-[11px] text-ink-muted">{formatFileSize(msgFile.size)}</span>
+                      </span>
+                      <button type="button" onClick={() => { setMsgFile(null); setFileError(null); }}
+                        className="shrink-0 rounded-full p-1 text-ink-muted hover:bg-surface-subtle dark:hover:bg-[#222]" aria-label="Remove file">
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+                  {fileError && <p className="mx-4 mt-2 text-[12px] text-red-600">{fileError}</p>}
                   <form onSubmit={handleSend} className="flex items-end gap-2 p-4">
                     <input ref={imgInputRef} type="file" accept="image/*" onChange={handleImgSelect} className="hidden" />
+                    <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv" onChange={handleFileSelect} className="hidden" />
                     <button type="button" onClick={() => imgInputRef.current?.click()} disabled={sending}
                       className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink-muted transition hover:bg-surface-muted hover:text-brand-600 disabled:opacity-40">
                       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
                       </svg>
                     </button>
+                    <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending}
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink-muted transition hover:bg-surface-muted hover:text-brand-600 disabled:opacity-40" aria-label="Attach file">
+                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
+                      </svg>
+                    </button>
                     <textarea ref={textareaRef} value={newMessage} onChange={handleTypingChange} onKeyDown={handleKeyDown}
                       placeholder="Type a message… (Enter to send)" rows={1} disabled={sending}
                       className="flex-1 resize-none rounded-xl border border-border bg-white dark:bg-[#1a1a1a] dark:border-[#333] px-4 py-2.5 text-body-sm text-ink placeholder:text-ink-muted focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-60"
                       style={{ maxHeight: '120px' }} />
-                    <Button type="submit" size="sm" disabled={sending || (!newMessage.trim() && !msgImage)} loading={sending} className="shrink-0">
+                    <Button type="submit" size="sm" disabled={sending || (!newMessage.trim() && !msgImage && !msgFile)} loading={sending} className="shrink-0">
                       <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" /></svg>
                     </Button>
                   </form>
@@ -1337,7 +1486,7 @@ export default function MessagesPage() {
                                 return (
                                   <div className={cn(
                                     'rounded-2xl px-4 py-2.5 text-body-sm',
-                                    isCard ? 'w-72' : '',
+                                    isCard || msg.file_url ? 'w-72' : '',
                                     isSent ? 'rounded-br-md bg-brand-600 text-white' : 'rounded-bl-md border border-border bg-white dark:bg-[#1a1a1a] dark:border-[#333] text-ink'
                                   )}>
                                     {shared
@@ -1351,6 +1500,11 @@ export default function MessagesPage() {
                                             <a href={msg.image_url} target="_blank" rel="noopener noreferrer" className="mb-1.5 block">
                                               <img src={msg.image_url} alt="Image" className="max-h-60 w-full rounded-xl object-cover" />
                                             </a>
+                                          )}
+                                          {msg.file_url && msg.file_name && (
+                                            <div className="mb-1.5">
+                                              <FileAttachmentCard url={msg.file_url} name={msg.file_name} size={msg.file_size} isSent={isSent} />
+                                            </div>
                                           )}
                                           {msg.content && <p className="whitespace-pre-wrap break-words">{msg.content}</p>}
                                         </>
@@ -1393,19 +1547,44 @@ export default function MessagesPage() {
                     </button>
                   </div>
                 )}
+                {msgFile && (
+                  <div className="mx-4 mt-3 flex items-center gap-2 rounded-xl border border-border bg-surface-muted px-3 py-2 dark:border-[#333] dark:bg-[#1a1a1a]">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-100 text-[9px] font-bold text-brand-700 dark:bg-brand-950 dark:text-brand-400">
+                      {(msgFile.name.split('.').pop() || 'FILE').toUpperCase().slice(0, 4)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] font-medium text-ink">{msgFile.name}</span>
+                      <span className="text-[11px] text-ink-muted">{formatFileSize(msgFile.size)}</span>
+                    </span>
+                    <button type="button" onClick={() => { setMsgFile(null); setFileError(null); }}
+                      className="shrink-0 rounded-full p-1 text-ink-muted hover:bg-surface-subtle dark:hover:bg-[#222]" aria-label="Remove file">
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
+                {fileError && <p className="mx-4 mt-2 text-[12px] text-red-600">{fileError}</p>}
                 <form onSubmit={handleSend} className="flex items-end gap-2 border-t border-border p-4">
                   <input ref={imgInputRef} type="file" accept="image/*" onChange={handleImgSelect} className="hidden" />
+                  <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv" onChange={handleFileSelect} className="hidden" />
                   <button type="button" onClick={() => imgInputRef.current?.click()} disabled={sending}
                     className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink-muted transition hover:bg-surface-muted hover:text-brand-600 disabled:opacity-40">
                     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
                     </svg>
                   </button>
+                  <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink-muted transition hover:bg-surface-muted hover:text-brand-600 disabled:opacity-40" aria-label="Attach file">
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
+                    </svg>
+                  </button>
                   <textarea ref={textareaRef} value={newMessage} onChange={handleTypingChange} onKeyDown={handleKeyDown}
                     placeholder="Message group… (Enter to send)" rows={1} disabled={sending}
                     className="flex-1 resize-none rounded-xl border border-border bg-white dark:bg-[#1a1a1a] dark:border-[#333] px-4 py-2.5 text-body-sm text-ink placeholder:text-ink-muted focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-60"
                     style={{ maxHeight: '120px' }} />
-                  <Button type="submit" size="sm" disabled={sending || (!newMessage.trim() && !msgImage)} loading={sending} className="shrink-0">
+                  <Button type="submit" size="sm" disabled={sending || (!newMessage.trim() && !msgImage && !msgFile)} loading={sending} className="shrink-0">
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" /></svg>
                   </Button>
                 </form>
@@ -1736,7 +1915,7 @@ export default function MessagesPage() {
       {actionSheet && (() => {
         const { msg, kind, senderName } = actionSheet;
         const isOwn = msg.sender_id === user.id;
-        const hasCopyableText = !!plainMessageText(msg.content) || ('image_url' in msg && !!msg.image_url);
+        const hasCopyableText = !!plainMessageText(msg.content) || ('image_url' in msg && !!msg.image_url) || ('file_url' in msg && !!msg.file_url);
         return (
           <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center" onClick={e => { if (e.target === e.currentTarget) setActionSheet(null); }}>
             <div className="w-full max-w-sm rounded-t-2xl bg-white pb-[env(safe-area-inset-bottom)] shadow-2xl dark:bg-[#161616] dark:border dark:border-[#222] sm:rounded-2xl sm:pb-0">
@@ -1791,7 +1970,8 @@ export default function MessagesPage() {
 
       {/* ── Forward message modal ───────────────────────────────────────── */}
       {forwardMsg && (() => {
-        const text = plainMessageText(forwardMsg.content);
+        const text = plainMessageText(forwardMsg.content)
+          || ('file_name' in forwardMsg && forwardMsg.file_name ? `📎 ${forwardMsg.file_name}` : '');
         const targets = [
           ...conversations.map(c => ({ kind: 'dm' as const, id: c.id, key: `dm-${c.id}`, name: c.other_user_name || 'Unknown User', photo: c.other_user_photo ?? null, isGroup: false })),
           ...groups.map(g => ({ kind: 'group' as const, id: g.id, key: `group-${g.id}`, name: g.name, photo: null, isGroup: true })),

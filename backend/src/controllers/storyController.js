@@ -24,7 +24,7 @@ async function uploadToCloudinary(buffer, mimetype) {
   });
 }
 
-const ALLOWED_UPLOAD_FOLDERS = new Set(['abukonn/stories', 'abukonn/posts', 'abukonn/messages']);
+const ALLOWED_UPLOAD_FOLDERS = new Set(['abukonn/stories', 'abukonn/posts', 'abukonn/messages', 'abukonn/files']);
 
 async function getUploadSignature(req, res) {
   try {

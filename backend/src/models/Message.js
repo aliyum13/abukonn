@@ -27,6 +27,9 @@ async function createMessagesTables() {
   await pool.query(CREATE_MESSAGES_TABLE);
   await pool.query(`ALTER TABLE abukonn.messages ADD COLUMN IF NOT EXISTS image_url TEXT`);
   await pool.query(`ALTER TABLE abukonn.messages ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE`);
+  await pool.query(`ALTER TABLE abukonn.messages ADD COLUMN IF NOT EXISTS file_url TEXT`);
+  await pool.query(`ALTER TABLE abukonn.messages ADD COLUMN IF NOT EXISTS file_name TEXT`);
+  await pool.query(`ALTER TABLE abukonn.messages ADD COLUMN IF NOT EXISTS file_size INTEGER`);
   console.log('Messages tables ready');
 }
 
@@ -54,7 +57,14 @@ async function getConversations(userId) {
             u.full_name AS other_user_name,
             u.department AS other_user_department,
             u.profile_photo_url AS other_user_photo,
-            (SELECT m.content FROM abukonn.messages m
+            (SELECT
+               CASE
+                 WHEN m.content != '' THEN m.content
+                 WHEN m.file_name IS NOT NULL THEN '📎 ' || m.file_name
+                 WHEN m.image_url IS NOT NULL THEN '📷 Image'
+                 ELSE m.content
+               END
+             FROM abukonn.messages m
              WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS last_message,
             (SELECT m.created_at FROM abukonn.messages m
              WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS last_message_at,
@@ -110,12 +120,12 @@ async function getMessages(conversationId, userId) {
   return { conversation: conv.rows[0], messages: result.rows };
 }
 
-async function sendMessage({ conversationId, senderId, content, imageUrl = null }) {
+async function sendMessage({ conversationId, senderId, content, imageUrl = null, fileUrl = null, fileName = null, fileSize = null }) {
   const result = await pool.query(
-    `INSERT INTO abukonn.messages (conversation_id, sender_id, content, image_url)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO abukonn.messages (conversation_id, sender_id, content, image_url, file_url, file_name, file_size)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING *`,
-    [conversationId, senderId, content, imageUrl]
+    [conversationId, senderId, content, imageUrl, fileUrl, fileName, fileSize]
   );
   return result.rows[0];
 }
@@ -140,7 +150,7 @@ async function deleteMessage(messageId, userId) {
 
   const result = await pool.query(
     `UPDATE abukonn.messages
-     SET is_deleted = TRUE, content = '', image_url = NULL
+     SET is_deleted = TRUE, content = '', image_url = NULL, file_url = NULL, file_name = NULL, file_size = NULL
      WHERE id = $1
      RETURNING *`,
     [messageId]

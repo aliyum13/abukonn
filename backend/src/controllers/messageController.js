@@ -3,8 +3,8 @@ const User = require('../models/User');
 const Notification = require('../models/Notification');
 const cloudinary = require('../config/cloudinary');
 
-async function saveMessage(conversationId, senderId, content, imageUrl = null) {
-  if (!content?.trim() && !imageUrl) {
+async function saveMessage(conversationId, senderId, content, imageUrl = null, fileUrl = null, fileName = null, fileSize = null) {
+  if (!content?.trim() && !imageUrl && !fileUrl) {
     throw new Error('Message content is required');
   }
 
@@ -18,6 +18,9 @@ async function saveMessage(conversationId, senderId, content, imageUrl = null) {
     senderId,
     content: content?.trim() || '',
     imageUrl,
+    fileUrl,
+    fileName,
+    fileSize,
   });
 
   const sender = await User.findById(senderId);
@@ -102,9 +105,9 @@ async function getUnreadCountHandler(req, res) {
 
 async function sendMessageHandler(req, res) {
   try {
-    const { recipient_id, conversation_id, content, image_url } = req.body;
+    const { recipient_id, conversation_id, content, image_url, file_url, file_name, file_size } = req.body;
 
-    if (!content?.trim() && !image_url) {
+    if (!content?.trim() && !image_url && !file_url) {
       return res.status(400).json({ message: 'Message content is required' });
     }
 
@@ -132,7 +135,7 @@ async function sendMessageHandler(req, res) {
       return res.status(404).json({ message: 'Conversation not found' });
     }
 
-    const message = await saveMessage(conversationId, req.user.id, content || '', image_url || null);
+    const message = await saveMessage(conversationId, req.user.id, content || '', image_url || null, file_url || null, file_name || null, file_size || null);
 
     const io = req.app.get('io');
     if (io) {
