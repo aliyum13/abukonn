@@ -26,6 +26,7 @@ async function createMessagesTables() {
   await pool.query(CREATE_CONVERSATIONS_TABLE);
   await pool.query(CREATE_MESSAGES_TABLE);
   await pool.query(`ALTER TABLE abukonn.messages ADD COLUMN IF NOT EXISTS image_url TEXT`);
+  await pool.query(`ALTER TABLE abukonn.messages ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE`);
   console.log('Messages tables ready');
 }
 
@@ -127,6 +128,26 @@ async function getConversationById(conversationId, userId) {
   return result.rows[0] || null;
 }
 
+async function deleteMessage(messageId, userId) {
+  const existing = await pool.query(
+    'SELECT * FROM abukonn.messages WHERE id = $1',
+    [messageId]
+  );
+  const msg = existing.rows[0];
+  if (!msg) return { error: 'not_found' };
+  if (msg.sender_id !== userId) return { error: 'forbidden' };
+  if (msg.is_deleted) return { error: 'already_deleted', message: msg };
+
+  const result = await pool.query(
+    `UPDATE abukonn.messages
+     SET is_deleted = TRUE, content = '', image_url = NULL
+     WHERE id = $1
+     RETURNING *`,
+    [messageId]
+  );
+  return { message: result.rows[0] };
+}
+
 module.exports = {
   CREATE_CONVERSATIONS_TABLE,
   CREATE_MESSAGES_TABLE,
@@ -138,4 +159,5 @@ module.exports = {
   getConversationById,
   markConversationRead,
   getUnreadCount,
+  deleteMessage,
 };

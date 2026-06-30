@@ -47,6 +47,7 @@ async function createGroupTables() {
   await pool.query(`ALTER TABLE abukonn.groups ADD COLUMN IF NOT EXISTS require_approval BOOLEAN DEFAULT FALSE`);
   await pool.query(`ALTER TABLE abukonn.groups ADD COLUMN IF NOT EXISTS only_admins_can_add BOOLEAN DEFAULT FALSE`);
   await pool.query(`ALTER TABLE abukonn.groups ADD COLUMN IF NOT EXISTS description TEXT`);
+  await pool.query(`ALTER TABLE abukonn.group_messages ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE`);
 
   // Backfill invite codes
   await pool.query(`
@@ -227,7 +228,7 @@ async function deleteGroup(groupId) {
 
 async function getGroupMessages(groupId) {
   const { rows } = await pool.query(
-    `SELECT gm.id, gm.group_id, gm.sender_id, gm.content, gm.created_at,
+    `SELECT gm.id, gm.group_id, gm.sender_id, gm.content, gm.created_at, gm.is_deleted,
             u.full_name AS sender_name, u.profile_photo_url AS sender_photo
      FROM abukonn.group_messages gm
      JOIN abukonn.users u ON gm.sender_id = u.id
@@ -245,6 +246,26 @@ async function sendGroupMessage({ groupId, senderId, content }) {
     [groupId, senderId, content]
   );
   return rows[0];
+}
+
+async function deleteGroupMessage(messageId, userId) {
+  const existing = await pool.query(
+    'SELECT * FROM abukonn.group_messages WHERE id = $1',
+    [messageId]
+  );
+  const msg = existing.rows[0];
+  if (!msg) return { error: 'not_found' };
+  if (msg.sender_id !== userId) return { error: 'forbidden' };
+  if (msg.is_deleted) return { error: 'already_deleted', message: msg };
+
+  const result = await pool.query(
+    `UPDATE abukonn.group_messages
+     SET is_deleted = TRUE, content = ''
+     WHERE id = $1
+     RETURNING *`,
+    [messageId]
+  );
+  return { message: result.rows[0] };
 }
 
 async function getGroupMembers(groupId) {
@@ -276,4 +297,5 @@ module.exports = {
   countAdmins, setMemberRole, setMemberStatus, getMyGroups, getGroupById,
   getGroupByInviteCode, resetInviteCode, updateGroupSettings, deleteGroup,
   getGroupMessages, sendGroupMessage, getGroupMembers, getPendingMembers,
+  deleteGroupMessage,
 };

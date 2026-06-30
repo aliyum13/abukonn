@@ -51,6 +51,7 @@ interface ChatMessage {
   created_at: string;
   sender_name: string;
   is_read: boolean;
+  is_deleted?: boolean;
 }
 
 interface GroupMessage {
@@ -61,6 +62,7 @@ interface GroupMessage {
   sender_photo: string | null;
   content: string;
   created_at: string;
+  is_deleted?: boolean;
 }
 
 interface GroupMember {
@@ -445,6 +447,18 @@ export default function MessagesPage() {
       fetchGroups();
     });
 
+    socket.on('message_deleted', ({ messageId, conversationId }: { messageId: number; conversationId: number }) => {
+      if (conversationId === activeIdRef.current) {
+        setMessages(prev => prev.map(m => m.id === messageId ? { ...m, is_deleted: true, content: '', image_url: null } : m));
+      }
+    });
+
+    socket.on('group_message_deleted', ({ messageId, groupId }: { messageId: number; groupId: number }) => {
+      if (groupId === activeGroupIdRef.current) {
+        setGroupMessages(prev => prev.map(m => m.id === messageId ? { ...m, is_deleted: true, content: '' } : m));
+      }
+    });
+
     socket.on('user_typing', ({ conversationId }: { conversationId: number }) => {
       if (conversationId === activeIdRef.current) {
         const conv = conversationsRef.current.find(c => c.id === conversationId);
@@ -657,6 +671,46 @@ export default function MessagesPage() {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; kind: 'dm' | 'group' } | null>(null);
+  const [openMsgMenuId, setOpenMsgMenuId] = useState<number | null>(null);
+  const [deletingMsg, setDeletingMsg] = useState(false);
+
+  useEffect(() => {
+    if (openMsgMenuId === null) return;
+    const close = () => setOpenMsgMenuId(null);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [openMsgMenuId]);
+
+  const handleDeleteMessage = async () => {
+    if (!deleteTarget || !token) return;
+    setDeletingMsg(true);
+    const { id, kind } = deleteTarget;
+    try {
+      if (kind === 'dm') {
+        setMessages(prev => prev.map(m => m.id === id ? { ...m, is_deleted: true, content: '', image_url: null } : m));
+        await fetch(`${API_URL}/api/messages/${id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } else {
+        setGroupMessages(prev => prev.map(m => m.id === id ? { ...m, is_deleted: true, content: '' } : m));
+        if (activeGroupId) {
+          await fetch(`${API_URL}/api/groups/${activeGroupId}/messages/${id}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        }
+      }
+    } catch {
+      // best-effort; UI already updated optimistically
+    } finally {
+      setDeletingMsg(false);
+      setDeleteTarget(null);
+      setOpenMsgMenuId(null);
+    }
+  };
+
   // ── Derived ────────────────────────────────────────────────────────────────
 
   const activeConversation = conversations.find(c => c.id === activeId);
@@ -852,10 +906,47 @@ export default function MessagesPage() {
                         const isLastSent = msg.id === lastSentMsg?.id && isSent;
                         const prevMsg = messages[idx - 1];
                         const showAvatar = !isSent && (idx === 0 || prevMsg?.sender_id !== msg.sender_id);
+                        const isDeleted = !!msg.is_deleted;
                         return (
-                          <div key={msg.id} className={cn('flex items-end gap-2', isSent ? 'justify-end' : 'justify-start')}>
+                          <div key={msg.id} className={cn('group/msg flex items-end gap-2', isSent ? 'justify-end' : 'justify-start')}>
                             {!isSent && <div className="w-7 shrink-0">{showAvatar && <Avatar src={activeConversation.other_user_photo} name={activeConversation.other_user_name} size="sm" className="h-7 w-7" />}</div>}
+                            {isSent && !isDeleted && (
+                              <div className="relative shrink-0 self-center">
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); setOpenMsgMenuId(openMsgMenuId === msg.id ? null : msg.id); }}
+                                  className="flex h-6 w-6 items-center justify-center rounded-full text-ink-muted opacity-60 transition hover:bg-surface-muted hover:opacity-100 sm:opacity-0 sm:group-hover/msg:opacity-100"
+                                  aria-label="Message options"
+                                >
+                                  <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
+                                </button>
+                                {openMsgMenuId === msg.id && (
+                                  <div onClick={(e) => e.stopPropagation()} className="absolute bottom-full right-0 z-20 mb-1 w-32 rounded-xl border border-border bg-white py-1 shadow-lg dark:bg-[#1a1a1a] dark:border-[#333]">
+                                    <button
+                                      type="button"
+                                      onClick={() => { setOpenMsgMenuId(null); setDeleteTarget({ id: msg.id, kind: 'dm' }); }}
+                                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-caption font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                             {(() => {
+                              if (isDeleted) {
+                                return (
+                                  <div className={cn(
+                                    'min-w-0 max-w-[75%] rounded-2xl px-4 py-2.5 text-body-sm italic',
+                                    isSent ? 'rounded-br-md bg-surface-muted text-ink-muted' : 'rounded-bl-md border border-border bg-white dark:bg-[#1a1a1a] dark:border-[#333] text-ink-muted'
+                                  )}>
+                                    This message was deleted
+                                    <div className={cn('mt-1 flex items-center gap-2', isSent ? 'justify-end' : 'justify-start')}>
+                                      <span className="text-caption text-ink-muted">{formatTime(msg.created_at)}</span>
+                                    </div>
+                                  </div>
+                                );
+                              }
                               const shared = parseSharedPost(msg.content);
                               const storyReply = !shared ? parseStoryReply(msg.content) : null;
                               const isCard = shared || storyReply;
@@ -967,11 +1058,35 @@ export default function MessagesPage() {
                         const isSent = msg.sender_id === user.id;
                         const prevMsg = groupMessages[idx - 1];
                         const showSenderInfo = !isSent && (idx === 0 || prevMsg?.sender_id !== msg.sender_id);
+                        const isDeleted = !!msg.is_deleted;
                         return (
-                          <div key={msg.id} className={cn('flex items-end gap-2', isSent ? 'justify-end' : 'justify-start')}>
+                          <div key={msg.id} className={cn('group/msg flex items-end gap-2', isSent ? 'justify-end' : 'justify-start')}>
                             {!isSent && (
                               <div className="w-7 shrink-0">
                                 {showSenderInfo && <Avatar src={msg.sender_photo} name={msg.sender_name} size="sm" className="h-7 w-7" />}
+                              </div>
+                            )}
+                            {isSent && !isDeleted && (
+                              <div className="relative shrink-0 self-center">
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); setOpenMsgMenuId(openMsgMenuId === msg.id ? null : msg.id); }}
+                                  className="flex h-6 w-6 items-center justify-center rounded-full text-ink-muted opacity-60 transition hover:bg-surface-muted hover:opacity-100 sm:opacity-0 sm:group-hover/msg:opacity-100"
+                                  aria-label="Message options"
+                                >
+                                  <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
+                                </button>
+                                {openMsgMenuId === msg.id && (
+                                  <div onClick={(e) => e.stopPropagation()} className="absolute bottom-full right-0 z-20 mb-1 w-32 rounded-xl border border-border bg-white py-1 shadow-lg dark:bg-[#1a1a1a] dark:border-[#333]">
+                                    <button
+                                      type="button"
+                                      onClick={() => { setOpenMsgMenuId(null); setDeleteTarget({ id: msg.id, kind: 'group' }); }}
+                                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-caption font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             )}
                             <div className={cn('max-w-[75%] min-w-0', isSent ? 'items-end' : 'items-start', 'flex flex-col')}>
@@ -979,6 +1094,17 @@ export default function MessagesPage() {
                                 <p className="mb-0.5 ml-1 text-caption font-medium text-ink-secondary">{msg.sender_name}</p>
                               )}
                               {(() => {
+                                if (isDeleted) {
+                                  return (
+                                    <div className={cn(
+                                      'rounded-2xl px-4 py-2.5 text-body-sm italic',
+                                      isSent ? 'rounded-br-md bg-surface-muted text-ink-muted' : 'rounded-bl-md border border-border bg-white dark:bg-[#1a1a1a] dark:border-[#333] text-ink-muted'
+                                    )}>
+                                      This message was deleted
+                                      <p className="mt-1 text-caption text-ink-muted">{formatTime(msg.created_at)}</p>
+                                    </div>
+                                  );
+                                }
                                 const shared = parseSharedPost(msg.content);
                                 const storyReply = !shared ? parseStoryReply(msg.content) : null;
                                 const isCard = shared || storyReply;
@@ -1315,6 +1441,25 @@ export default function MessagesPage() {
             <div className="flex gap-3 border-t border-border px-5 py-4">
               <Button variant="outline" className="flex-1" onClick={() => setShowCreateGroup(false)}>Cancel</Button>
               <Button className="flex-1" disabled={!createGroupName.trim() || creatingGroup} loading={creatingGroup} onClick={handleCreateGroup}>Create Group</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={e => { if (e.target === e.currentTarget && !deletingMsg) setDeleteTarget(null); }}>
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl dark:bg-[#111] dark:border dark:border-[#222]">
+            <h3 className="font-semibold text-ink">Delete this message?</h3>
+            <p className="mt-1.5 text-body-sm text-ink-muted">This cannot be undone.</p>
+            <div className="mt-5 flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setDeleteTarget(null)} disabled={deletingMsg}>Cancel</Button>
+              <Button
+                className="flex-1 bg-red-600 hover:bg-red-700 focus-visible:ring-red-500"
+                loading={deletingMsg}
+                onClick={handleDeleteMessage}
+              >
+                Delete
+              </Button>
             </div>
           </div>
         </div>

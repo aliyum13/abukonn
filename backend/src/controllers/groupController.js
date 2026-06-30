@@ -292,9 +292,43 @@ async function updateGroupSettingsHandler(req, res) {
   }
 }
 
+async function deleteGroupMessageHandler(req, res) {
+  try {
+    const groupId = parseInt(req.params.id, 10);
+    const messageId = parseInt(req.params.messageId, 10);
+    if (!messageId) return res.status(400).json({ message: 'Invalid message id' });
+
+    const result = await Group.deleteGroupMessage(messageId, req.user.id);
+
+    if (result.error === 'not_found') {
+      return res.status(404).json({ message: 'Message not found' });
+    }
+    if (result.error === 'forbidden') {
+      return res.status(403).json({ message: 'You can only delete your own messages' });
+    }
+    if (result.error === 'already_deleted') {
+      return res.json({ message: 'Message already deleted', data: result.message });
+    }
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`group_${groupId}`).emit('group_message_deleted', {
+        messageId: result.message.id,
+        groupId,
+      });
+    }
+
+    res.json({ message: 'Message deleted', data: result.message });
+  } catch (err) {
+    console.error('Delete group message error:', err.message);
+    res.status(500).json({ message: 'Server error deleting message' });
+  }
+}
+
 module.exports = {
   createGroup, getMyGroups, getGroupMessages, sendGroupMessage,
   addGroupMember, removeGroupMember, setMemberRoleHandler, leaveGroup, deleteGroupHandler,
   getInviteLink, resetGroupInviteCode, joinByInviteCode, getGroupByInvitePreview,
   getPendingMembersHandler, approveMember, rejectMember, updateGroupSettingsHandler,
+  deleteGroupMessageHandler,
 };

@@ -8,6 +8,7 @@ const {
   startConversation,
   getUnreadCountHandler,
   uploadMessageImage,
+  deleteMessageHandler,
 } = require('../controllers/messageController');
 
 const router = express.Router();
@@ -19,6 +20,7 @@ router.get('/conversations', getConversations);
 router.get('/unread-count', getUnreadCountHandler);
 router.post('/start', startConversation);
 router.post('/upload-image', upload.single('image'), uploadMessageImage);
+router.delete('/:id', deleteMessageHandler);
 router.get('/:conversationId', getMessages);
 router.post('/', sendMessageHandler);
 

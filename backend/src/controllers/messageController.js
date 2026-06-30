@@ -161,4 +161,36 @@ async function uploadMessageImage(req, res) {
   }
 }
 
-module.exports = { saveMessage, getConversations, getMessages, sendMessageHandler, startConversation, getUnreadCountHandler, uploadMessageImage };
+async function deleteMessageHandler(req, res) {
+  try {
+    const messageId = parseInt(req.params.id, 10);
+    if (!messageId) return res.status(400).json({ message: 'Invalid message id' });
+
+    const result = await Message.deleteMessage(messageId, req.user.id);
+
+    if (result.error === 'not_found') {
+      return res.status(404).json({ message: 'Message not found' });
+    }
+    if (result.error === 'forbidden') {
+      return res.status(403).json({ message: 'You can only delete your own messages' });
+    }
+    if (result.error === 'already_deleted') {
+      return res.json({ message: 'Message already deleted', data: result.message });
+    }
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`conversation_${result.message.conversation_id}`).emit('message_deleted', {
+        messageId: result.message.id,
+        conversationId: result.message.conversation_id,
+      });
+    }
+
+    res.json({ message: 'Message deleted', data: result.message });
+  } catch (err) {
+    console.error('Delete message error:', err.message);
+    res.status(500).json({ message: 'Server error deleting message' });
+  }
+}
+
+module.exports = { saveMessage, getConversations, getMessages, sendMessageHandler, startConversation, getUnreadCountHandler, uploadMessageImage, deleteMessageHandler };
