@@ -940,6 +940,7 @@ export default function MessagesPage() {
 
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; kind: 'dm' | 'group' } | null>(null);
   const [deletingMsg, setDeletingMsg] = useState(false);
+  const [imageLightbox, setImageLightbox] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<{ id: number; senderName: string; preview: string } | null>(null);
 
   const triggerReply = (msg: ChatMessage | GroupMessage, senderName: string) => {
@@ -1302,9 +1303,9 @@ export default function MessagesPage() {
                                     ? <MessageReplyCard data={messageReply} isSent={isSent} />
                                     : <>
                                         {msg.image_url && (
-                                          <a href={msg.image_url} target="_blank" rel="noopener noreferrer" className="mb-1.5 block">
+                                          <button type="button" onClick={() => setImageLightbox(msg.image_url!)} className="mb-1.5 block w-full">
                                             <img src={msg.image_url} alt="Image" className="max-h-60 w-full rounded-xl object-cover" />
-                                          </a>
+                                          </button>
                                         )}
                                         {msg.file_url && msg.file_name && (
                                           <div className="mb-1.5">
@@ -1497,9 +1498,9 @@ export default function MessagesPage() {
                                       ? <MessageReplyCard data={messageReply} isSent={isSent} />
                                       : <>
                                           {msg.image_url && (
-                                            <a href={msg.image_url} target="_blank" rel="noopener noreferrer" className="mb-1.5 block">
+                                            <button type="button" onClick={() => setImageLightbox(msg.image_url!)} className="mb-1.5 block w-full">
                                               <img src={msg.image_url} alt="Image" className="max-h-60 w-full rounded-xl object-cover" />
-                                            </a>
+                                            </button>
                                           )}
                                           {msg.file_url && msg.file_name && (
                                             <div className="mb-1.5">
@@ -1889,6 +1890,43 @@ export default function MessagesPage() {
               <Button className="flex-1" disabled={!createGroupName.trim() || creatingGroup} loading={creatingGroup} onClick={handleCreateGroup}>Create Group</Button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Image lightbox ───────────────────────────────────────────── */}
+      {imageLightbox && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+          onClick={() => setImageLightbox(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setImageLightbox(null)}
+            className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+            aria-label="Close"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          <a
+            href={imageLightbox}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={e => e.stopPropagation()}
+            className="absolute bottom-4 right-4 flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-[12px] text-white transition hover:bg-white/20"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            Save
+          </a>
+          <img
+            src={imageLightbox}
+            alt="Image"
+            className="max-h-[90vh] max-w-full rounded-xl object-contain shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          />
         </div>
       )}
 
