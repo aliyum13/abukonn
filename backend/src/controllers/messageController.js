@@ -1,6 +1,7 @@
 const Message = require('../models/Message');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const { isBlocked } = require('../models/ReportBlock');
 const cloudinary = require('../config/cloudinary');
 
 async function saveMessage(conversationId, senderId, content, imageUrl = null, fileUrl = null, fileName = null, fileSize = null) {
@@ -73,6 +74,14 @@ async function startConversation(req, res) {
     const recipient = await User.findById(recipientId);
     if (!recipient) {
       return res.status(404).json({ message: 'User not found' });
+    }
+
+    const [blockedThem, blockedByThem] = await Promise.all([
+      isBlocked(req.user.id, recipientId),
+      isBlocked(recipientId, req.user.id),
+    ]);
+    if (blockedThem || blockedByThem) {
+      return res.status(403).json({ message: 'You cannot message this user.' });
     }
     const conversation = await Message.findOrCreateConversation(req.user.id, recipientId);
     res.json({

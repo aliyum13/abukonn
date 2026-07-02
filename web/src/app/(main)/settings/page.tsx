@@ -39,6 +39,7 @@ const SECTIONS = [
   { id: 'account', label: 'Account' },
   { id: 'security', label: 'Security' },
   { id: 'privacy', label: 'Privacy' },
+  { id: 'blocked', label: 'Blocked' },
   { id: 'notifications', label: 'Notifications' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'support', label: 'Help & Support' },
@@ -156,6 +157,8 @@ export default function SettingsPage() {
   });
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [savingAccount, setSavingAccount] = useState(false);
+  const [blockedUsers, setBlockedUsers] = useState<{ id: number; full_name: string; username: string; profile_photo_url: string | null }[]>([]);
+  const [unblockingId, setUnblockingId] = useState<number | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const [showEmailForm, setShowEmailForm] = useState(false);
@@ -210,6 +213,12 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (token) loadSettings();
+    if (token) {
+      fetch(`${API_URL}/api/moderation/blocks`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(d => setBlockedUsers(d.blocked || []))
+        .catch(() => {});
+    }
   }, [token, loadSettings]);
 
   // Hash navigation
@@ -695,6 +704,43 @@ export default function SettingsPage() {
               {savingSetting && <p className="text-[13px] text-ink-muted">Saving…</p>}
             </SettingsCard>
           )}
+
+          {/* BLOCKED USERS */}
+          <SettingsCard id="blocked" title="Blocked users">
+            {blockedUsers.length === 0 ? (
+              <p className="text-body-sm text-ink-muted">You haven't blocked anyone.</p>
+            ) : (
+              <div className="divide-y divide-border dark:divide-[#222]">
+                {blockedUsers.map(u => (
+                  <div key={u.id} className="flex items-center justify-between gap-3 py-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Avatar src={u.profile_photo_url} name={u.full_name} size="sm" className="h-9 w-9 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="truncate text-body-sm font-medium text-ink">{u.full_name}</p>
+                        <p className="truncate text-caption text-ink-muted">@{u.username}</p>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      loading={unblockingId === u.id}
+                      onClick={async () => {
+                        setUnblockingId(u.id);
+                        try {
+                          await fetch(`${API_URL}/api/moderation/block/${u.id}`, {
+                            method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+                          });
+                          setBlockedUsers(prev => prev.filter(b => b.id !== u.id));
+                        } finally { setUnblockingId(null); }
+                      }}
+                    >
+                      Unblock
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </SettingsCard>
 
           {/* NOTIFICATIONS */}
           {settings && (

@@ -3,6 +3,7 @@ const Comment = require('../models/Comment');
 const Reply = require('../models/Reply');
 const Notification = require('../models/Notification');
 const Hashtag = require('../models/Hashtag');
+const { isBlocked } = require('../models/ReportBlock');
 const cloudinary = require('../config/cloudinary');
 
 async function uploadBufferToCloudinary(buffer, mimetype) {
@@ -133,6 +134,16 @@ async function getSinglePost(req, res) {
     const postId = parseInt(req.params.id, 10);
     const post = await Post.getPostByIdForUser(postId, req.user.id);
     if (!post) return res.status(404).json({ message: 'Post not found' });
+
+    // Don't let blocked users (either direction) view each other's posts
+    const [blockedThem, blockedByThem] = await Promise.all([
+      isBlocked(req.user.id, post.user_id),
+      isBlocked(post.user_id, req.user.id),
+    ]);
+    if (blockedThem || blockedByThem) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
     res.json({ post });
   } catch (err) {
     console.error('Get single post error:', err.message);

@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const Post = require('../models/Post');
 const Follow = require('../models/Follow');
+const { isBlocked } = require('../models/ReportBlock');
 const cloudinary = require('../config/cloudinary');
 
 function uploadBufferToCloudinary(buffer, mimetype) {
@@ -37,6 +38,16 @@ async function getUserById(req, res) {
     const user = await User.findById(userId);
 
     if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // If the viewer has blocked this user, or this user has blocked the viewer,
+    // return 404 so neither party can stalk the other's profile.
+    const [blockedThem, blockedByThem] = await Promise.all([
+      isBlocked(req.user.id, userId),
+      isBlocked(userId, req.user.id),
+    ]);
+    if (blockedThem || blockedByThem) {
       return res.status(404).json({ message: 'User not found' });
     }
 
