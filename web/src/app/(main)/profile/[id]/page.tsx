@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { timeAgo } from '@/lib/format';
+import ReportModal from '@/components/ReportModal';
 import { cn } from '@/lib/utils';
 import { useFollow } from '@/hooks/useFollow';
 import { Avatar, Button, Skeleton, RoleBadge, usesFollowSystem, PostContent } from '@/components/ui';
@@ -262,6 +263,10 @@ export default function UserProfilePage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [photoLightboxOpen, setPhotoLightboxOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [profileReportOpen, setProfileReportOpen] = useState(false);
+  const [profileBlockOpen, setProfileBlockOpen] = useState(false);
+  const [profileToast, setProfileToast] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('posts');
 
   useEffect(() => {
@@ -374,6 +379,36 @@ export default function UserProfilePage() {
             ) : (
               <ConnectBtn targetId={profile.id} token={token} />
             )}
+
+            {/* Report / Block three-dot */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setProfileMenuOpen(o => !o)}
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-border text-ink-muted transition hover:bg-surface-muted dark:border-[#333]"
+                aria-label="More options"
+              >
+                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+                  <circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
+                </svg>
+              </button>
+              {profileMenuOpen && (
+                <div className="absolute right-0 top-10 z-30 w-44 overflow-hidden rounded-xl border border-border bg-white shadow-lg dark:bg-[#111] dark:border-[#222]">
+                  <button type="button"
+                    onClick={() => { setProfileMenuOpen(false); setProfileReportOpen(true); }}
+                    className="flex w-full items-center gap-2 px-4 py-2.5 text-[13px] text-ink-secondary hover:bg-surface-muted transition">
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
+                    Report user
+                  </button>
+                  <button type="button"
+                    onClick={() => { setProfileMenuOpen(false); setProfileBlockOpen(true); }}
+                    className="flex w-full items-center gap-2 px-4 py-2.5 text-[13px] text-red-600 hover:bg-red-50 transition">
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                    Block user
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -518,6 +553,53 @@ export default function UserProfilePage() {
             alt={profile.full_name}
             className="max-h-[90vh] max-w-full rounded-xl object-contain shadow-2xl"
           />
+        </div>
+      )}
+
+      {/* Report modal */}
+      {profileReportOpen && (
+        <ReportModal
+          target={{ type: 'user', id: profile.id, name: profile.full_name }}
+          token={token}
+          apiUrl={API_URL}
+          onClose={() => setProfileReportOpen(false)}
+          onSuccess={(msg) => { setProfileReportOpen(false); setProfileToast(msg); setTimeout(() => setProfileToast(null), 3000); }}
+        />
+      )}
+
+      {/* Block confirmation */}
+      {profileBlockOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setProfileBlockOpen(false)}>
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl dark:bg-[#111] dark:border dark:border-[#222]" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold text-ink">Block {profile.full_name}?</h3>
+            <p className="mt-2 text-body-sm text-ink-muted">
+              They won't be able to see your posts or message you, and their content won't appear in your feed.
+            </p>
+            <div className="mt-5 flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setProfileBlockOpen(false)}>Cancel</Button>
+              <Button
+                className="flex-1 !bg-red-600 !text-white hover:!bg-red-700"
+                onClick={async () => {
+                  try {
+                    await fetch(`${API_URL}/api/moderation/block/${profile.id}`, {
+                      method: 'POST', headers: { Authorization: `Bearer ${token}` },
+                    });
+                    setProfileBlockOpen(false);
+                    setProfileToast(`${profile.full_name} has been blocked.`);
+                    setTimeout(() => setProfileToast(null), 3000);
+                  } catch { setProfileBlockOpen(false); }
+                }}
+              >
+                Block
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {profileToast && (
+        <div className="fixed bottom-20 left-1/2 z-[60] -translate-x-1/2 rounded-full bg-ink px-4 py-2 text-caption font-medium text-white shadow-lg dark:bg-[#222] sm:bottom-6">
+          {profileToast}
         </div>
       )}
     </div>

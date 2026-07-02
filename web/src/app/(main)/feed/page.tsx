@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { timeAgo } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { useFollow } from '@/hooks/useFollow';
+import ReportModal from '@/components/ReportModal';
 import {
   Avatar,
   Badge,
@@ -947,6 +948,9 @@ export default function FeedPage() {
 
   // ⋮ post context menu
   const [postMenuId, setPostMenuId] = useState<number | null>(null);
+  const [reportTarget, setReportTarget] = useState<{ type: 'post' | 'user'; id: number; name: string } | null>(null);
+  const [blockTarget, setBlockTarget] = useState<{ id: number; name: string } | null>(null);
+  const [reportToast, setReportToast] = useState<string | null>(null);
 
   const imageInputRef = useRef<HTMLInputElement>(null);
   const storyInputRef = useRef<HTMLInputElement>(null);
@@ -2407,7 +2411,7 @@ export default function FeedPage() {
                           </svg>
                         </button>
                         {postMenuId === post.id && (
-                          <div className="absolute right-0 top-8 z-30 w-40 overflow-hidden rounded-xl border border-border bg-white shadow-lg dark:bg-[#111] dark:border-[#222]">
+                          <div className="absolute right-0 top-8 z-30 w-44 overflow-hidden rounded-xl border border-border bg-white shadow-lg dark:bg-[#111] dark:border-[#222]">
                             {post.user_id === user.id && (
                               <button type="button"
                                 onClick={() => { handleDelete(post.id); setPostMenuId(null); }}
@@ -2416,11 +2420,26 @@ export default function FeedPage() {
                                 Delete post
                               </button>
                             )}
-                            <button type="button" onClick={() => setPostMenuId(null)}
-                              className="flex w-full items-center gap-2 px-4 py-2.5 text-[13px] text-ink-secondary hover:bg-surface-muted transition">
-                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 3l1.664 1.664M21 21l-1.5-1.5m-5.485-1.242L12 17.25 4.5 21V8.742m.164-4.078a2.15 2.15 0 011.743-1.342 48.507 48.507 0 0111.186 0c1.1.128 1.907 1.077 1.907 2.185V19.5M4.664 4.664L19.5 19.5" /></svg>
-                              Report post
-                            </button>
+                            {post.user_id !== user.id && (<>
+                              <button type="button"
+                                onClick={() => { setPostMenuId(null); setReportTarget({ type: 'post', id: post.id, name: post.author_name }); }}
+                                className="flex w-full items-center gap-2 px-4 py-2.5 text-[13px] text-ink-secondary hover:bg-surface-muted transition">
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 3l1.664 1.664M21 21l-1.5-1.5m-5.485-1.242L12 17.25 4.5 21V8.742m.164-4.078a2.15 2.15 0 011.743-1.342 48.507 48.507 0 0111.186 0c1.1.128 1.907 1.077 1.907 2.185V19.5M4.664 4.664L19.5 19.5" /></svg>
+                                Report post
+                              </button>
+                              <button type="button"
+                                onClick={() => { setPostMenuId(null); setReportTarget({ type: 'user', id: post.user_id, name: post.author_name }); }}
+                                className="flex w-full items-center gap-2 px-4 py-2.5 text-[13px] text-ink-secondary hover:bg-surface-muted transition">
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
+                                Report user
+                              </button>
+                              <button type="button"
+                                onClick={() => { setPostMenuId(null); setBlockTarget({ id: post.user_id, name: post.author_name }); }}
+                                className="flex w-full items-center gap-2 px-4 py-2.5 text-[13px] text-red-600 hover:bg-red-50 transition">
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                                Block user
+                              </button>
+                            </>)}
                           </div>
                         )}
                       </div>
@@ -3112,6 +3131,55 @@ export default function FeedPage() {
             className="max-h-[90vh] max-w-full rounded-xl object-contain shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           />
+        </div>
+      )}
+
+      {/* ── Report Modal ────────────────────────────────────────────────── */}
+      {reportTarget && (
+        <ReportModal
+          target={reportTarget}
+          token={token}
+          apiUrl={API_URL}
+          onClose={() => setReportTarget(null)}
+          onSuccess={(msg) => { setReportTarget(null); setReportToast(msg); setTimeout(() => setReportToast(null), 3000); }}
+        />
+      )}
+
+      {/* ── Block Confirmation ──────────────────────────────────────────── */}
+      {blockTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setBlockTarget(null)}>
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl dark:bg-[#111] dark:border dark:border-[#222]" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold text-ink">Block {blockTarget.name}?</h3>
+            <p className="mt-2 text-body-sm text-ink-muted">
+              They won't be able to see your posts or message you, and their content won't appear in your feed.
+            </p>
+            <div className="mt-5 flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setBlockTarget(null)}>Cancel</Button>
+              <Button
+                className="flex-1 !bg-red-600 !text-white hover:!bg-red-700"
+                onClick={async () => {
+                  try {
+                    await fetch(`${API_URL}/api/moderation/block/${blockTarget.id}`, {
+                      method: 'POST', headers: { Authorization: `Bearer ${token}` },
+                    });
+                    setBlockTarget(null);
+                    setReportToast(`${blockTarget.name} has been blocked.`);
+                    setTimeout(() => setReportToast(null), 3000);
+                    setPosts(prev => prev.filter(p => p.user_id !== blockTarget.id));
+                  } catch { setBlockTarget(null); }
+                }}
+              >
+                Block
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Toast ───────────────────────────────────────────────────────── */}
+      {reportToast && (
+        <div className="fixed bottom-20 left-1/2 z-[60] -translate-x-1/2 rounded-full bg-ink px-4 py-2 text-caption font-medium text-white shadow-lg dark:bg-[#222] sm:bottom-6">
+          {reportToast}
         </div>
       )}
     </div>

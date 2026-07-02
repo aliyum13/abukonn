@@ -46,6 +46,7 @@ const connectRoutes = require('./routes/connect');
 const hashtagRoutes = require('./routes/hashtags');
 const settingsRoutes = require('./routes/settings');
 const highlightRoutes = require('./routes/highlights');
+const { createReportBlockTables } = require('./models/ReportBlock');
 const channelRoutes = require('./routes/channels');
 
 const app = express();
@@ -234,6 +235,7 @@ app.use('/api/channels', channelRoutes);
 app.use('/api/timetable', require('./routes/timetable'));
 app.use('/api/support', require('./routes/support'));
 app.use('/api/library', require('./routes/library'));
+app.use('/api/moderation', require('./routes/moderation'));
 
 // Test route
 app.get('/', (req, res) => {
@@ -266,6 +268,7 @@ createUsersTable()
   .then(() => createTimetableTable())
   .then(() => createSupportTable())
   .then(() => createLibraryTable())
+  .then(() => createReportBlockTables())
   .then(() => {
     server.timeout = 120000;
     server.keepAliveTimeout = 120000;

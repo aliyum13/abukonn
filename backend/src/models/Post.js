@@ -130,6 +130,9 @@ async function getAllPosts(currentUserId) {
             EXISTS(SELECT 1 FROM abukonn.event_rsvps er WHERE er.post_id = p.id AND er.user_id = $1) AS is_attending
      FROM abukonn.posts p
      JOIN abukonn.users u ON p.user_id = u.id
+     WHERE p.user_id NOT IN (
+       SELECT blocked_id FROM abukonn.blocks WHERE blocker_id = $1
+     )
      ORDER BY p.created_at DESC`,
     [currentUserId]
   );
