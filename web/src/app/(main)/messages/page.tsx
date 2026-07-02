@@ -1210,7 +1210,7 @@ export default function MessagesPage() {
                           </div>
                           <p className="truncate text-caption text-ink-muted">
                             {grp.last_message
-                              ? `${grp.last_sender_name ?? ''}: ${grp.last_message}`
+                              ? `${grp.last_sender_name ?? ''}: ${friendlyPreview(grp.last_message)}`
                               : `${grp.member_count} members`}
                           </p>
                         </div>
