@@ -236,12 +236,11 @@ export default function ProfilePage() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const isVideo = file.type.startsWith('video/');
-    if (isVideo && file.size > 10 * 1024 * 1024) {
-      setUploadError('Video must be under 10MB');
+    if (file.type.startsWith('video/')) {
+      setUploadError('Video stories are coming in Phase 2. Only photo stories are supported for now.');
       return;
     }
-    if (!isVideo && file.size > 5 * 1024 * 1024) {
+    if (file.size > 5 * 1024 * 1024) {
       setUploadError('Image must be under 5MB');
       return;
     }
@@ -267,75 +266,22 @@ export default function ProfilePage() {
         });
         if (!res.ok) throw new Error('Failed to share story');
       } else if (uploadFile) {
-        const isVideo = uploadFile.type.startsWith('video/');
-
-        if (isVideo) {
-          // Direct-to-Cloudinary upload — bypasses Railway's 30 s proxy timeout
-          const sigRes = await fetch(`${API_URL}/api/stories/upload-signature`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (!sigRes.ok) throw new Error('Failed to get upload signature');
-          const { signature, timestamp, api_key, cloud_name, folder } = await sigRes.json() as {
-            signature: string; timestamp: number; api_key: string; cloud_name: string; folder: string;
-          };
-
-          const cloudinaryUrl = await new Promise<string>((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-            const tid = setTimeout(() => xhr.abort(), 300000);
-            xhr.onload = () => {
-              clearTimeout(tid);
-              if (xhr.status >= 200 && xhr.status < 300) {
-                try { resolve((JSON.parse(xhr.responseText) as { secure_url: string }).secure_url); }
-                catch { reject(new Error('Invalid Cloudinary response')); }
-              } else {
-                try { reject(new Error((JSON.parse(xhr.responseText) as { error?: { message: string } }).error?.message || 'Cloudinary upload failed')); }
-                catch { reject(new Error('Cloudinary upload failed')); }
-              }
-            };
-            xhr.onerror = () => { clearTimeout(tid); reject(new Error('Network error')); };
-            xhr.onabort = () => { clearTimeout(tid); reject(new Error('Upload timed out')); };
-            const fd = new FormData();
-            fd.append('file', uploadFile);
-            fd.append('api_key', api_key);
-            fd.append('timestamp', String(timestamp));
-            fd.append('signature', signature);
-            fd.append('folder', folder);
-            xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloud_name}/video/upload`);
-            xhr.send(fd);
-          });
-
-          const saveRes = await fetch(`${API_URL}/api/stories`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              story_type: 'video',
-              media_url: cloudinaryUrl,
-              direct_upload: true,
-              caption: uploadCaption.trim() || undefined,
-            }),
-          });
-          if (!saveRes.ok) {
-            const d = await saveRes.json().catch(() => ({})) as { message?: string };
-            throw new Error(d.message || 'Failed to save story');
-          }
-        } else {
-          // Images go through Railway — small enough to complete in < 30 s
-          await new Promise<void>((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-            const tid = setTimeout(() => xhr.abort(), 30000);
-            xhr.onload = () => { clearTimeout(tid); xhr.status < 300 ? resolve() : reject(new Error('Upload failed')); };
-            xhr.onerror = () => { clearTimeout(tid); reject(new Error('Network error')); };
-            xhr.onabort = () => { clearTimeout(tid); reject(new Error('Upload timed out')); };
-            const fd = new FormData();
-            fd.append('media', uploadFile);
-            if (uploadCaption.trim()) fd.append('caption', uploadCaption.trim());
-            xhr.open('POST', `${API_URL}/api/stories`);
-            xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-            xhr.send(fd);
-          });
-        }
+        // Image stories — direct to Railway then Cloudinary
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          const tid = setTimeout(() => xhr.abort(), 30000);
+          xhr.onload = () => { clearTimeout(tid); xhr.status < 300 ? resolve() : reject(new Error('Upload failed')); };
+          xhr.onerror = () => { clearTimeout(tid); reject(new Error('Network error')); };
+          xhr.onabort = () => { clearTimeout(tid); reject(new Error('Upload timed out')); };
+          const fd = new FormData();
+          fd.append('media', uploadFile);
+          if (uploadCaption.trim()) fd.append('caption', uploadCaption.trim());
+          xhr.open('POST', `${API_URL}/api/stories`);
+          xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+          xhr.send(fd);
+        });
       } else {
-        setUploadError('Please select a photo or video');
+        setUploadError('Please select a photo');
         setUploading(false);
         return;
       }
@@ -707,16 +653,12 @@ export default function ProfilePage() {
 
                 {uploadTab === 'media' ? (
                   <>
-                    <input ref={uploadInputRef} type="file" accept="image/*,video/*"
+                    <input ref={uploadInputRef} type="file" accept="image/*"
                       onChange={handleFileSelect} className="hidden" />
                     {uploadPreview ? (
                       <>
                         <div className="relative">
-                          {uploadFile?.type.startsWith('video/') ? (
-                            <video src={uploadPreview} className="max-h-56 w-full rounded-xl object-cover" controls />
-                          ) : (
-                            <img src={uploadPreview} alt="Preview" className="max-h-56 w-full rounded-xl object-cover" />
-                          )}
+                          <img src={uploadPreview} alt="Preview" className="max-h-56 w-full rounded-xl object-cover" />
                           <button type="button" onClick={() => { setUploadFile(null); setUploadPreview(null); setUploadCaption(''); }}
                             className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80">
                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -737,7 +679,7 @@ export default function ProfilePage() {
                         <svg className="mb-2 h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5z" />
                         </svg>
-                        <p className="text-sm font-medium">Tap to add photo or video</p>
+                        <p className="text-sm font-medium">Tap to add photo</p>
                         <p className="text-[11px] text-ink-muted mt-0.5">Images up to 5MB · Videos up to 10MB</p>
                       </button>
                     )}

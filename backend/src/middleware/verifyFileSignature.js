@@ -11,19 +11,7 @@ const SIGNATURES = [
     mime: 'image/webp',
     match: (b) => b.length >= 12 && b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP',
   },
-  {
-    // Covers MP4, MOV, QuickTime, M4V — all use the ISO base media 'ftyp' box at byte offset 4
-    mime: 'video/mp4',
-    match: (b) => b.length >= 8 && b.toString('ascii', 4, 8) === 'ftyp',
-  },
-  {
-    mime: 'video/webm',
-    match: (b) => b.length >= 4 && b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3,
-  },
-  {
-    mime: 'video/avi',
-    match: (b) => b.length >= 12 && b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'AVI ',
-  },
+  // Video signatures removed — video uploads deferred to Phase 2
 ];
 
 /** Returns the detected mime type string, or null if the content doesn't match any known signature. */

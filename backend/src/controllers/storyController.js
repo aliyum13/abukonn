@@ -15,11 +15,11 @@ function streamUpload(buffer, options) {
 }
 
 async function uploadToCloudinary(buffer, mimetype) {
-  const resourceType = mimetype.startsWith('video/') ? 'video' : 'image';
-  console.log('[Cloudinary] uploading via stream', { mimetype, resourceType, bufferLength: buffer.length });
+  // Video uploads deferred to Phase 2 — always use image resource type
+  console.log('[Cloudinary] uploading via stream', { mimetype, bufferLength: buffer.length });
   return streamUpload(buffer, {
     folder: 'abukonn/stories',
-    resource_type: resourceType,
+    resource_type: 'image',
     timeout: CLOUDINARY_TIMEOUT_MS,
   });
 }
@@ -69,52 +69,40 @@ async function createStory(req, res) {
       return res.status(201).json({ story });
     }
 
-    // Direct upload: image or video was uploaded straight to Cloudinary from the browser
+    // Direct upload: image was uploaded straight to Cloudinary from the browser
     if (req.body?.direct_upload) {
       const mediaUrl = req.body?.media_url;
-      const directStoryType = req.body?.story_type || 'image';
       if (!mediaUrl) return res.status(400).json({ message: 'media_url is required for direct upload' });
       const story = await Story.createStory({
         userId: req.user.id,
         mediaUrl,
-        mediaType: directStoryType,
-        storyType: directStoryType,
+        mediaType: 'image',
+        storyType: 'image',
         caption,
       });
       return res.status(201).json({ story });
     }
 
-    console.log('[createStory] file received:', {
-      mimetype: req.file?.mimetype,
-      size: req.file?.size,
-      bufferLength: req.file?.buffer?.length,
-    });
-
     if (!req.file) return res.status(400).json({ message: 'Media file is required' });
 
-    const isVideo = req.file.mimetype.startsWith('video/');
-    if (isVideo && req.file.size > 10 * 1024 * 1024) {
-      return res.status(400).json({ message: 'Video must be under 10MB' });
+    // Reject video at the controller level even if somehow past middleware
+    if (req.file.mimetype.startsWith('video/')) {
+      return res.status(400).json({ message: 'Video stories are coming in Phase 2. Only image stories are supported for now.' });
     }
 
     let result;
     try {
       result = await uploadToCloudinary(req.file.buffer, req.file.mimetype);
-      console.log('[Cloudinary] upload success:', { public_id: result.public_id, url: result.secure_url });
     } catch (uploadErr) {
       console.error('[Cloudinary] upload error:', uploadErr);
-      const msg = uploadErr.message?.includes('timed out') || uploadErr.http_code === 499
-        ? 'Upload timed out — try a shorter video'
-        : 'Failed to upload media';
-      return res.status(500).json({ message: msg });
+      return res.status(500).json({ message: 'Failed to upload image' });
     }
 
-    const mediaType = isVideo ? 'video' : 'image';
     const story = await Story.createStory({
       userId: req.user.id,
       mediaUrl: result.secure_url,
-      mediaType,
-      storyType: mediaType,
+      mediaType: 'image',
+      storyType: 'image',
       caption,
     });
     res.status(201).json({ story });

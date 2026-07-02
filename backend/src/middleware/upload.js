@@ -2,7 +2,7 @@ const multer = require('multer');
 
 const allowedMimes = [
   'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp',
-  'video/mp4', 'video/mov', 'video/avi', 'video/quicktime', 'video/webm',
+  // Video uploads deferred to Phase 2 (mobile app)
 ];
 
 const upload = multer({
@@ -12,7 +12,7 @@ const upload = multer({
     if (allowedMimes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Only image and video files are allowed'), false);
+      cb(new Error('Only image files are allowed'), false);
     }
   },
 });
