@@ -1963,7 +1963,7 @@ export default function FeedPage() {
                 <button
                   key={tab}
                   type="button"
-                  onClick={() => setFeedTab(tab)}
+                  onClick={() => tab === 'messages' ? router.push('/messages') : setFeedTab(tab)}
                   className={cn(
                     'relative flex-1 py-3.5 text-[14px] font-semibold transition-colors',
                     isActive ? 'text-ink dark:text-white' : 'text-ink-muted hover:text-ink dark:hover:text-white'
@@ -1982,34 +1982,6 @@ export default function FeedPage() {
               );
             })}
           </div>
-
-          {/* ── Messages tab — full redirect experience ── */}
-          {feedTab === 'messages' && (
-            <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-50 dark:bg-brand-950 mb-4">
-                <svg className="h-8 w-8 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-ink mb-2">Your Messages</h3>
-              <p className="text-body-sm text-ink-muted mb-6 max-w-xs">
-                {unreadCount > 0
-                  ? `You have ${unreadCount} unread message${unreadCount > 1 ? 's' : ''}`
-                  : 'DMs and group chats with your coursemates'
-                }
-              </p>
-              <Link href="/messages">
-                <Button size="lg" className="min-w-[180px]">
-                  Open Messages
-                  {unreadCount > 0 && (
-                    <span className="ml-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white/20 px-1 text-[11px] font-bold">
-                      {unreadCount > 9 ? '9+' : unreadCount}
-                    </span>
-                  )}
-                </Button>
-              </Link>
-            </div>
-          )}
 
           {/* ── Following tab ── */}
           {feedTab === 'following' && (
