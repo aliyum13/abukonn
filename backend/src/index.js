@@ -47,7 +47,6 @@ const hashtagRoutes = require('./routes/hashtags');
 const settingsRoutes = require('./routes/settings');
 const highlightRoutes = require('./routes/highlights');
 const { createReportBlockTables } = require('./models/ReportBlock');
-const channelRoutes = require('./routes/channels');
 
 const app = express();
 const server = http.createServer(app);
@@ -231,7 +230,6 @@ app.use('/api/connect', connectRoutes);
 app.use('/api/hashtags', hashtagRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/highlights', highlightRoutes);
-app.use('/api/channels', channelRoutes);
 app.use('/api/timetable', require('./routes/timetable'));
 app.use('/api/support', require('./routes/support'));
 app.use('/api/library', require('./routes/library'));
