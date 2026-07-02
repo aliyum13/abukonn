@@ -13,7 +13,6 @@ const NAV_LINKS = [
   { href: '/feed', label: 'Feed' },
   { href: '/news', label: 'News' },
   { href: '/library', label: 'Library' },
-  { href: '/messages', label: 'Messages' },
   { href: '/profile', label: 'Profile' },
 ];
 
@@ -286,11 +285,6 @@ export function AppNav() {
                 }`}
               >
                 {link.label}
-                {link.href === '/messages' && msgUnreadCount > 0 && (
-                  <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
-                    {msgUnreadCount > 9 ? '9+' : msgUnreadCount}
-                  </span>
-                )}
               </Link>
             ))}
           </div>
@@ -514,19 +508,6 @@ export function AppNav() {
               strokeWidth={isActive(link.href) ? 2.5 : 1.75}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
             </svg>
-          )}
-          {link.href === '/messages' && (
-            <span className="relative">
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                strokeWidth={isActive(link.href) ? 2.5 : 1.75}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
-              </svg>
-              {msgUnreadCount > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white">
-                  {msgUnreadCount > 9 ? '9+' : msgUnreadCount}
-                </span>
-              )}
-            </span>
           )}
           {link.href === '/profile' && (
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"
