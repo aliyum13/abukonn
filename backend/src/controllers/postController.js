@@ -129,6 +129,16 @@ async function getFeed(req, res) {
   }
 }
 
+async function getFollowingFeed(req, res) {
+  try {
+    const posts = await Post.getFollowingPosts(req.user.id);
+    res.json({ posts });
+  } catch (err) {
+    console.error('Get following feed error:', err.message);
+    res.status(500).json({ message: 'Server error fetching following feed' });
+  }
+}
+
 async function getSinglePost(req, res) {
   try {
     const postId = parseInt(req.params.id, 10);
@@ -301,4 +311,4 @@ async function addReply(req, res) {
   }
 }
 
-module.exports = { createPost, getFeed, getSinglePost, likePost, addComment, getComments, deletePost, getReplies, addReply, repostPost, viewPost, voteOnPoll, toggleRSVP, setBestAnswer };
+module.exports = { createPost, getFeed, getFollowingFeed, getSinglePost, likePost, addComment, getComments, deletePost, getReplies, addReply, repostPost, viewPost, voteOnPoll, toggleRSVP, setBestAnswer };

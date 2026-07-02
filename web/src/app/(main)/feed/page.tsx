@@ -26,7 +26,6 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 const NAV_ITEMS = [
   { href: '/feed', label: 'Feed', icon: 'M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 01.778-.332 48.294 48.294 0 005.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z' },
   { href: '/news', label: 'News', icon: 'M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 01-2.25 2.25M16.5 7.5V18a2.25 2.25 0 002.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 002.25 2.25h13.5M6 7.5h3v3H6v-3z' },
-  { href: '/messages', label: 'Messages', icon: 'M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z' },
   { href: '/library', label: 'Library', icon: 'M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25' },
   { href: '/profile', label: 'Profile', icon: 'M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z' },
 ];
@@ -856,7 +855,11 @@ function FeedModalUserRow({
 export default function FeedPage() {
   const { user, token, loading: authLoading, logout } = useAuth();
   const router = useRouter();
+  const [feedTab, setFeedTab] = useState<'for_you' | 'following' | 'messages'>('for_you');
   const [posts, setPosts] = useState<Post[]>([]);
+  const [followingPosts, setFollowingPosts] = useState<Post[]>([]);
+  const [followingLoading, setFollowingLoading] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [newPost, setNewPost] = useState('');
   const [composerMode, setComposerMode] = useState<'post' | 'discussion' | 'poll' | 'question' | 'event'>('post');
   const [discussionTitle, setDiscussionTitle] = useState('');
@@ -1154,15 +1157,12 @@ export default function FeedPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.status === 401 && !isRetry) {
-        // Token may be stale — verify with /api/users/me
         const meRes = await fetch(`${API_URL}/api/users/me`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (meRes.ok) {
-          // Token is valid, just retry posts
           return fetchPosts(true);
         } else {
-          // Truly expired — log out
           logout();
           router.push('/login?reason=session_expired');
           return;
@@ -1180,9 +1180,33 @@ export default function FeedPage() {
     }
   };
 
+  const fetchFollowingPosts = async () => {
+    if (!token) return;
+    setFollowingLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/posts/following`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (res.ok) setFollowingPosts(data.posts);
+    } catch { /* silent */ } finally {
+      setFollowingLoading(false);
+    }
+  };
+
   useEffect(() => {
-    if (token) fetchPosts();
+    if (token) {
+      fetchPosts();
+      fetch(`${API_URL}/api/messages/unread-count`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(d => setUnreadCount(d.count || 0))
+        .catch(() => {});
+    }
   }, [token]);
+
+  useEffect(() => {
+    if (feedTab === 'following' && token) fetchFollowingPosts();
+  }, [feedTab, token]);
 
   // Re-fetch when user returns to the tab after 5+ minutes
   useEffect(() => {
@@ -1929,6 +1953,146 @@ export default function FeedPage() {
 
         {/* Center feed — bordered timeline column */}
         <div className="lg:col-span-6 lg:border-x lg:border-border dark:lg:border-[#222] min-h-screen">
+
+          {/* ── For You / Following / Messages tabs ── */}
+          <div className="sticky top-14 z-30 flex border-b border-border bg-white/90 backdrop-blur-lg dark:bg-[#0a0a0a]/90 dark:border-[#222]">
+            {(['for_you', 'following', 'messages'] as const).map((tab) => {
+              const labels = { for_you: 'For You', following: 'Following', messages: 'Messages' };
+              const isActive = feedTab === tab;
+              return (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setFeedTab(tab)}
+                  className={cn(
+                    'relative flex-1 py-3.5 text-[14px] font-semibold transition-colors',
+                    isActive ? 'text-ink dark:text-white' : 'text-ink-muted hover:text-ink dark:hover:text-white'
+                  )}
+                >
+                  {labels[tab]}
+                  {tab === 'messages' && unreadCount > 0 && (
+                    <span className="ml-1.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-bold text-white">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                  {isActive && (
+                    <span className="absolute bottom-0 left-1/2 h-0.5 w-12 -translate-x-1/2 rounded-full bg-brand-600" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* ── Messages tab — full redirect experience ── */}
+          {feedTab === 'messages' && (
+            <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-50 dark:bg-brand-950 mb-4">
+                <svg className="h-8 w-8 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-ink mb-2">Your Messages</h3>
+              <p className="text-body-sm text-ink-muted mb-6 max-w-xs">
+                {unreadCount > 0
+                  ? `You have ${unreadCount} unread message${unreadCount > 1 ? 's' : ''}`
+                  : 'DMs and group chats with your coursemates'
+                }
+              </p>
+              <Link href="/messages">
+                <Button size="lg" className="min-w-[180px]">
+                  Open Messages
+                  {unreadCount > 0 && (
+                    <span className="ml-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white/20 px-1 text-[11px] font-bold">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </Button>
+              </Link>
+            </div>
+          )}
+
+          {/* ── Following tab ── */}
+          {feedTab === 'following' && (
+            <>
+              {followingLoading ? (
+                <><PostSkeleton /><PostSkeleton /></>
+              ) : followingPosts.length === 0 ? (
+                <div className="px-4 py-16 text-center">
+                  <p className="font-medium text-ink">No posts from people you follow</p>
+                  <p className="mt-1 text-[14px] text-ink-muted">Follow more students to see their posts here.</p>
+                </div>
+              ) : (
+                followingPosts
+                  .filter(post => categoryFilter === 'ALL' || post.category === categoryFilter)
+                  .map((post) => {
+                    const isExpanded = expandedPosts.has(post.id);
+                    const longContent = post.content.length > 280;
+                    return (
+                      <article key={post.id} id={`post-${post.id}`} data-post-id={post.id}
+                        className="border-b border-border px-4 py-4 transition-colors hover:bg-surface-muted/30 dark:border-[#222] dark:hover:bg-white/[0.02]">
+                        <div className="flex gap-3">
+                          <Link href={`/profile/${post.user_id}`} className="shrink-0">
+                            <div className="h-10 w-10 rounded-full overflow-hidden bg-brand-100 dark:bg-brand-950">
+                              {post.author_photo ? (
+                                <img src={post.author_photo} alt={post.author_name} className="h-full w-full object-cover" />
+                              ) : (
+                                <span className="flex h-full w-full items-center justify-center text-[13px] font-bold text-brand-700 dark:text-brand-400">
+                                  {post.author_name?.charAt(0).toUpperCase()}
+                                </span>
+                              )}
+                            </div>
+                          </Link>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <Link href={`/profile/${post.user_id}`} className="font-semibold text-[14px] text-ink hover:underline">{post.author_name}</Link>
+                              <span className="text-[12px] text-ink-muted">· {timeAgo(post.created_at)}</span>
+                            </div>
+                            <p className="text-[12px] text-ink-muted">{post.author_department}</p>
+                            <div className="mt-2">
+                              <PostContent
+                                content={isExpanded || !longContent ? post.content : post.content.slice(0, 280) + '…'}
+                              />
+                              {longContent && (
+                                <button type="button" onClick={() => setExpandedPosts(s => { const n = new Set(s); isExpanded ? n.delete(post.id) : n.add(post.id); return n; })}
+                                  className="mt-1 text-[13px] font-medium text-brand-600 hover:text-brand-700">
+                                  {isExpanded ? 'show less' : 'show more'}
+                                </button>
+                              )}
+                            </div>
+                            {post.image_url && (
+                              <button type="button" onClick={() => setLightboxUrl(post.image_url!)} className="mt-2 block w-full">
+                                <img src={post.image_url} alt="Post image" className="rounded-2xl max-h-80 w-full object-cover" />
+                              </button>
+                            )}
+                            {/* Actions */}
+                            <div className="mt-3 flex items-center gap-5 text-ink-muted">
+                              <button type="button" onClick={() => handleLike(post.id)}
+                                className={cn('flex items-center gap-1.5 text-[13px] transition', post.is_liked ? 'text-red-500' : 'hover:text-red-400')}>
+                                <svg className="h-4 w-4" fill={post.is_liked ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
+                                </svg>
+                                {post.likes_count > 0 && post.likes_count}
+                              </button>
+                              <button type="button" onClick={() => setCommentingId(post.id === commentingId ? null : post.id)}
+                                className="flex items-center gap-1.5 text-[13px] hover:text-brand-600 transition">
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 9.75a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375m-13.5 3.01c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 01.778-.332 48.294 48.294 0 005.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+                                </svg>
+                                {post.comments_count > 0 && post.comments_count}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })
+              )}
+            </>
+          )}
+
+          {/* ── For You tab ── */}
+          {feedTab === 'for_you' && (
+            <>
           {/* Stories bar */}
           <div className="border-b border-border px-4 py-3">
             <StoriesBar
@@ -2738,6 +2902,8 @@ export default function FeedPage() {
               </article>
               );
             })
+          )}
+          </>
           )}
         </div>
 

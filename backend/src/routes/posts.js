@@ -5,6 +5,7 @@ const { verifyFileSignature } = require('../middleware/verifyFileSignature');
 const {
   createPost,
   getFeed,
+  getFollowingFeed,
   getSinglePost,
   likePost,
   addComment,
@@ -24,6 +25,7 @@ const router = express.Router();
 router.use(auth);
 
 router.get('/', getFeed);
+router.get('/following', getFollowingFeed);
 router.post('/', upload.single('image'), verifyFileSignature, createPost);
 router.get('/:id', getSinglePost);
 router.post('/:id/like', likePost);

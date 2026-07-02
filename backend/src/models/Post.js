@@ -97,6 +97,48 @@ async function createPost({ userId, content, imageUrl = null, category = 'GENERA
   return post;
 }
 
+async function getFollowingPosts(currentUserId) {
+  const result = await pool.query(
+    `SELECT p.id, p.user_id, p.content, p.image_url, p.likes_count, p.comments_count,
+            COALESCE(p.repost_count, 0) AS repost_count,
+            COALESCE(p.view_count, 0) AS view_count,
+            COALESCE(p.category, 'GENERAL') AS category,
+            COALESCE(p.is_repost, FALSE) AS is_repost,
+            p.original_post_id, p.original_author_name,
+            COALESCE(p.post_subtype, 'post') AS post_subtype,
+            p.discussion_title,
+            p.created_at,
+            u.full_name AS author_name, u.department AS author_department,
+            u.profile_photo_url AS author_photo,
+            COALESCE(u.role, 'user') AS author_role,
+            EXISTS(
+              SELECT 1 FROM abukonn.post_likes pl
+              WHERE pl.post_id = p.id AND pl.user_id = $1
+            ) AS is_liked,
+            TRUE AS is_following_author,
+            (p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) AS engagement_score,
+            (p.created_at > NOW() - INTERVAL '24 hours' AND (p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) > 20) AS is_trending,
+            ((p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) > 50) AS is_hot,
+            (SELECT COUNT(*)::int FROM abukonn.comments c WHERE c.post_id = p.id AND c.created_at > NOW() - INTERVAL '1 hour') AS comment_velocity,
+            p.poll_duration_hours, p.poll_ends_at,
+            p.event_title, p.event_date, p.event_location, COALESCE(p.event_rsvp_count, 0) AS event_rsvp_count,
+            (SELECT json_agg(json_build_object('id', po.id, 'option_text', po.option_text, 'vote_count', po.vote_count) ORDER BY po.id) FROM abukonn.poll_options po WHERE po.post_id = p.id) AS poll_options,
+            (SELECT pv.option_id FROM abukonn.poll_votes pv WHERE pv.post_id = p.id AND pv.user_id = $1) AS voted_option_id,
+            EXISTS(SELECT 1 FROM abukonn.event_rsvps er WHERE er.post_id = p.id AND er.user_id = $1) AS is_attending
+     FROM abukonn.posts p
+     JOIN abukonn.users u ON p.user_id = u.id
+     WHERE p.user_id IN (
+       SELECT following_id FROM abukonn.follows WHERE follower_id = $1
+     )
+     AND p.user_id NOT IN (
+       SELECT blocked_id FROM abukonn.blocks WHERE blocker_id = $1
+     )
+     ORDER BY p.created_at DESC`,
+    [currentUserId]
+  );
+  return result.rows;
+}
+
 async function getAllPosts(currentUserId) {
   const result = await pool.query(
     `SELECT p.id, p.user_id, p.content, p.image_url, p.likes_count, p.comments_count,
@@ -312,6 +354,7 @@ module.exports = {
   createPostLikesTable,
   createPost,
   getAllPosts,
+  getFollowingPosts,
   getPostsByUserId,
   getPostById,
   getPostByIdForUser,
