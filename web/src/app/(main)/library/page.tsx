@@ -46,6 +46,9 @@ interface Material {
   download_count: number; created_at: string; uploader_name: string | null;
 }
 
+const VIEWABLE_INLINE_EXTENSIONS = new Set(['pdf', 'txt']);
+const OFFICE_VIEWER_EXTENSIONS = new Set(['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'csv']);
+
 function formatSize(bytes: number | null) {
   if (!bytes) return '';
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
@@ -87,6 +90,8 @@ export default function LibraryPage() {
   }, [token, typeFilter, department, level, search, page]);
 
   useEffect(() => { fetchMaterials(); }, [fetchMaterials]);
+
+  const [docViewer, setDocViewer] = useState<{ url: string; name: string } | null>(null);
 
   const handleDownload = async (material: Material) => {
     await fetch(`${API_URL}/api/library/${material.id}`, {
@@ -189,7 +194,16 @@ export default function LibraryPage() {
                     <span>⬇ {m.download_count}</span>
                     <span>{new Date(m.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                   </div>
-                  <Button size="sm" onClick={() => handleDownload(m)}>Download</Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setDocViewer({ url: m.file_url, name: m.file_name || m.title })}
+                    >
+                      View
+                    </Button>
+                    <Button size="sm" onClick={() => handleDownload(m)}>Download</Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -205,6 +219,69 @@ export default function LibraryPage() {
           <Button variant="outline" size="sm" disabled={page >= Math.ceil(total / 20)} onClick={() => setPage(p => p + 1)}>Next</Button>
         </div>
       )}
+
+      {/* ── Document viewer ──────────────────────────────────────────── */}
+      {docViewer && (() => {
+        const ext = (docViewer.name.split('.').pop() || '').toLowerCase();
+        const isNativelyViewable = VIEWABLE_INLINE_EXTENSIONS.has(ext);
+        const isOfficeDoc = OFFICE_VIEWER_EXTENSIONS.has(ext);
+        const embedSrc = isNativelyViewable
+          ? docViewer.url
+          : isOfficeDoc
+          ? `https://docs.google.com/gview?url=${encodeURIComponent(docViewer.url)}&embedded=true`
+          : null;
+
+        return (
+          <div className="fixed inset-0 z-50 flex flex-col bg-black/90">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-[#111] px-4 py-3">
+              <p className="min-w-0 flex-1 truncate text-[14px] font-medium text-white">{docViewer.name}</p>
+              <div className="flex shrink-0 items-center gap-2">
+                <a
+                  href={docViewer.url}
+                  download={docViewer.name}
+                  className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-[12px] font-medium text-white transition hover:bg-white/20"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                  </svg>
+                  Download
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setDocViewer(null)}
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+                  aria-label="Close"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1">
+              {embedSrc ? (
+                <iframe key={docViewer.url} src={embedSrc} title={docViewer.name} className="h-full w-full border-0 bg-white" />
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center gap-4 px-4 text-center">
+                  <span className="flex h-16 w-16 items-center justify-center rounded-full bg-white/10 text-[13px] font-bold text-white">
+                    {ext.toUpperCase().slice(0, 4)}
+                  </span>
+                  <p className="text-[14px] text-white/80">
+                    This file type can&apos;t be previewed in-app.<br />Download it to open it.
+                  </p>
+                  <a
+                    href={docViewer.url}
+                    download={docViewer.name}
+                    className="flex items-center gap-1.5 rounded-full bg-brand-600 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-brand-700"
+                  >
+                    Download {docViewer.name}
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

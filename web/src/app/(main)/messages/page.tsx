@@ -251,16 +251,17 @@ function formatFileSize(bytes?: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function FileAttachmentCard({ url, name, size, isSent }: { url: string; name: string; size?: number | null; isSent: boolean }) {
+const VIEWABLE_INLINE_EXTENSIONS = new Set(['pdf', 'txt']);
+const OFFICE_VIEWER_EXTENSIONS = new Set(['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'csv']);
+
+function FileAttachmentCard({ url, name, size, isSent, onView }: { url: string; name: string; size?: number | null; isSent: boolean; onView: (url: string, name: string) => void }) {
   const ext = name.split('.').pop()?.toUpperCase() || 'FILE';
   return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      download={name}
+    <button
+      type="button"
+      onClick={() => onView(url, name)}
       className={cn(
-        'flex items-center gap-3 rounded-xl border px-3 py-2.5 transition',
+        'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition',
         isSent ? 'border-white/25 bg-white/10 hover:bg-white/15' : 'border-border bg-surface-muted hover:bg-surface-subtle dark:border-[#333] dark:bg-[#1a1a1a]'
       )}
     >
@@ -275,9 +276,10 @@ function FileAttachmentCard({ url, name, size, isSent }: { url: string; name: st
         {!!size && <span className={cn('text-[11px]', isSent ? 'text-white/70' : 'text-ink-muted')}>{formatFileSize(size)}</span>}
       </span>
       <svg className={cn('h-4 w-4 shrink-0', isSent ? 'text-white/80' : 'text-ink-muted')} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
       </svg>
-    </a>
+    </button>
   );
 }
 
@@ -941,6 +943,7 @@ export default function MessagesPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; kind: 'dm' | 'group' } | null>(null);
   const [deletingMsg, setDeletingMsg] = useState(false);
   const [imageLightbox, setImageLightbox] = useState<string | null>(null);
+  const [docViewer, setDocViewer] = useState<{ url: string; name: string } | null>(null);
   const [replyTo, setReplyTo] = useState<{ id: number; senderName: string; preview: string } | null>(null);
 
   const triggerReply = (msg: ChatMessage | GroupMessage, senderName: string) => {
@@ -1309,7 +1312,7 @@ export default function MessagesPage() {
                                         )}
                                         {msg.file_url && msg.file_name && (
                                           <div className="mb-1.5">
-                                            <FileAttachmentCard url={msg.file_url} name={msg.file_name} size={msg.file_size} isSent={isSent} />
+                                            <FileAttachmentCard url={msg.file_url} name={msg.file_name} size={msg.file_size} isSent={isSent} onView={(url, name) => setDocViewer({ url, name })} />
                                           </div>
                                         )}
                                         {msg.content && <p className="whitespace-pre-wrap break-words">{msg.content}</p>}
@@ -1504,7 +1507,7 @@ export default function MessagesPage() {
                                           )}
                                           {msg.file_url && msg.file_name && (
                                             <div className="mb-1.5">
-                                              <FileAttachmentCard url={msg.file_url} name={msg.file_name} size={msg.file_size} isSent={isSent} />
+                                              <FileAttachmentCard url={msg.file_url} name={msg.file_name} size={msg.file_size} isSent={isSent} onView={(url, name) => setDocViewer({ url, name })} />
                                             </div>
                                           )}
                                           {msg.content && <p className="whitespace-pre-wrap break-words">{msg.content}</p>}
@@ -1929,6 +1932,77 @@ export default function MessagesPage() {
           />
         </div>
       )}
+
+      {/* ── Document viewer ──────────────────────────────────────────── */}
+      {docViewer && (() => {
+        const ext = (docViewer.name.split('.').pop() || '').toLowerCase();
+        const isNativelyViewable = VIEWABLE_INLINE_EXTENSIONS.has(ext);
+        const isOfficeDoc = OFFICE_VIEWER_EXTENSIONS.has(ext);
+        const embedSrc = isNativelyViewable
+          ? docViewer.url
+          : isOfficeDoc
+          ? `https://docs.google.com/gview?url=${encodeURIComponent(docViewer.url)}&embedded=true`
+          : null;
+
+        return (
+          <div className="fixed inset-0 z-50 flex flex-col bg-black/90">
+            {/* Header bar */}
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-[#111] px-4 py-3">
+              <p className="min-w-0 flex-1 truncate text-[14px] font-medium text-white">{docViewer.name}</p>
+              <div className="flex shrink-0 items-center gap-2">
+                <a
+                  href={docViewer.url}
+                  download={docViewer.name}
+                  className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-[12px] font-medium text-white transition hover:bg-white/20"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                  </svg>
+                  Download
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setDocViewer(null)}
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+                  aria-label="Close"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Viewer body */}
+            <div className="min-h-0 flex-1">
+              {embedSrc ? (
+                <iframe
+                  key={docViewer.url}
+                  src={embedSrc}
+                  title={docViewer.name}
+                  className="h-full w-full border-0 bg-white"
+                />
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center gap-4 px-4 text-center">
+                  <span className="flex h-16 w-16 items-center justify-center rounded-full bg-white/10 text-[13px] font-bold text-white">
+                    {ext.toUpperCase().slice(0, 4)}
+                  </span>
+                  <p className="text-[14px] text-white/80">
+                    This file type can&apos;t be previewed in-app.<br />Download it to open it.
+                  </p>
+                  <a
+                    href={docViewer.url}
+                    download={docViewer.name}
+                    className="flex items-center gap-1.5 rounded-full bg-brand-600 px-4 py-2 text-[13px] font-medium text-white transition hover:bg-brand-700"
+                  >
+                    Download {docViewer.name}
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={e => { if (e.target === e.currentTarget && !deletingMsg) setDeleteTarget(null); }}>
