@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { timeAgo } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { useMentionAutocomplete, MentionDropdown } from '@/hooks/useMentionAutocomplete';
 import {
   Avatar,
   Button,
@@ -107,6 +108,8 @@ export default function PostDetailPage() {
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentText, setCommentText] = useState('');
+  const commentMention = useMentionAutocomplete(token);
+  const commentInputRef = useRef<HTMLInputElement>(null);
 
   const [replies, setReplies] = useState<Record<number, Reply[]>>({});
   const [repliesLoading, setRepliesLoading] = useState<Record<number, boolean>>({});
@@ -583,14 +586,50 @@ export default function PostDetailPage() {
         {/* Comment input */}
         <div className="mb-5 flex gap-2">
           <Avatar src={user.profile_photo_url} name={user.full_name} size="sm" className="mt-0.5 shrink-0" />
-          <div className="flex min-w-0 flex-1 gap-2">
+          <div className="relative flex min-w-0 flex-1 gap-2">
             <Input
+              ref={commentInputRef}
               value={commentText}
-              onChange={e => setCommentText(e.target.value)}
+              onChange={e => {
+                setCommentText(e.target.value);
+                commentMention.handleChange(e.target.value, e.target.selectionStart ?? e.target.value.length);
+              }}
               placeholder="Write a comment…"
-              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleComment(); } }}
+              onKeyDown={e => {
+                if (commentMention.isOpen) {
+                  if (e.key === 'ArrowDown') { e.preventDefault(); commentMention.setActiveIndex(i => Math.min(i + 1, commentMention.results.length - 1)); return; }
+                  if (e.key === 'ArrowUp') { e.preventDefault(); commentMention.setActiveIndex(i => Math.max(i - 1, 0)); return; }
+                  if (e.key === 'Enter' || e.key === 'Tab') {
+                    e.preventDefault();
+                    const picked = commentMention.results[commentMention.activeIndex];
+                    if (picked) {
+                      const input = commentInputRef.current;
+                      const cursor = input?.selectionStart ?? commentText.length;
+                      const { text, cursorPos } = commentMention.applyMention(commentText, cursor, picked);
+                      setCommentText(text);
+                      requestAnimationFrame(() => input?.setSelectionRange(cursorPos, cursorPos));
+                    }
+                    return;
+                  }
+                  if (e.key === 'Escape') { commentMention.close(); return; }
+                }
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleComment(); }
+              }}
               className="flex-1"
             />
+            {commentMention.isOpen && (
+              <MentionDropdown
+                results={commentMention.results}
+                activeIndex={commentMention.activeIndex}
+                onPick={(pickedUser) => {
+                  const input = commentInputRef.current;
+                  const cursor = input?.selectionStart ?? commentText.length;
+                  const { text, cursorPos } = commentMention.applyMention(commentText, cursor, pickedUser);
+                  setCommentText(text);
+                  requestAnimationFrame(() => { input?.focus(); input?.setSelectionRange(cursorPos, cursorPos); });
+                }}
+              />
+            )}
             <Button onClick={handleComment} size="sm" disabled={!commentText.trim()}>Post</Button>
           </div>
         </div>
@@ -622,7 +661,7 @@ export default function PostDetailPage() {
                         <span className="text-body-sm font-semibold text-ink">{c.author_name}</span>
                         <span className="text-caption text-ink-muted">{timeAgo(c.created_at)}</span>
                       </div>
-                      <p className="mt-0.5 text-body-sm text-ink leading-relaxed">{c.content}</p>
+                      <p className="mt-0.5 text-body-sm text-ink leading-relaxed"><PostContent content={c.content} /></p>
                     </div>
 
                     {/* Reply controls */}
@@ -689,7 +728,7 @@ export default function PostDetailPage() {
                                   <span className="text-caption font-semibold text-ink">{r.author_name}</span>
                                   <span className="text-[10px] text-ink-muted">{timeAgo(r.created_at)}</span>
                                 </div>
-                                <p className="mt-0.5 text-caption text-ink leading-relaxed">{r.content}</p>
+                                <p className="mt-0.5 text-caption text-ink leading-relaxed"><PostContent content={r.content} /></p>
                               </div>
                             </div>
                           ))

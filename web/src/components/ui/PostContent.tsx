@@ -9,12 +9,12 @@ interface PostContentProps {
 }
 
 /**
- * Renders post content with clickable #hashtag links.
- * Splits on #word tokens and wraps them in brand-coloured Next.js Links.
+ * Renders post content with clickable #hashtag and @mention links.
+ * Splits on #word and @word tokens while keeping the delimiter in the array.
  */
 export function PostContent({ content, className }: PostContentProps) {
-  // Split by hashtag pattern while keeping the delimiter in the array
-  const parts = content.split(/(#[a-zA-Z0-9_]+)/g);
+  // Split by hashtag OR mention pattern while keeping the delimiter in the array
+  const parts = content.split(/(#[a-zA-Z0-9_]+|@[a-zA-Z0-9_]{2,30})/g);
 
   return (
     <span className={className}>
@@ -25,6 +25,19 @@ export function PostContent({ content, className }: PostContentProps) {
             <Link
               key={i}
               href={`/hashtag/${tag}`}
+              onClick={e => e.stopPropagation()}
+              className="font-medium text-brand-600 hover:text-brand-700 hover:underline dark:text-brand-400 dark:hover:text-brand-300"
+            >
+              {part}
+            </Link>
+          );
+        }
+        if (/^@[a-zA-Z0-9_]{2,30}$/.test(part)) {
+          const username = part.slice(1);
+          return (
+            <Link
+              key={i}
+              href={`/u/${username}`}
               onClick={e => e.stopPropagation()}
               className="font-medium text-brand-600 hover:text-brand-700 hover:underline dark:text-brand-400 dark:hover:text-brand-300"
             >

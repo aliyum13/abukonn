@@ -3,6 +3,7 @@ const Post = require('../models/Post');
 const Follow = require('../models/Follow');
 const { isBlocked } = require('../models/ReportBlock');
 const cloudinary = require('../config/cloudinary');
+const pool = require('../config/db');
 
 function uploadBufferToCloudinary(buffer, mimetype) {
   const dataUri = `data:${mimetype};base64,${buffer.toString('base64')}`;
@@ -141,4 +142,42 @@ async function getBirthdaysToday(req, res) {
   }
 }
 
-module.exports = { getProfile, getUserById, updateProfile, uploadPhoto, getBirthdaysToday };
+async function searchForMention(req, res) {
+  try {
+    const q = (req.query.q || '').trim();
+    if (!q) return res.json({ users: [] });
+
+    const term = `${q}%`;
+    const { rows } = await pool.query(
+      `SELECT id, username, full_name, profile_photo_url
+       FROM abukonn.users
+       WHERE (username ILIKE $1 OR full_name ILIKE $1)
+         AND id != $2
+         AND id NOT IN (SELECT blocked_id FROM abukonn.blocks WHERE blocker_id = $2)
+         AND id NOT IN (SELECT blocker_id FROM abukonn.blocks WHERE blocked_id = $2)
+       ORDER BY
+         CASE WHEN username ILIKE $1 THEN 0 ELSE 1 END,
+         full_name
+       LIMIT 8`,
+      [term, req.user.id]
+    );
+    res.json({ users: rows });
+  } catch (err) {
+    console.error('searchForMention error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function resolveUsername(req, res) {
+  try {
+    const username = req.params.username;
+    const user = await User.findByUsername(username);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.json({ id: user.id });
+  } catch (err) {
+    console.error('resolveUsername error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+module.exports = { getProfile, getUserById, updateProfile, uploadPhoto, getBirthdaysToday, searchForMention, resolveUsername };

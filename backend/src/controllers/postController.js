@@ -4,7 +4,9 @@ const Reply = require('../models/Reply');
 const Notification = require('../models/Notification');
 const Hashtag = require('../models/Hashtag');
 const { isBlocked } = require('../models/ReportBlock');
+const { resolveMentions } = require('../utils/mentions');
 const cloudinary = require('../config/cloudinary');
+const pool = require('../config/db');
 
 async function uploadBufferToCloudinary(buffer, mimetype) {
   return new Promise((resolve, reject) => {
@@ -70,6 +72,14 @@ async function createPost(req, res) {
       Hashtag.indexPostHashtags(post.id, textToIndex).catch(err =>
         console.error('Hashtag indexing error:', err.message)
       );
+    }
+
+    if (textToIndex) {
+      resolveMentions(textToIndex, req.user.id)
+        .then(mentioned => Promise.all(mentioned.map(u =>
+          Notification.createNotification({ recipientId: u.id, senderId: req.user.id, type: 'mention', postId: post.id })
+        )))
+        .catch(err => console.error('Mention notification error:', err.message));
     }
 
     const fullPost = await Post.getPostById(post.id);
@@ -233,6 +243,12 @@ async function addComment(req, res) {
       }).catch(() => {});
     }
 
+    resolveMentions(content.trim(), req.user.id)
+      .then(mentioned => Promise.all(mentioned.map(u =>
+        Notification.createNotification({ recipientId: u.id, senderId: req.user.id, type: 'mention', postId })
+      )))
+      .catch(err => console.error('Mention notification error:', err.message));
+
     res.status(201).json({ message: 'Comment added', comment, post });
   } catch (err) {
     console.error('Add comment error:', err.message);
@@ -304,6 +320,18 @@ async function addReply(req, res) {
       return res.status(400).json({ message: 'Reply content is required' });
     }
     const reply = await Reply.createReply({ commentId, userId: req.user.id, content: content.trim() });
+
+    resolveMentions(content.trim(), req.user.id)
+      .then(async mentioned => {
+        if (mentioned.length === 0) return;
+        const { rows } = await pool.query('SELECT post_id FROM abukonn.comments WHERE id = $1', [commentId]);
+        const postId = rows[0]?.post_id || null;
+        await Promise.all(mentioned.map(u =>
+          Notification.createNotification({ recipientId: u.id, senderId: req.user.id, type: 'mention', postId })
+        ));
+      })
+      .catch(err => console.error('Mention notification error:', err.message));
+
     res.status(201).json({ reply });
   } catch (err) {
     console.error('Add reply error:', err.message);

@@ -10,7 +10,7 @@ import { Avatar, Button, Card, CardContent, Skeleton } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
-type NotifType = 'like' | 'comment' | 'follow' | 'connect_request' | 'connect_accepted';
+type NotifType = 'like' | 'comment' | 'follow' | 'connect_request' | 'connect_accepted' | 'mention';
 
 interface Actor {
   id: number;
@@ -35,6 +35,7 @@ function notifVerb(type: NotifType): string {
   if (type === 'follow') return 'started following you';
   if (type === 'connect_request') return 'sent you a connect request';
   if (type === 'connect_accepted') return 'accepted your connect request';
+  if (type === 'mention') return 'mentioned you';
   return 'interacted with you';
 }
 
@@ -69,6 +70,15 @@ function NotifIcon({ type }: { type: NotifType }) {
       <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-100 text-brand-600 dark:bg-brand-950 dark:text-brand-400">
         <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM3 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 019.374 21c-2.331 0-4.512-.645-6.374-1.766z" />
+        </svg>
+      </span>
+    );
+  }
+  if (type === 'mention') {
+    return (
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-purple-100 text-purple-600 dark:bg-purple-950 dark:text-purple-400">
+        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zm0 0c0 1.657 1.007 3 2.25 3S21 13.657 21 12a9 9 0 10-2.636 6.364M16.5 12V8.25" />
         </svg>
       </span>
     );

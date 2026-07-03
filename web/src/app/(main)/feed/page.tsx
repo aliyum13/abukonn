@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { timeAgo } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { useFollow } from '@/hooks/useFollow';
+import { useMentionAutocomplete, MentionDropdown } from '@/hooks/useMentionAutocomplete';
 import ReportModal from '@/components/ReportModal';
 import {
   Avatar,
@@ -861,6 +862,8 @@ export default function FeedPage() {
   const [followingLoading, setFollowingLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [newPost, setNewPost] = useState('');
+  const composerMention = useMentionAutocomplete(token);
+  const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [composerMode, setComposerMode] = useState<'post' | 'discussion' | 'poll' | 'question' | 'event'>('post');
   const [discussionTitle, setDiscussionTitle] = useState('');
   const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
@@ -872,6 +875,8 @@ export default function FeedPage() {
   const [posting, setPosting] = useState(false);
   const [commentingId, setCommentingId] = useState<number | null>(null);
   const [commentText, setCommentText] = useState('');
+  const commentMention = useMentionAutocomplete(token);
+  const commentInputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -2305,20 +2310,60 @@ export default function FeedPage() {
                       </div>
                     </div>
                   )}
-                  <textarea
-                    value={newPost}
-                    onChange={(e) => { setNewPost(e.target.value); const t = e.target; t.style.height = 'auto'; t.style.height = `${t.scrollHeight}px`; }}
-                    placeholder={
-                      composerMode === 'discussion' ? 'Add context or details (optional)…' :
-                      composerMode === 'question' ? 'Add context or description (optional)…' :
-                      composerMode === 'poll' ? 'Describe what you\'re asking (optional)…' :
-                      composerMode === 'event' ? 'Event description (optional)…' :
-                      "What's happening on campus?"
-                    }
-                    rows={1}
-                    className="w-full resize-none bg-transparent text-[15px] text-ink placeholder:text-ink-muted focus:outline-none leading-relaxed"
-                    style={{ minHeight: '28px', maxHeight: '200px', overflow: 'hidden' }}
-                  />
+                  <div className="relative">
+                    <textarea
+                      ref={composerTextareaRef}
+                      value={newPost}
+                      onChange={(e) => {
+                        setNewPost(e.target.value);
+                        const t = e.target;
+                        t.style.height = 'auto';
+                        t.style.height = `${t.scrollHeight}px`;
+                        composerMention.handleChange(e.target.value, e.target.selectionStart ?? e.target.value.length);
+                      }}
+                      onKeyDown={(e) => {
+                        if (!composerMention.isOpen) return;
+                        if (e.key === 'ArrowDown') { e.preventDefault(); composerMention.setActiveIndex(i => Math.min(i + 1, composerMention.results.length - 1)); }
+                        else if (e.key === 'ArrowUp') { e.preventDefault(); composerMention.setActiveIndex(i => Math.max(i - 1, 0)); }
+                        else if (e.key === 'Enter' || e.key === 'Tab') {
+                          e.preventDefault();
+                          const picked = composerMention.results[composerMention.activeIndex];
+                          if (picked) {
+                            const ta = composerTextareaRef.current;
+                            const cursor = ta?.selectionStart ?? newPost.length;
+                            const { text, cursorPos } = composerMention.applyMention(newPost, cursor, picked);
+                            setNewPost(text);
+                            requestAnimationFrame(() => ta?.setSelectionRange(cursorPos, cursorPos));
+                          }
+                        } else if (e.key === 'Escape') {
+                          composerMention.close();
+                        }
+                      }}
+                      placeholder={
+                        composerMode === 'discussion' ? 'Add context or details (optional)…' :
+                        composerMode === 'question' ? 'Add context or description (optional)…' :
+                        composerMode === 'poll' ? 'Describe what you\'re asking (optional)…' :
+                        composerMode === 'event' ? 'Event description (optional)…' :
+                        "What's happening on campus?"
+                      }
+                      rows={1}
+                      className="w-full resize-none bg-transparent text-[15px] text-ink placeholder:text-ink-muted focus:outline-none leading-relaxed"
+                      style={{ minHeight: '28px', maxHeight: '200px', overflow: 'hidden' }}
+                    />
+                    {composerMention.isOpen && (
+                      <MentionDropdown
+                        results={composerMention.results}
+                        activeIndex={composerMention.activeIndex}
+                        onPick={(user) => {
+                          const ta = composerTextareaRef.current;
+                          const cursor = ta?.selectionStart ?? newPost.length;
+                          const { text, cursorPos } = composerMention.applyMention(newPost, cursor, user);
+                          setNewPost(text);
+                          requestAnimationFrame(() => { ta?.focus(); ta?.setSelectionRange(cursorPos, cursorPos); });
+                        }}
+                      />
+                    )}
+                  </div>
 
                   {imagePreview && (
                     <div className="relative mt-3">
@@ -2753,7 +2798,7 @@ export default function FeedPage() {
                                           <span className="text-body-sm font-semibold text-ink">{c.author_name}</span>
                                           <span className="text-caption text-ink-muted">{timeAgo(c.created_at)}</span>
                                         </div>
-                                        <p className="mt-0.5 text-body-sm text-ink leading-relaxed">{c.content}</p>
+                                        <p className="mt-0.5 text-body-sm text-ink leading-relaxed"><PostContent content={c.content} /></p>
                                         {c.is_best_answer && (
                                           <div className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-semibold text-green-700 dark:bg-green-950 dark:text-green-400">
                                             ✓ Best Answer
@@ -2826,7 +2871,7 @@ export default function FeedPage() {
                                                     <span className="text-caption font-semibold text-ink">{r.author_name}</span>
                                                     <span className="text-[10px] text-ink-muted">{timeAgo(r.created_at)}</span>
                                                   </div>
-                                                  <p className="mt-0.5 text-caption text-ink leading-relaxed">{r.content}</p>
+                                                  <p className="mt-0.5 text-caption text-ink leading-relaxed"><PostContent content={r.content} /></p>
                                                 </div>
                                               </div>
                                             ))
@@ -2845,12 +2890,33 @@ export default function FeedPage() {
                           {/* New comment input */}
                           <div className="flex gap-2">
                             <Avatar src={user.profile_photo_url} name={user.full_name} size="sm" className="shrink-0" />
-                            <div className="flex min-w-0 flex-1 gap-2">
+                            <div className="relative flex min-w-0 flex-1 gap-2">
                               <Input
+                                ref={commentInputRef}
                                 value={commentText}
-                                onChange={(e) => setCommentText(e.target.value)}
+                                onChange={(e) => {
+                                  setCommentText(e.target.value);
+                                  commentMention.handleChange(e.target.value, e.target.selectionStart ?? e.target.value.length);
+                                }}
                                 placeholder="Write a comment…"
                                 onKeyDown={(e) => {
+                                  if (commentMention.isOpen) {
+                                    if (e.key === 'ArrowDown') { e.preventDefault(); commentMention.setActiveIndex(i => Math.min(i + 1, commentMention.results.length - 1)); return; }
+                                    if (e.key === 'ArrowUp') { e.preventDefault(); commentMention.setActiveIndex(i => Math.max(i - 1, 0)); return; }
+                                    if (e.key === 'Enter' || e.key === 'Tab') {
+                                      e.preventDefault();
+                                      const picked = commentMention.results[commentMention.activeIndex];
+                                      if (picked) {
+                                        const input = commentInputRef.current;
+                                        const cursor = input?.selectionStart ?? commentText.length;
+                                        const { text, cursorPos } = commentMention.applyMention(commentText, cursor, picked);
+                                        setCommentText(text);
+                                        requestAnimationFrame(() => input?.setSelectionRange(cursorPos, cursorPos));
+                                      }
+                                      return;
+                                    }
+                                    if (e.key === 'Escape') { commentMention.close(); return; }
+                                  }
                                   if (e.key === 'Enter' && !e.shiftKey) {
                                     e.preventDefault();
                                     handleComment(post.id);
@@ -2858,6 +2924,19 @@ export default function FeedPage() {
                                 }}
                                 className="flex-1"
                               />
+                              {commentMention.isOpen && (
+                                <MentionDropdown
+                                  results={commentMention.results}
+                                  activeIndex={commentMention.activeIndex}
+                                  onPick={(pickedUser) => {
+                                    const input = commentInputRef.current;
+                                    const cursor = input?.selectionStart ?? commentText.length;
+                                    const { text, cursorPos } = commentMention.applyMention(commentText, cursor, pickedUser);
+                                    setCommentText(text);
+                                    requestAnimationFrame(() => { input?.focus(); input?.setSelectionRange(cursorPos, cursorPos); });
+                                  }}
+                                />
+                              )}
                               <Button
                                 onClick={() => handleComment(post.id)}
                                 size="sm"
