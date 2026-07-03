@@ -234,6 +234,7 @@ app.use('/api/timetable', require('./routes/timetable'));
 app.use('/api/support', require('./routes/support'));
 app.use('/api/library', require('./routes/library'));
 app.use('/api/moderation', require('./routes/moderation'));
+app.use('/api/academic-calendar', require('./routes/academicCalendar'));
 
 // Test route
 app.get('/', (req, res) => {
@@ -267,6 +268,7 @@ createUsersTable()
   .then(() => createSupportTable())
   .then(() => createLibraryTable())
   .then(() => createReportBlockTables())
+  .then(() => require('./models/AcademicCalendar').createAcademicCalendarTable())
   .then(() => {
     server.timeout = 120000;
     server.keepAliveTimeout = 120000;
