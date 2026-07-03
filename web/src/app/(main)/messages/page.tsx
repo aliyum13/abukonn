@@ -867,8 +867,9 @@ export default function MessagesPage() {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!sigRes.ok) throw new Error('Failed to get upload signature');
-        const { signature, timestamp, api_key, cloud_name, folder } = await sigRes.json() as {
+        const { signature, timestamp, api_key, cloud_name, folder, use_filename, unique_filename } = await sigRes.json() as {
           signature: string; timestamp: number; api_key: string; cloud_name: string; folder: string;
+          use_filename?: boolean; unique_filename?: boolean;
         };
         fileUrl = await new Promise<string>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
@@ -891,6 +892,8 @@ export default function MessagesPage() {
           fd.append('timestamp', String(timestamp));
           fd.append('signature', signature);
           fd.append('folder', folder);
+          if (use_filename) fd.append('use_filename', 'true');
+          if (unique_filename) fd.append('unique_filename', 'true');
           xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloud_name}/raw/upload`);
           xhr.send(fd);
         });

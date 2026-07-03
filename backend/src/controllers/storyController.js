@@ -31,16 +31,27 @@ async function getUploadSignature(req, res) {
     const requested = typeof req.query.folder === 'string' ? req.query.folder : 'abukonn/stories';
     const folder = ALLOWED_UPLOAD_FOLDERS.has(requested) ? requested : 'abukonn/stories';
     const timestamp = Math.round(Date.now() / 1000);
-    const signature = cloudinary.utils.api_sign_request(
-      { folder, timestamp },
-      process.env.CLOUDINARY_API_SECRET
-    );
+
+    const paramsToSign = { folder, timestamp };
+    // Raw document uploads (PDFs, Word, PowerPoint, Excel, etc.) get a random
+    // public_id with NO file extension by default — Cloudinary only serves
+    // raw files under a bare id unless told to keep the original filename.
+    // Without the extension in the URL, browsers and viewers (Google Docs
+    // Viewer included) can't tell what the file is and just force a download.
+    const preserveFilename = folder === 'abukonn/files';
+    if (preserveFilename) {
+      paramsToSign.use_filename = true;
+      paramsToSign.unique_filename = true;
+    }
+
+    const signature = cloudinary.utils.api_sign_request(paramsToSign, process.env.CLOUDINARY_API_SECRET);
     res.json({
       signature,
       timestamp,
       api_key: process.env.CLOUDINARY_API_KEY,
       cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
       folder,
+      ...(preserveFilename ? { use_filename: true, unique_filename: true } : {}),
     });
   } catch (err) {
     console.error('Signature error:', err.message);
