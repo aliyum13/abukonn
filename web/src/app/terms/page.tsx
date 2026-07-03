@@ -62,21 +62,22 @@ export default function TermsPage() {
           {/* 2 */}
           <section>
             <h2 className="mb-3 text-lg font-semibold text-[#16a34a]">2. Eligibility</h2>
-            <p>ABUkonn is exclusively for:</p>
+            <p>ABUkonn is intended for:</p>
             <ul className="mt-3 list-disc space-y-1.5 pl-6">
-              <li>Current students of Ahmadu Bello University with a valid matric number.</li>
+              <li>Current students of Ahmadu Bello University.</li>
               <li>Alumni of Ahmadu Bello University.</li>
               <li>Current staff and faculty members of Ahmadu Bello University.</li>
             </ul>
             <p className="mt-3">
               You must be at least 16 years old to register. By creating an account you confirm that you meet
-              these eligibility requirements. We reserve the right to verify your identity and suspend accounts
-              found to be ineligible.
+              these eligibility requirements. Registration is open and does not currently require verification
+              of a matric number or official university email. We reserve the right to request additional
+              verification, and to suspend or remove accounts found to be ineligible or created in bad faith.
             </p>
             <p className="mt-3">
-              Your matric number is used solely for identity verification and displayed on your public profile.
-              It is not used as a login credential. Registration requires a valid email address and a password of
-              at least 6 characters.
+              Registration requires a valid email address and a password of at least 6 characters. Your email
+              address is used for login, account recovery, and account-related notifications, and is not shown
+              on your public profile.
             </p>
           </section>
 
@@ -140,7 +141,7 @@ export default function TermsPage() {
             <h2 className="mb-3 text-lg font-semibold text-[#16a34a]">5. Privacy</h2>
             <p>We collect and process the following data when you use ABUkonn:</p>
             <ul className="mt-3 list-disc space-y-1.5 pl-6">
-              <li><strong className="text-gray-900">Account data:</strong> your email address, full name, matric number, department, level, and password (stored as a secure hash).</li>
+              <li><strong className="text-gray-900">Account data:</strong> your email address, full name, department, level, and password (stored as a secure hash).</li>
               <li><strong className="text-gray-900">Profile data:</strong> optional bio and profile photo that you choose to upload.</li>
               <li><strong className="text-gray-900">Activity data:</strong> posts, comments, likes, follows, and messages you create on the platform.</li>
               <li><strong className="text-gray-900">Technical data:</strong> IP address, browser type, and device information collected automatically for security and performance purposes.</li>
