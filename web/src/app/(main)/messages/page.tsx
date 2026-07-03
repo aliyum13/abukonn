@@ -1977,16 +1977,18 @@ export default function MessagesPage() {
             </div>
 
             {/* Viewer body */}
-            <div className="min-h-0 flex-1">
+            <div className="relative min-h-0 flex-1">
               {embedSrc ? (
                 <iframe
                   key={docViewer.url}
                   src={embedSrc}
                   title={docViewer.name}
-                  className="h-full w-full border-0 bg-white"
+                  scrolling="yes"
+                  className="absolute inset-0 h-full w-full border-0 bg-white"
+                  style={{ WebkitOverflowScrolling: 'touch' }}
                 />
               ) : (
-                <div className="flex h-full flex-col items-center justify-center gap-4 px-4 text-center">
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 overflow-y-auto px-4 text-center">
                   <span className="flex h-16 w-16 items-center justify-center rounded-full bg-white/10 text-[13px] font-bold text-white">
                     {ext.toUpperCase().slice(0, 4)}
                   </span>
