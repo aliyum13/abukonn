@@ -251,8 +251,8 @@ function formatFileSize(bytes?: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-const VIEWABLE_INLINE_EXTENSIONS = new Set(['pdf', 'txt']);
-const OFFICE_VIEWER_EXTENSIONS = new Set(['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'csv']);
+const VIEWABLE_INLINE_EXTENSIONS = new Set(['pdf', 'txt', 'csv']);
+const OFFICE_VIEWER_EXTENSIONS = new Set(['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx']);
 
 function FileAttachmentCard({ url, name, size, isSent, onView }: { url: string; name: string; size?: number | null; isSent: boolean; onView: (url: string, name: string) => void }) {
   const ext = name.split('.').pop()?.toUpperCase() || 'FILE';
@@ -1944,7 +1944,7 @@ export default function MessagesPage() {
         const embedSrc = isNativelyViewable
           ? docViewer.url
           : isOfficeDoc
-          ? `https://docs.google.com/gview?url=${encodeURIComponent(docViewer.url)}&embedded=true`
+          ? `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(docViewer.url)}`
           : null;
 
         return (

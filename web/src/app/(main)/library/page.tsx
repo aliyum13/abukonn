@@ -46,8 +46,8 @@ interface Material {
   download_count: number; created_at: string; uploader_name: string | null;
 }
 
-const VIEWABLE_INLINE_EXTENSIONS = new Set(['pdf', 'txt']);
-const OFFICE_VIEWER_EXTENSIONS = new Set(['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'csv']);
+const VIEWABLE_INLINE_EXTENSIONS = new Set(['pdf', 'txt', 'csv']);
+const OFFICE_VIEWER_EXTENSIONS = new Set(['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx']);
 
 function formatSize(bytes: number | null) {
   if (!bytes) return '';
@@ -228,7 +228,7 @@ export default function LibraryPage() {
         const embedSrc = isNativelyViewable
           ? docViewer.url
           : isOfficeDoc
-          ? `https://docs.google.com/gview?url=${encodeURIComponent(docViewer.url)}&embedded=true`
+          ? `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(docViewer.url)}`
           : null;
 
         return (
