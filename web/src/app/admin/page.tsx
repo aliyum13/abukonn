@@ -71,6 +71,8 @@ function StatSkeleton() {
 
 export default function AdminDashboard() {
   const { token } = useAuth();
+  const [repairing, setRepairing] = useState(false);
+  const [repairResult, setRepairResult] = useState<string | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [recentUsers, setRecentUsers] = useState<RecentUser[]>([]);
   const [statsLoading, setStatsLoading] = useState(true);
@@ -227,6 +229,71 @@ export default function AdminDashboard() {
               ))}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Maintenance */}
+      <Card>
+        <CardHeader className="p-6 pb-4">
+          <CardTitle>Maintenance</CardTitle>
+        </CardHeader>
+        <CardContent className="p-6 pt-0">
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-border p-4">
+            <div>
+              <p className="font-semibold text-ink">Repair document links</p>
+              <p className="mt-1 text-caption text-ink-muted">
+                Fixes documents (Library materials and chat file attachments) uploaded before
+                the file-extension fix — they show a raw download prompt instead of previewing.
+                Safe to run repeatedly.
+              </p>
+              {repairResult && (
+                <p className="mt-2 whitespace-pre-line text-caption text-brand-700">{repairResult}</p>
+              )}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              loading={repairing}
+              onClick={async () => {
+                setRepairing(true);
+                setRepairResult(null);
+                try {
+                  const res = await fetch(`${API_URL}/api/admin/repair-file-extensions`, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}` },
+                  });
+                  const data = await res.json() as {
+                    results?: {
+                      library_materials: { checked: number; fixed: number; errors: unknown[] };
+                      messages: { checked: number; fixed: number; errors: unknown[] };
+                      group_messages: { checked: number; fixed: number; errors: unknown[] };
+                    };
+                    message?: string;
+                  };
+                  if (res.ok && data.results) {
+                    const { library_materials, messages, group_messages } = data.results;
+                    const totalFixed = library_materials.fixed + messages.fixed + group_messages.fixed;
+                    const totalErrors = library_materials.errors.length + messages.errors.length + group_messages.errors.length;
+                    setRepairResult(
+                      `Done — ${totalFixed} file(s) fixed${totalErrors > 0 ? `, ${totalErrors} error(s)` : ''}.\n` +
+                      `Library: ${library_materials.fixed}/${library_materials.checked} · ` +
+                      `DMs: ${messages.fixed}/${messages.checked} · ` +
+                      `Groups: ${group_messages.fixed}/${group_messages.checked}`
+                    );
+                  } else {
+                    setRepairResult(`Failed: ${data.message || 'Unknown error'}`);
+                  }
+                } catch {
+                  setRepairResult('Failed: network error');
+                } finally {
+                  setRepairing(false);
+                }
+              }}
+            >
+              Run repair
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

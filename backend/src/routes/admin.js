@@ -44,4 +44,27 @@ router.get('/whitelist', getWhitelist);
 router.post('/whitelist/upload', uploadAny.single('csv'), uploadWhitelist);
 router.delete('/whitelist', clearWhitelist);
 
+// One-time maintenance: fix documents uploaded before the extension-
+// preservation fix (they were stored with no file extension, so browsers
+// and the document viewer can't render them and fall back to a raw
+// download prompt). Safe to run repeatedly — already-correct rows are
+// skipped automatically.
+router.post('/repair-file-extensions', async (req, res) => {
+  try {
+    const pool = require('../config/db');
+    const cloudinary = require('cloudinary').v2;
+    cloudinary.config({
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+      api_key: process.env.CLOUDINARY_API_KEY,
+      api_secret: process.env.CLOUDINARY_API_SECRET,
+    });
+    const { repairAll } = require('../../scripts/fix-file-extensions');
+    const results = await repairAll(pool, cloudinary);
+    res.json({ message: 'Repair complete', results });
+  } catch (err) {
+    console.error('repair-file-extensions error:', err.message);
+    res.status(500).json({ message: 'Repair failed', error: err.message });
+  }
+});
+
 module.exports = router;
