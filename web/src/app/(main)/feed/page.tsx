@@ -96,7 +96,7 @@ interface Story {
   caption: string | null;
   created_at: string;
   expires_at: string;
-  view_count: number;
+  view_count: number | null;
 }
 
 interface StoryGroup {

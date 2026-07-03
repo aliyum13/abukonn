@@ -42,7 +42,7 @@ async function getActiveStoriesForUser(userId) {
     `SELECT s.id, s.user_id, s.media_url, s.media_type, s.story_type, s.text_content, s.bg_color,
             s.caption, s.created_at, s.expires_at,
             u.full_name AS user_name, u.profile_photo_url AS user_photo,
-            COUNT(sv.id)::int AS view_count
+            CASE WHEN s.user_id = $1 THEN COUNT(sv.id)::int ELSE NULL END AS view_count
      FROM abukonn.stories s
      JOIN abukonn.users u ON s.user_id = u.id
      LEFT JOIN abukonn.story_views sv ON sv.story_id = s.id
@@ -149,18 +149,27 @@ async function getStoryReactions(storyId, userId) {
   const liked = await pool.query(
     `SELECT 1 FROM abukonn.story_reactions WHERE story_id=$1 AND user_id=$2`, [storyId, userId]
   );
-  const likers = await pool.query(
-    `SELECT r.user_id, u.full_name AS user_name, u.profile_photo_url AS user_photo
-     FROM abukonn.story_reactions r
-     JOIN abukonn.users u ON r.user_id = u.id
-     WHERE r.story_id = $1
-     ORDER BY r.created_at DESC`,
-    [storyId]
-  );
+
+  const storyRes = await pool.query(`SELECT user_id FROM abukonn.stories WHERE id=$1`, [storyId]);
+  const isOwner = storyRes.rows[0]?.user_id === userId;
+
+  let likersList = [];
+  if (isOwner) {
+    const likers = await pool.query(
+      `SELECT r.user_id, u.full_name AS user_name, u.profile_photo_url AS user_photo
+       FROM abukonn.story_reactions r
+       JOIN abukonn.users u ON r.user_id = u.id
+       WHERE r.story_id = $1
+       ORDER BY r.created_at DESC`,
+      [storyId]
+    );
+    likersList = likers.rows;
+  }
+
   return {
     count: parseInt(cnt.rows[0].count, 10),
     is_liked: liked.rows.length > 0,
-    likers: likers.rows,
+    likers: likersList,
   };
 }
 
