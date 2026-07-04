@@ -1979,14 +1979,34 @@ export default function MessagesPage() {
             {/* Viewer body */}
             <div className="relative min-h-0 flex-1">
               {embedSrc ? (
-                <iframe
-                  key={docViewer.url}
-                  src={embedSrc}
-                  title={docViewer.name}
-                  scrolling="yes"
-                  className="absolute inset-0 h-full w-full border-0 bg-white"
-                  style={{ WebkitOverflowScrolling: 'touch' }}
-                />
+                <>
+                  <iframe
+                    key={docViewer.url}
+                    src={embedSrc}
+                    title={docViewer.name}
+                    scrolling="yes"
+                    className="absolute inset-0 h-full w-full border-0 bg-white"
+                    style={{ WebkitOverflowScrolling: 'touch' }}
+                  />
+                  {/* Persistent fallback: if the embedded viewer fails to render
+                      (e.g. an older file whose URL lacks a proper extension, or
+                      the viewer service being unreachable), the user still has a
+                      clear way out instead of a blank screen. */}
+                  {isOfficeDoc && (
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-3">
+                      <a
+                        href={docViewer.url}
+                        download={docViewer.name}
+                        className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-black/70 px-4 py-2 text-[12px] font-medium text-white shadow-lg backdrop-blur transition hover:bg-black/85"
+                      >
+                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                        </svg>
+                        Not loading? Download instead
+                      </a>
+                    </div>
+                  )}
+                </>
               ) : (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 overflow-y-auto px-4 text-center">
                   <span className="flex h-16 w-16 items-center justify-center rounded-full bg-white/10 text-[13px] font-bold text-white">
