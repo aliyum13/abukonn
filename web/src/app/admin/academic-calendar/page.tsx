@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 import { Button, Card, CardContent, CardHeader, CardTitle, Skeleton, EmptyState } from '@/components/ui';
@@ -19,6 +19,23 @@ interface CalendarEntry {
 
 const EMPTY_FORM = { semester: 'first' as 'first' | 'second', activity: '', from_date: '', to_date: '', period: '' };
 
+// Pre-filled with the official ABU 2025/2026 calendar so the admin has a
+// ready reference — they can edit dates for future sessions and re-upload.
+const CSV_TEMPLATE = `semester,activity,from_date,to_date,period
+first,Registration,2026-01-05,2026-01-17,2 weeks
+first,Lectures,2026-01-12,2026-03-21,10 weeks
+first,Mid-Semester Break,2026-03-23,2026-03-28,1 week
+first,Lectures,2026-03-30,2026-04-25,4 weeks
+first,Final Examination,2026-04-27,2026-05-16,3 weeks
+first,End of Semester Break,2026-05-18,2026-05-30,2 weeks
+first,Add and Drop,2026-02-02,2026-02-14,2 weeks
+second,Lectures,2026-06-01,2026-07-25,8 weeks
+second,Mid-Semester Break,2026-07-27,2026-08-01,1 week
+second,Lectures,2026-08-03,2026-09-12,6 weeks
+second,Final Examination,2026-09-14,2026-10-03,3 weeks
+second,Add and Drop,2026-06-22,2026-07-04,2 weeks
+`;
+
 function toInputDate(d: string | null): string {
   if (!d) return '';
   return new Date(d).toISOString().slice(0, 10);
@@ -35,6 +52,11 @@ export default function AdminAcademicCalendarPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const csvRef = useRef<HTMLInputElement>(null);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvPreview, setCsvPreview] = useState<{ valid: unknown[]; total: number; errors: string[] } | null>(null);
+  const [csvReplace, setCsvReplace] = useState(false);
+  const [csvUploading, setCsvUploading] = useState(false);
 
   const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(null), 2500); };
 
@@ -123,6 +145,69 @@ export default function AdminAcademicCalendarPage() {
     if (res.ok) { setEntries(prev => prev.filter(e => e.id !== id)); showToast('Entry deleted.'); }
   };
 
+  const downloadTemplate = () => {
+    const blob = new Blob([CSV_TEMPLATE], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'academic_calendar_template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCsvSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !token) return;
+    setCsvFile(file);
+    setCsvPreview(null);
+    const fd = new FormData();
+    fd.append('csv', file);
+    try {
+      const res = await fetch(`${API_URL}/api/academic-calendar/admin/preview`, {
+        method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd,
+      });
+      if (res.ok) {
+        setCsvPreview(await res.json());
+      } else {
+        showToast('Could not read that CSV.');
+        setCsvFile(null);
+      }
+    } catch {
+      showToast('Could not read that CSV.');
+      setCsvFile(null);
+    }
+    e.target.value = '';
+  };
+
+  const handleCsvUpload = async () => {
+    if (!token || !csvFile) return;
+    const targetSession = newSession.trim() || session;
+    if (!targetSession) { showToast('Pick or create a session first.'); return; }
+    setCsvUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('csv', csvFile);
+      fd.append('session', targetSession);
+      fd.append('replace', String(csvReplace));
+      const res = await fetch(`${API_URL}/api/academic-calendar/admin/upload`, {
+        method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd,
+      });
+      const data = await res.json() as { message?: string };
+      if (res.ok) {
+        setCsvFile(null);
+        setCsvPreview(null);
+        setCsvReplace(false);
+        if (newSession.trim()) { setSession(newSession.trim()); setNewSession(''); await loadSessions(); }
+        await loadEntries(targetSession);
+        showToast(data.message || 'Calendar uploaded.');
+      } else {
+        showToast(data.message || 'Upload failed.');
+      }
+    } finally {
+      setCsvUploading(false);
+    }
+  };
+
   const inputCls = 'w-full rounded-xl border border-border bg-white px-3 py-2 text-body-sm text-ink focus:border-brand-500 focus:outline-none dark:bg-[#111] dark:border-[#333]';
 
   const firstSem = entries.filter(e => e.semester === 'first');
@@ -188,6 +273,60 @@ export default function AdminAcademicCalendarPage() {
               <Button variant="outline" onClick={() => { setEditingId(null); setForm(EMPTY_FORM); }}>Cancel</Button>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Bulk upload via CSV */}
+      <Card className="mb-6">
+        <CardContent className="p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="font-semibold text-ink">Bulk upload (CSV)</p>
+              <p className="mt-1 text-caption text-ink-muted">
+                Add a whole session at once. Download the template — it&apos;s pre-filled with the
+                current ABU calendar as a starting point — edit it, then upload.
+              </p>
+            </div>
+            <Button variant="outline" size="sm" className="shrink-0" onClick={downloadTemplate}>
+              <svg className="mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+              Template
+            </Button>
+          </div>
+
+          <input ref={csvRef} type="file" accept=".csv,text/csv" onChange={handleCsvSelect} className="hidden" />
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => csvRef.current?.click()}>
+              {csvFile ? 'Choose a different file' : 'Choose CSV file'}
+            </Button>
+            {csvFile && <span className="text-caption text-ink-muted">{csvFile.name}</span>}
+          </div>
+
+          {csvPreview && (
+            <div className="mt-3 rounded-xl border border-border p-3 dark:border-[#222]">
+              <p className="text-body-sm text-ink">
+                <span className="font-semibold text-brand-700 dark:text-brand-400">{csvPreview.total}</span> valid row{csvPreview.total === 1 ? '' : 's'} ready to import
+                {(newSession.trim() || session) ? <> into <span className="font-medium">{newSession.trim() || session}</span></> : ''}.
+              </p>
+              {csvPreview.errors.length > 0 && (
+                <ul className="mt-2 list-disc space-y-0.5 pl-5 text-caption text-red-600">
+                  {csvPreview.errors.slice(0, 5).map((e, i) => <li key={i}>{e}</li>)}
+                  {csvPreview.errors.length > 5 && <li>…and {csvPreview.errors.length - 5} more</li>}
+                </ul>
+              )}
+              <label className="mt-3 flex items-center gap-2 text-caption text-ink-secondary">
+                <input type="checkbox" checked={csvReplace} onChange={e => setCsvReplace(e.target.checked)} className="rounded border-border" />
+                Replace all existing entries for this session first
+              </label>
+              <div className="mt-3">
+                <Button size="sm" loading={csvUploading} disabled={csvPreview.total === 0} onClick={handleCsvUpload}>
+                  Import {csvPreview.total} row{csvPreview.total === 1 ? '' : 's'}
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

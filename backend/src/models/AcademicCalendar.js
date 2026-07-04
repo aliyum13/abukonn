@@ -85,6 +85,21 @@ async function deleteSession(session) {
   await pool.query(`DELETE FROM abukonn.academic_calendar WHERE session = $1`, [session]);
 }
 
+async function bulkAddEntries(entries) {
+  let count = 0;
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    await pool.query(
+      `INSERT INTO abukonn.academic_calendar
+         (session, semester, activity, from_date, to_date, period, sort_order, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [e.session, e.semester, e.activity, e.fromDate || null, e.toDate || null, e.period || null, i, e.createdBy]
+    );
+    count++;
+  }
+  return count;
+}
+
 module.exports = {
   createAcademicCalendarTable,
   getSessions,
@@ -94,4 +109,5 @@ module.exports = {
   updateEntry,
   deleteEntry,
   deleteSession,
+  bulkAddEntries,
 };
