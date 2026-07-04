@@ -187,11 +187,12 @@ export default function AdminAcademicCalendarPage() {
     try {
       const fd = new FormData();
       fd.append('csv', csvFile);
-      fd.append('session', targetSession);
-      fd.append('replace', String(csvReplace));
-      const res = await fetch(`${API_URL}/api/academic-calendar/admin/upload`, {
-        method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd,
-      });
+      const res = await fetch(
+        `${API_URL}/api/academic-calendar/admin/upload?session=${encodeURIComponent(targetSession)}&replace=${csvReplace}`,
+        {
+          method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd,
+        }
+      );
       const data = await res.json() as { message?: string };
       if (res.ok) {
         setCsvFile(null);

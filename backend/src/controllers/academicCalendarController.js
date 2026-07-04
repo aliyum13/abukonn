@@ -171,9 +171,9 @@ async function previewCSV(req, res) {
 async function uploadCSV(req, res) {
   try {
     if (!req.file) return res.status(400).json({ message: 'CSV file is required.' });
-    const session = (req.body.session || '').trim();
+    const session = (req.query.session || '').toString().trim();
     if (!session) return res.status(400).json({ message: 'Session is required (e.g. 2025/2026).' });
-    const replace = req.body.replace === 'true' || req.body.replace === true;
+    const replace = req.query.replace === 'true';
 
     const rows = parseCSV(req.file.buffer);
     const entries = [];
