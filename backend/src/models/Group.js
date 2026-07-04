@@ -281,7 +281,7 @@ async function deleteGroupMessage(messageId, userId) {
 
 async function getGroupMembers(groupId) {
   const { rows } = await pool.query(
-    `SELECT u.id, u.full_name, u.profile_photo_url, u.department, gm.role, gm.status, gm.joined_at
+    `SELECT u.id, u.full_name, u.username, u.profile_photo_url, u.department, gm.role, gm.status, gm.joined_at
      FROM abukonn.group_members gm
      JOIN abukonn.users u ON gm.user_id = u.id
      WHERE gm.group_id = $1 AND gm.status = 'active'

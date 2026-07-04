@@ -1,5 +1,7 @@
 const Group = require('../models/Group');
 const User = require('../models/User');
+const Notification = require('../models/Notification');
+const { extractMentionedUsernames } = require('../utils/mentions');
 
 async function createGroup(req, res) {
   try {
@@ -77,6 +79,28 @@ async function sendGroupMessage(req, res) {
 
     const io = req.app.get('io');
     if (io) io.to(`group_${groupId}`).emit('receive_group_message', message);
+
+    // Notify any group members tagged with @username in this message
+    const mentioned = extractMentionedUsernames(content || '');
+    if (mentioned.length > 0) {
+      Group.getGroupMembers(groupId)
+        .then(members => {
+          const toNotify = members.filter(m =>
+            m.id !== req.user.id &&
+            m.username &&
+            mentioned.includes(m.username.toLowerCase())
+          );
+          return Promise.all(toNotify.map(m =>
+            Notification.createNotification({
+              recipientId: m.id,
+              senderId: req.user.id,
+              type: 'mention',
+              postId: null,
+            })
+          ));
+        })
+        .catch(err => console.error('Group mention notification error:', err.message));
+    }
 
     res.status(201).json({ message });
   } catch (err) {

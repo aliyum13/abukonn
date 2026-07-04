@@ -75,6 +75,7 @@ interface GroupMessage {
 interface GroupMember {
   id: number;
   full_name: string;
+  username?: string;
   profile_photo_url: string | null;
   department: string;
   role?: 'admin' | 'member';
@@ -242,6 +243,16 @@ function plainMessageText(content: string | null): string {
   const messageReply = parseMessageReply(content);
   if (messageReply) return messageReply.reply;
   return content;
+}
+
+// Renders message text with @mentions highlighted (brand color, semibold)
+function renderWithMentions(text: string) {
+  const parts = text.split(/(@[a-zA-Z0-9_]{2,30})/g);
+  return parts.map((part, i) =>
+    /^@[a-zA-Z0-9_]{2,30}$/.test(part)
+      ? <span key={i} className="font-semibold text-brand-600 dark:text-brand-400">{part}</span>
+      : <span key={i}>{part}</span>
+  );
 }
 
 function formatFileSize(bytes?: number | null): string {
@@ -473,6 +484,9 @@ export default function MessagesPage() {
 
   // Shared UI state
   const [newMessage, setNewMessage] = useState('');
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionStart, setMentionStart] = useState<number | null>(null);
+  const [mentionActiveIdx, setMentionActiveIdx] = useState(0);
   const [loading, setLoading] = useState(true);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -776,12 +790,52 @@ export default function MessagesPage() {
     ta.style.height = 'auto';
     ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`;
 
+    // Mention detection — only in group chat (tag a group member)
+    if (activeGroupId) {
+      const cursor = ta.selectionStart ?? e.target.value.length;
+      const upToCursor = e.target.value.slice(0, cursor);
+      const m = upToCursor.match(/(?:^|[^\w@])@([a-zA-Z0-9_]{0,30})$/);
+      if (m) {
+        setMentionStart(cursor - m[1].length - 1);
+        setMentionQuery(m[1].toLowerCase());
+        setMentionActiveIdx(0);
+      } else {
+        setMentionQuery(null);
+        setMentionStart(null);
+      }
+    }
+
     if (!activeId || !token) return;
     socketRef.current?.emit('typing_start', { conversationId: activeId });
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {
       socketRef.current?.emit('typing_stop', { conversationId: activeId });
     }, 2500);
+  };
+
+  // Group members matching the current @mention query
+  const mentionMatches = mentionQuery !== null
+    ? groupMembers
+        .filter(m => m.username && m.id !== user?.id && (
+          m.username.toLowerCase().startsWith(mentionQuery) ||
+          m.full_name.toLowerCase().includes(mentionQuery)
+        ))
+        .slice(0, 6)
+    : [];
+
+  const applyMention = (member: GroupMember) => {
+    if (mentionStart === null || !member.username) return;
+    const ta = textareaRef.current;
+    const cursor = ta?.selectionStart ?? newMessage.length;
+    const before = newMessage.slice(0, mentionStart);
+    const after = newMessage.slice(cursor);
+    const insertion = `@${member.username} `;
+    const next = `${before}${insertion}${after}`;
+    setNewMessage(next);
+    setMentionQuery(null);
+    setMentionStart(null);
+    const newPos = before.length + insertion.length;
+    requestAnimationFrame(() => { ta?.focus(); ta?.setSelectionRange(newPos, newPos); });
   };
 
   const handleImgSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -831,6 +885,8 @@ export default function MessagesPage() {
     const capturedFile = msgFile;
     const capturedReply = replyTo;
     setNewMessage('');
+    setMentionQuery(null);
+    setMentionStart(null);
     setMsgImage(null);
     setMsgImagePreview(null);
     setMsgFile(null);
@@ -940,6 +996,13 @@ export default function MessagesPage() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Mention dropdown navigation takes priority when open
+    if (mentionQuery !== null && mentionMatches.length > 0) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setMentionActiveIdx(i => Math.min(i + 1, mentionMatches.length - 1)); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setMentionActiveIdx(i => Math.max(i - 1, 0)); return; }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); applyMention(mentionMatches[mentionActiveIdx]); return; }
+      if (e.key === 'Escape') { setMentionQuery(null); setMentionStart(null); return; }
+    }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
@@ -1513,7 +1576,7 @@ export default function MessagesPage() {
                                               <FileAttachmentCard url={msg.file_url} name={msg.file_name} size={msg.file_size} isSent={isSent} onView={(url, name) => setDocViewer({ url, name })} />
                                             </div>
                                           )}
-                                          {msg.content && <p className="whitespace-pre-wrap break-words">{msg.content}</p>}
+                                          {msg.content && <p className="whitespace-pre-wrap break-words">{renderWithMentions(msg.content)}</p>}
                                         </>
                                     }
                                     <p className={cn('mt-1 text-caption', isSent ? 'text-brand-200 text-right' : 'text-ink-muted')}>{formatTime(msg.created_at)}</p>
@@ -1572,6 +1635,35 @@ export default function MessagesPage() {
                   </div>
                 )}
                 {fileError && <p className="mx-4 mt-2 text-[12px] text-red-600">{fileError}</p>}
+                {/* @mention dropdown for group members */}
+                {mentionQuery !== null && mentionMatches.length > 0 && (
+                  <div className="mx-4 mb-1 overflow-hidden rounded-xl border border-border bg-white shadow-lg dark:bg-[#151515] dark:border-[#333]">
+                    {mentionMatches.map((m, i) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onMouseDown={(e) => { e.preventDefault(); applyMention(m); }}
+                        className={`flex w-full items-center gap-2.5 px-3 py-2 text-left transition ${
+                          i === mentionActiveIdx ? 'bg-surface-muted dark:bg-[#222]' : 'hover:bg-surface-muted dark:hover:bg-[#222]'
+                        }`}
+                      >
+                        <div className="h-7 w-7 shrink-0 overflow-hidden rounded-full bg-brand-100 dark:bg-brand-950">
+                          {m.profile_photo_url ? (
+                            <img src={m.profile_photo_url} alt={m.full_name} className="h-full w-full object-cover" />
+                          ) : (
+                            <span className="flex h-full w-full items-center justify-center text-[11px] font-bold text-brand-700 dark:text-brand-400">
+                              {m.full_name.charAt(0).toUpperCase()}
+                            </span>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-[13px] font-medium text-ink">{m.full_name}</p>
+                          {m.username && <p className="truncate text-[11px] text-ink-muted">@{m.username}</p>}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <form onSubmit={handleSend} className="flex items-end gap-2 border-t border-border p-4">
                   <input ref={imgInputRef} type="file" accept="image/*" onChange={handleImgSelect} className="hidden" />
                   <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv" onChange={handleFileSelect} className="hidden" />
