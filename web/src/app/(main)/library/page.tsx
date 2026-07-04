@@ -247,7 +247,7 @@ export default function LibraryPage() {
         const isNativelyViewable = VIEWABLE_INLINE_EXTENSIONS.has(ext);
         const isOfficeDoc = OFFICE_VIEWER_EXTENSIONS.has(ext);
         const embedSrc = isNativelyViewable
-          ? docViewer.url
+          ? (ext === 'pdf' ? `${docViewer.url}#view=FitH&toolbar=1` : docViewer.url)
           : isOfficeDoc
           ? `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(docViewer.url)}`
           : null;
