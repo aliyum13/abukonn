@@ -33,15 +33,21 @@ async function getUploadSignature(req, res) {
     const timestamp = Math.round(Date.now() / 1000);
 
     const paramsToSign = { folder, timestamp };
-    // Raw document uploads (PDFs, Word, PowerPoint, Excel, etc.) get a random
-    // public_id with NO file extension by default — Cloudinary only serves
-    // raw files under a bare id unless told to keep the original filename.
-    // Without the extension in the URL, browsers and viewers (Google Docs
-    // Viewer included) can't tell what the file is and just force a download.
-    const preserveFilename = folder === 'abukonn/files';
-    if (preserveFilename) {
-      paramsToSign.use_filename = true;
-      paramsToSign.unique_filename = true;
+    let publicId = null;
+
+    // Raw document uploads (PDF, Word, PowerPoint, Excel, etc.) must keep their
+    // file extension in the delivery URL, otherwise browsers and the document
+    // viewer can't identify the file and fall back to a raw download prompt.
+    // For resource_type 'raw', use_filename does NOT append the extension, so we
+    // build an explicit public_id that includes it (with a random suffix for
+    // uniqueness) and sign that.
+    if (folder === 'abukonn/files' && typeof req.query.filename === 'string' && req.query.filename) {
+      const path = require('path');
+      const ext = path.extname(req.query.filename);
+      const base = path.basename(req.query.filename, ext).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || 'file';
+      const suffix = Math.random().toString(36).slice(2, 8);
+      publicId = `${base}_${suffix}${ext}`;
+      paramsToSign.public_id = publicId;
     }
 
     const signature = cloudinary.utils.api_sign_request(paramsToSign, process.env.CLOUDINARY_API_SECRET);
@@ -51,7 +57,7 @@ async function getUploadSignature(req, res) {
       api_key: process.env.CLOUDINARY_API_KEY,
       cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
       folder,
-      ...(preserveFilename ? { use_filename: true, unique_filename: true } : {}),
+      ...(publicId ? { public_id: publicId } : {}),
     });
   } catch (err) {
     console.error('Signature error:', err.message);

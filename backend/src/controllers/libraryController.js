@@ -37,10 +37,21 @@ async function upload(req, res) {
       return res.status(400).json({ message: 'title, type and file are required' });
     }
 
-    // Upload to Cloudinary as raw file
+    // Build a public_id that KEEPS the file extension. For resource_type 'raw',
+    // Cloudinary does NOT append the extension to the delivery URL on its own —
+    // use_filename only affects the base name, so files ended up at URLs with no
+    // extension (e.g. .../file_fxzsj0), which browsers/viewers can't identify and
+    // fall back to a raw download prompt. Setting public_id explicitly with the
+    // extension fixes this. A random suffix keeps it unique.
+    const path = require('path');
+    const ext = path.extname(req.file.originalname);
+    const base = path.basename(req.file.originalname, ext).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || 'file';
+    const suffix = Math.random().toString(36).slice(2, 8);
+    const publicId = `${base}_${suffix}${ext}`;
+
     const result = await new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
-        { resource_type: 'raw', folder: 'abukonn/library', use_filename: true, unique_filename: true },
+        { resource_type: 'raw', folder: 'abukonn/library', public_id: publicId, use_filename: false, unique_filename: false },
         (error, result) => error ? reject(error) : resolve(result)
       );
       stream.end(req.file.buffer);

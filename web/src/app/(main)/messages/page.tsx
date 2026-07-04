@@ -863,13 +863,14 @@ export default function MessagesPage() {
       // Upload document if present (direct-to-Cloudinary, same signed pattern as images/stories)
       let fileUrl: string | null = null;
       if (capturedFile) {
-        const sigRes = await fetch(`${API_URL}/api/stories/upload-signature?folder=abukonn/files`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const sigRes = await fetch(
+          `${API_URL}/api/stories/upload-signature?folder=abukonn/files&filename=${encodeURIComponent(capturedFile.name)}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
         if (!sigRes.ok) throw new Error('Failed to get upload signature');
-        const { signature, timestamp, api_key, cloud_name, folder, use_filename, unique_filename } = await sigRes.json() as {
+        const { signature, timestamp, api_key, cloud_name, folder, public_id } = await sigRes.json() as {
           signature: string; timestamp: number; api_key: string; cloud_name: string; folder: string;
-          use_filename?: boolean; unique_filename?: boolean;
+          public_id?: string;
         };
         fileUrl = await new Promise<string>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
@@ -892,8 +893,7 @@ export default function MessagesPage() {
           fd.append('timestamp', String(timestamp));
           fd.append('signature', signature);
           fd.append('folder', folder);
-          if (use_filename) fd.append('use_filename', 'true');
-          if (unique_filename) fd.append('unique_filename', 'true');
+          if (public_id) fd.append('public_id', public_id);
           xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloud_name}/raw/upload`);
           xhr.send(fd);
         });
