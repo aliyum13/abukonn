@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { Button, Card, CardContent, Skeleton } from '@/components/ui';
 import { cn } from '@/lib/utils';
-import { DEPARTMENTS, LEVELS } from '@/lib/departments';
+import { DepartmentOptions, LEVELS } from '@/lib/departments';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -172,7 +172,7 @@ export default function LibraryPage() {
       <div className="mb-5 grid grid-cols-2 gap-3">
         <select value={department} onChange={e => { setDepartment(e.target.value); setPage(1); }} className={selectCls}>
           <option value="">All Departments</option>
-          {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+          <DepartmentOptions />
         </select>
         <select value={level} onChange={e => { setLevel(e.target.value); setPage(1); }} className={selectCls}>
           <option value="">All Levels</option>

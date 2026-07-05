@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
-import { DEPARTMENTS } from '@/lib/departments';
+import { DepartmentOptions } from '@/lib/departments';
 import {
   Avatar,
   Button,
@@ -550,7 +550,7 @@ export default function SettingsPage() {
               </div>
 
               <Select label="Department" value={accountForm.department} onChange={e => setAccountForm(f => ({ ...f, department: e.target.value }))}>
-                {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                <DepartmentOptions />
               </Select>
 
               <Select label="Level" value={accountForm.level} onChange={e => setAccountForm(f => ({ ...f, level: e.target.value }))}>

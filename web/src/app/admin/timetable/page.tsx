@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 import { Button, Card, CardContent, CardHeader, CardTitle, Skeleton, Input } from '@/components/ui';
-import { DEPARTMENTS } from '@/lib/departments';
+import { DepartmentOptions } from '@/lib/departments';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -444,7 +444,7 @@ export default function AdminTimetablePage() {
               <select value={department} onChange={e => setDepartment(e.target.value)}
                 className="w-full rounded-xl border border-border bg-white px-4 py-2.5 text-body-sm text-ink focus:border-brand-500 focus:outline-none dark:bg-[#0a0a0a] dark:border-[#333]">
                 <option value="">Select department</option>
-                {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                <DepartmentOptions />
               </select>
             </div>
             <div>

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Button, Card, CardContent, CardHeader, CardTitle, Skeleton } from '@/components/ui';
 import { cn } from '@/lib/utils';
-import { DEPARTMENTS, LEVELS } from '@/lib/departments';
+import { DepartmentOptions, LEVELS } from '@/lib/departments';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 const TYPES = ['past_question','lecture_note','textbook','other'];
@@ -102,7 +102,7 @@ export default function AdminLibraryPage() {
             <div><label className="mb-1.5 block text-label text-ink-secondary">Department</label>
               <select value={dept} onChange={e=>setDept(e.target.value)} className={inputCls}>
                 <option value="">Select department</option>
-                {DEPARTMENTS.map(d=><option key={d} value={d}>{d}</option>)}
+                <DepartmentOptions />
               </select>
             </div>
             <div><label className="mb-1.5 block text-label text-ink-secondary">Level</label>
