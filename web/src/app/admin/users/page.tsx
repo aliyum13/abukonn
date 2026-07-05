@@ -27,6 +27,8 @@ const ROLE_OPTIONS = [
   { value: 'verified', label: '✓ Verified' },
   { value: 'bod', label: '★ BOD' },
   { value: 'influencer', label: '⭐ Influencer' },
+  { value: 'class_coordinator', label: '📅 Class Coordinator' },
+  { value: 'editor', label: '✎ Editor' },
   { value: 'admin', label: '🛡 Admin' },
 ];
 

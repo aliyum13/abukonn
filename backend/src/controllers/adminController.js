@@ -331,17 +331,20 @@ async function clearWhitelist(req, res) {
 
 async function setUserRole(req, res) {
   try {
-    const VALID = ['user', 'verified', 'bod', 'influencer', 'admin'];
+    const VALID = ['user', 'verified', 'bod', 'influencer', 'class_coordinator', 'editor', 'admin'];
+    // Roles that get access to the admin panel (scoped by role on the frontend)
+    const ADMIN_PANEL_ROLES = ['admin', 'class_coordinator', 'editor'];
     const { role } = req.body;
     if (!role || !VALID.includes(role)) {
       return res.status(400).json({ message: 'Invalid role' });
     }
     const updated = await updateRole(parseInt(req.params.id, 10), role);
     if (!updated) return res.status(404).json({ message: 'User not found' });
-    // Also sync is_admin boolean
+    // Sync is_admin so admin-panel roles can reach /admin (scoping of WHAT they
+    // see is handled per-role on the frontend).
     await pool.query(
       `UPDATE abukonn.users SET is_admin = $2 WHERE id = $1`,
-      [updated.id, role === 'admin']
+      [updated.id, ADMIN_PANEL_ROLES.includes(role)]
     );
     return res.json({ message: 'Role updated', user: updated });
   } catch (err) {

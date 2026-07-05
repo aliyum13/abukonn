@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { formatDate } from '@/lib/format';
 import { Avatar, Badge, Button, Card, CardContent, CardHeader, CardTitle, Skeleton } from '@/components/ui';
@@ -70,7 +71,8 @@ function StatSkeleton() {
 }
 
 export default function AdminDashboard() {
-  const { token } = useAuth();
+  const { user, token } = useAuth();
+  const router = useRouter();
   const [repairing, setRepairing] = useState(false);
   const [repairResult, setRepairResult] = useState<string | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -79,8 +81,14 @@ export default function AdminDashboard() {
   const [usersLoading, setUsersLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Scoped roles don't see the full-admin dashboard — send them to their section.
   useEffect(() => {
-    if (!token) return;
+    if (user?.role === 'class_coordinator') router.replace('/admin/academic-calendar');
+    else if (user?.role === 'editor') router.replace('/admin/news');
+  }, [user, router]);
+
+  useEffect(() => {
+    if (!token || (user && user.role !== 'admin')) return;
 
     const headers = { Authorization: `Bearer ${token}` };
 
@@ -95,7 +103,7 @@ export default function AdminDashboard() {
       .then((d) => setRecentUsers(d.users || []))
       .catch(() => {})
       .finally(() => setUsersLoading(false));
-  }, [token]);
+  }, [token, user]);
 
   return (
     <div className="space-y-8">

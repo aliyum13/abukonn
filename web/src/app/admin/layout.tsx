@@ -72,7 +72,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <Avatar src={user.profile_photo_url} name={user.full_name} size="sm" />
             <div className="hidden sm:block">
               <p className="text-body-sm font-semibold text-ink">{user.full_name}</p>
-              <p className="text-caption text-brand-600">Administrator</p>
+              <p className="text-caption text-brand-600">
+                {user.role === 'class_coordinator' ? 'Class Coordinator'
+                  : user.role === 'editor' ? 'Editor'
+                  : 'Administrator'}
+              </p>
             </div>
           </div>
         </header>
