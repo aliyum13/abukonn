@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { Button, Card, CardContent, Skeleton } from '@/components/ui';
 import { cn } from '@/lib/utils';
+import { DEPARTMENTS, LEVELS } from '@/lib/departments';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -14,16 +15,6 @@ const TYPES = [
   { value: 'textbook', label: 'Textbooks' },
   { value: 'other', label: 'Other' },
 ];
-
-const DEPARTMENTS = [
-  'Computer Science','Software Engineering','Information Technology',
-  'Electrical Engineering','Civil Engineering','Mechanical Engineering',
-  'Medicine & Surgery','Law','Economics','Accounting',
-  'Mass Communication','Political Science','Sociology',
-  'Mathematics','Physics','Chemistry','Biochemistry',
-  'Microbiology','Pharmacy','Nursing Science',
-];
-const LEVELS = ['100 Level','200 Level','300 Level','400 Level','500 Level','Postgraduate'];
 
 const TYPE_COLORS: Record<string, string> = {
   past_question: 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400',

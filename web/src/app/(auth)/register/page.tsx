@@ -6,29 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { AuthSplitLayout } from '@/components/auth/AuthSplitLayout';
 import { Button, Input, Select, PasswordInput, PasswordStrengthMeter, getPasswordStrength, COMMON_PASSWORDS } from '@/components/ui';
-
-const DEPARTMENTS = [
-  'Computer Science',
-  'Software Engineering',
-  'Information Technology',
-  'Electrical Engineering',
-  'Civil Engineering',
-  'Mechanical Engineering',
-  'Medicine & Surgery',
-  'Law',
-  'Economics',
-  'Accounting',
-  'Mass Communication',
-  'Political Science',
-  'Sociology',
-  'Mathematics',
-  'Physics',
-  'Chemistry',
-  'Biochemistry',
-  'Microbiology',
-  'Pharmacy',
-  'Nursing Science',
-];
+import { DEPARTMENTS } from '@/lib/departments';
 
 const LEVELS = [
   '100 Level',

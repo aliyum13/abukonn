@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
+import { DEPARTMENTS } from '@/lib/departments';
 import {
   Avatar,
   Button,
@@ -23,15 +24,6 @@ import {
 } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-
-const DEPARTMENTS = [
-  'Computer Science', 'Software Engineering', 'Information Technology',
-  'Electrical Engineering', 'Civil Engineering', 'Mechanical Engineering',
-  'Medicine & Surgery', 'Law', 'Economics', 'Accounting',
-  'Mass Communication', 'Political Science', 'Sociology',
-  'Mathematics', 'Physics', 'Chemistry', 'Biochemistry',
-  'Microbiology', 'Pharmacy', 'Nursing Science',
-];
 
 const LEVELS = ['100 Level', '200 Level', '300 Level', '400 Level', '500 Level', 'Spill Over', 'Postgraduate'];
 

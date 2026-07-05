@@ -3,12 +3,11 @@ import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Button, Card, CardContent, CardHeader, CardTitle, Skeleton } from '@/components/ui';
 import { cn } from '@/lib/utils';
+import { DEPARTMENTS, LEVELS } from '@/lib/departments';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 const TYPES = ['past_question','lecture_note','textbook','other'];
 const TYPE_LABELS: Record<string,string> = { past_question:'Past Question', lecture_note:'Lecture Note', textbook:'Textbook', other:'Other' };
-const DEPARTMENTS = ['Computer Science','Software Engineering','Information Technology','Electrical Engineering','Civil Engineering','Mechanical Engineering','Medicine & Surgery','Law','Economics','Accounting','Mass Communication','Political Science','Sociology','Mathematics','Physics','Chemistry','Biochemistry','Microbiology','Pharmacy','Nursing Science'];
-const LEVELS = ['100 Level','200 Level','300 Level','400 Level','500 Level','Postgraduate'];
 const TYPE_COLORS: Record<string,string> = { past_question:'bg-red-100 text-red-700', lecture_note:'bg-blue-100 text-blue-700', textbook:'bg-purple-100 text-purple-700', other:'bg-gray-100 text-gray-700' };
 
 interface Material { id:number; title:string; type:string; department:string|null; level:string|null; course_code:string|null; file_name:string|null; file_size:number|null; download_count:number; created_at:string; }
