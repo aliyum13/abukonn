@@ -51,6 +51,10 @@ const { createReportBlockTables } = require('./models/ReportBlock');
 const app = express();
 const server = http.createServer(app);
 
+// Initialise error monitoring as early as possible. No-op if SENTRY_DSN unset.
+const { Sentry, initSentry } = require('./config/sentry');
+initSentry();
+
 // Known-good production origins are always allowed, regardless of whether
 // CLIENT_URL is set correctly on the host — this is what abukonn.com
 // actually is, so it should never depend on an env var being configured
@@ -240,6 +244,10 @@ app.use('/api/academic-calendar', require('./routes/academicCalendar'));
 app.get('/', (req, res) => {
   res.json({ message: 'ABUkonn API is running!' });
 });
+
+// Sentry error handler — must be registered AFTER all routes/controllers so it
+// catches errors that bubble up from them. No-op if Sentry wasn't initialised.
+Sentry.setupExpressErrorHandler(app);
 
 const PORT = process.env.PORT || 3000;
 
