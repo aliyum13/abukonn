@@ -267,10 +267,24 @@ export default function LibraryPage() {
           : null;
 
         return (
-          <div className="fixed inset-0 z-50 flex flex-col bg-black/90">
+          <div className="fixed inset-0 z-50 flex flex-col bg-black/90" style={{ height: '100dvh' }}>
             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-[#111] px-4 py-3">
               <p className="min-w-0 flex-1 truncate text-[14px] font-medium text-white">{docViewer.name}</p>
               <div className="flex shrink-0 items-center gap-2">
+                {embedSrc && (
+                  <a
+                    href={embedSrc}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-[12px] font-medium text-white transition hover:bg-white/20"
+                    title="Open in a new tab for full zoom & scroll"
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                    </svg>
+                    Full screen
+                  </a>
+                )}
                 <a
                   href={docViewer.url}
                   download={docViewer.name}
@@ -293,7 +307,7 @@ export default function LibraryPage() {
                 </button>
               </div>
             </div>
-            <div className="relative min-h-0 flex-1">
+            <div className="relative min-h-0 flex-1 overflow-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
               {embedSrc ? (
                 <iframe
                   key={docViewer.url}
