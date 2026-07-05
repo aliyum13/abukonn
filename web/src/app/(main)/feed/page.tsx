@@ -926,6 +926,7 @@ export default function FeedPage() {
 
   // Highlights
   const [highlights, setHighlights] = useState<Highlight[]>([]);
+  const [showHighlights, setShowHighlights] = useState(false);
 
   // Birthdays
   const [birthdayUsers, setBirthdayUsers] = useState<BirthdayUser[]>([]);
@@ -1960,7 +1961,7 @@ export default function FeedPage() {
         <div className="lg:col-span-6 lg:border-x lg:border-border dark:lg:border-[#222] min-h-screen">
 
           {/* ── For You / Following / Messages tabs ── */}
-          <div className="sticky top-14 z-30 flex border-b border-border bg-white/90 backdrop-blur-lg dark:bg-[#0a0a0a]/90 dark:border-[#222]">
+          <div className="sticky top-14 z-30 flex items-center border-b border-border bg-white/90 backdrop-blur-lg dark:bg-[#0a0a0a]/90 dark:border-[#222]">
             {(['for_you', 'following', 'messages'] as const).map((tab) => {
               const labels = { for_you: 'For You', following: 'Following', messages: 'Messages' };
               const isActive = feedTab === tab;
@@ -1986,6 +1987,22 @@ export default function FeedPage() {
                 </button>
               );
             })}
+            {/* Highlights popup trigger */}
+            {highlights.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowHighlights(true)}
+                aria-label="View highlights"
+                className="relative mr-1.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-surface-muted hover:text-brand-600 dark:hover:bg-[#1a1a1a]"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+                </svg>
+                <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-bold text-white">
+                  {highlights.length > 9 ? '9+' : highlights.length}
+                </span>
+              </button>
+            )}
           </div>
 
           {/* ── Following tab ── */}
@@ -2136,36 +2153,54 @@ export default function FeedPage() {
             </div>
           )}
 
-          {/* Today's Highlights */}
-          {highlights.length > 0 && (
-            <div className="border-b border-border px-4 py-3">
-              <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
-                Today&apos;s Highlights
-              </p>
-              <div className="flex gap-3 overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none' }}>
-                {highlights.map((h) => {
-                  const cfg = HIGHLIGHT_COLOR_CONFIG[h.color] ?? HIGHLIGHT_COLOR_CONFIG.blue;
-                  const countdown = highlightCountdown(h.start_date);
-                  return (
-                    <div
-                      key={h.id}
-                      className={cn('flex min-w-[200px] max-w-[240px] shrink-0 flex-col gap-1.5 rounded-2xl p-3.5', cfg.bg)}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xl leading-none">{h.icon || '📌'}</span>
-                        {countdown && (
-                          <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold', cfg.badgeCls)}>
-                            {countdown}
-                          </span>
+          {/* Today's Highlights — opens in a popup from the star button above */}
+          {showHighlights && (
+            <div
+              className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center"
+              onClick={() => setShowHighlights(false)}
+            >
+              <div
+                className="max-h-[80vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 dark:bg-[#111] sm:rounded-3xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[17px]">⭐</span>
+                    <h2 className="text-[17px] font-bold text-ink">Today&apos;s Highlights</h2>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowHighlights(false)}
+                    className="flex h-8 w-8 items-center justify-center rounded-full text-ink-muted transition hover:bg-surface-muted dark:hover:bg-[#222]"
+                    aria-label="Close"
+                  >
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {highlights.map((h) => {
+                    const cfg = HIGHLIGHT_COLOR_CONFIG[h.color] ?? HIGHLIGHT_COLOR_CONFIG.blue;
+                    const countdown = highlightCountdown(h.start_date);
+                    return (
+                      <div key={h.id} className={cn('flex flex-col gap-1.5 rounded-2xl p-4', cfg.bg)}>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-2xl leading-none">{h.icon || '📌'}</span>
+                          {countdown && (
+                            <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold', cfg.badgeCls)}>
+                              {countdown}
+                            </span>
+                          )}
+                        </div>
+                        <p className={cn('text-[15px] font-semibold leading-snug', cfg.titleColor)}>{h.title}</p>
+                        {h.description && (
+                          <p className="text-[12px] leading-relaxed text-ink-muted">{h.description}</p>
                         )}
                       </div>
-                      <p className={cn('text-[13px] font-semibold leading-snug', cfg.titleColor)}>{h.title}</p>
-                      {h.description && (
-                        <p className="line-clamp-2 text-[11px] leading-relaxed text-ink-muted">{h.description}</p>
-                      )}
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
