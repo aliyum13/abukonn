@@ -44,6 +44,27 @@ router.get('/whitelist', getWhitelist);
 router.post('/whitelist/upload', uploadAny.single('csv'), uploadWhitelist);
 router.delete('/whitelist', clearWhitelist);
 
+// PRE-LAUNCH: wipe all test content (posts, stories, messages, groups, etc.)
+// while keeping users, settings, academic calendar, timetable, and news.
+// Requires an explicit confirmation phrase in the body so it can't fire by
+// accident. Destructive and irreversible.
+router.post('/reset-launch-data', async (req, res) => {
+  try {
+    if (req.body?.confirm !== 'WIPE ABUKONN TEST DATA') {
+      return res.status(400).json({
+        message: 'Confirmation required. Send { "confirm": "WIPE ABUKONN TEST DATA" } to proceed.',
+      });
+    }
+    const pool = require('../config/db');
+    const { resetLaunchData } = require('../../scripts/reset-launch-data');
+    const result = await resetLaunchData(pool);
+    res.json({ message: 'Test data wiped. Users and config preserved.', ...result });
+  } catch (err) {
+    console.error('reset-launch-data error:', err.message);
+    res.status(500).json({ message: 'Reset failed', error: err.message });
+  }
+});
+
 // One-time maintenance: fix documents uploaded before the extension-
 // preservation fix (they were stored with no file extension, so browsers
 // and the document viewer can't render them and fall back to a raw
