@@ -245,12 +245,6 @@ app.get('/', (req, res) => {
   res.json({ message: 'ABUkonn API is running!' });
 });
 
-// TEMPORARY: Sentry verification route. Hitting this throws on purpose so we can
-// confirm errors reach the Sentry dashboard. REMOVE after verifying.
-app.get('/api/debug-sentry', (req, res) => {
-  throw new Error('ABUkonn Sentry backend test — this error is intentional and safe to ignore.');
-});
-
 // Sentry error handler — must be registered AFTER all routes/controllers so it
 // catches errors that bubble up from them. No-op if Sentry wasn't initialised.
 Sentry.setupExpressErrorHandler(app);

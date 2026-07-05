@@ -294,29 +294,6 @@ export default function AdminDashboard() {
               Run repair
             </Button>
           </div>
-
-          {/* TEMPORARY — Sentry verification. Remove after confirming. */}
-          <div className="mt-3 flex items-center justify-between gap-4 rounded-xl border border-border p-4">
-            <div>
-              <p className="font-semibold text-ink">Test error monitoring</p>
-              <p className="mt-1 text-caption text-ink-muted">
-                Throws a harmless test error to confirm Sentry is capturing it. Check your Sentry dashboard after clicking.
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="shrink-0"
-              onClick={async () => {
-                const Sentry = await import('@sentry/nextjs');
-                Sentry.captureException(new Error('ABUkonn Sentry frontend test — intentional, safe to ignore.'));
-                await Sentry.flush(2000);
-                alert('Test error sent to Sentry. Check your Sentry dashboard (javascript project) in a few seconds.');
-              }}
-            >
-              Trigger test error
-            </Button>
-          </div>
         </CardContent>
       </Card>
     </div>

@@ -44,29 +44,6 @@ router.get('/whitelist', getWhitelist);
 router.post('/whitelist/upload', uploadAny.single('csv'), uploadWhitelist);
 router.delete('/whitelist', clearWhitelist);
 
-// Diagnostic: report the raw file_url + file_name for every document row so we
-// can see exactly why the repair is skipping files.
-router.get('/repair-file-extensions-diagnose', async (req, res) => {
-  try {
-    const pool = require('../config/db');
-    const tables = [
-      { table: 'library_materials' },
-      { table: 'messages' },
-      { table: 'group_messages' },
-    ];
-    const out = {};
-    for (const t of tables) {
-      const { rows } = await pool.query(
-        `SELECT id, file_url, file_name FROM abukonn.${t.table} WHERE file_url IS NOT NULL`
-      );
-      out[t.table] = rows;
-    }
-    res.json(out);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
 // One-time maintenance: fix documents uploaded before the extension-
 // preservation fix (they were stored with no file extension, so browsers
 // and the document viewer can't render them and fall back to a raw
