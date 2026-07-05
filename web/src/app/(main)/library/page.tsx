@@ -309,17 +309,35 @@ export default function LibraryPage() {
                     {ext.toUpperCase().slice(0, 4)}
                   </span>
                   <div>
-                    <p className="text-[15px] font-medium text-white">{isOfficeDoc ? 'Preview not available for this file type' : 'This file can\u2019t be previewed'}</p>
+                    <p className="text-[15px] font-medium text-white">{isOfficeDoc ? 'Open this document' : 'This file can\u2019t be previewed'}</p>
                     <p className="mt-1 text-[13px] text-white/70">
                       {isOfficeDoc
-                        ? 'Word, PowerPoint and Excel files open in your device\u2019s document app. Tap download to view it.'
+                        ? 'Word and PowerPoint files open in a viewer in a new tab. Or download to open in your device\u2019s app.'
                         : 'Download it to open it on your device.'}
                     </p>
                   </div>
+                  {isOfficeDoc && (
+                    <a
+                      href={`https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(docViewer.url)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 rounded-full bg-brand-600 px-5 py-2.5 text-[14px] font-medium text-white transition hover:bg-brand-700"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                      </svg>
+                      Open in viewer
+                    </a>
+                  )}
                   <a
                     href={docViewer.url}
                     download={docViewer.name}
-                    className="flex items-center gap-1.5 rounded-full bg-brand-600 px-5 py-2.5 text-[14px] font-medium text-white transition hover:bg-brand-700"
+                    className={cn(
+                      'flex items-center gap-1.5 rounded-full px-5 py-2.5 text-[14px] font-medium transition',
+                      isOfficeDoc
+                        ? 'bg-white/10 text-white hover:bg-white/20'
+                        : 'bg-brand-600 text-white hover:bg-brand-700'
+                    )}
                   >
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
