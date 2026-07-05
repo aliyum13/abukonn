@@ -215,7 +215,7 @@ async function resetInviteCode(groupId) {
   }
 }
 
-async function updateGroupSettings(groupId, { name, description, requireApproval, onlyAdminsCanAdd, inviteEnabled }) {
+async function updateGroupSettings(groupId, { name, description, requireApproval, onlyAdminsCanAdd, inviteEnabled, avatarUrl }) {
   const sets = [];
   const vals = [];
   let i = 1;
@@ -224,6 +224,7 @@ async function updateGroupSettings(groupId, { name, description, requireApproval
   if (requireApproval !== undefined) { sets.push(`require_approval = $${i++}`); vals.push(requireApproval); }
   if (onlyAdminsCanAdd !== undefined) { sets.push(`only_admins_can_add = $${i++}`); vals.push(onlyAdminsCanAdd); }
   if (inviteEnabled !== undefined) { sets.push(`invite_enabled = $${i++}`); vals.push(inviteEnabled); }
+  if (avatarUrl !== undefined) { sets.push(`avatar_url = $${i++}`); vals.push(avatarUrl); }
   if (!sets.length) return getGroupById(groupId);
   vals.push(groupId);
   const { rows } = await pool.query(

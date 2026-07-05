@@ -469,6 +469,8 @@ export default function MessagesPage() {
   const [showGroupInfo, setShowGroupInfo] = useState(false);
   const [groupInfoView, setGroupInfoView] = useState<'info' | 'settings' | 'pending'>('info');
   const [settingsForm, setSettingsForm] = useState({ name: '', description: '', require_approval: false, only_admins_can_add: false, invite_enabled: true });
+  const [uploadingGroupAvatar, setUploadingGroupAvatar] = useState(false);
+  const groupAvatarInputRef = useRef<HTMLInputElement>(null);
   const [savingSettings, setSavingSettings] = useState(false);
   const [groupInfoToast, setGroupInfoToast] = useState('');
   const [inviteCode, setInviteCode] = useState('');
@@ -619,6 +621,40 @@ export default function MessagesPage() {
 
   useEffect(() => { if (activeId) fetchMessages(activeId); }, [activeId, fetchMessages]);
   useEffect(() => { if (activeGroupId) fetchGroupMessages(activeGroupId); }, [activeGroupId, fetchGroupMessages]);
+
+  // Group admins can set/change the group photo
+  const handleGroupAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !token || !activeGroupInfo) return;
+    if (!file.type.startsWith('image/')) return;
+    setUploadingGroupAvatar(true);
+    try {
+      // Upload the image (reuses the existing message image upload endpoint)
+      const fd = new FormData();
+      fd.append('image', file);
+      const upRes = await fetch(`${API_URL}/api/messages/upload-image`, {
+        method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd,
+      });
+      if (!upRes.ok) throw new Error('upload failed');
+      const { url } = await upRes.json() as { url: string };
+
+      // Save it on the group (admin-gated server-side)
+      const res = await fetch(`${API_URL}/api/groups/${activeGroupInfo.id}/settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ avatar_url: url }),
+      });
+      if (res.ok) {
+        const data = await res.json() as { group: Group };
+        setActiveGroupInfo(data.group);
+        // Reflect the new avatar in the group list too
+        setGroups(prev => prev.map(g => g.id === data.group.id ? { ...g, avatar_url: data.group.avatar_url } : g));
+      }
+    } catch { /* silently ignore; user can retry */ }
+    finally { setUploadingGroupAvatar(false); }
+  };
+
 
   // ── Auto-scroll ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1269,8 +1305,12 @@ export default function MessagesPage() {
                     return (
                       <button key={`group-${grp.id}`} type="button" onClick={() => selectGroup(grp.id)}
                         className={cn('flex w-full items-center gap-3 px-4 py-3 text-left transition', isActive ? 'border-r-2 border-brand-600 bg-brand-50 dark:bg-brand-950/40' : 'hover:bg-surface-muted dark:hover:bg-[#1a1a1a]')}>
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-100">
-                          <GroupIcon className="h-5 w-5 text-brand-600" />
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-100">
+                          {grp.avatar_url ? (
+                            <img src={grp.avatar_url} alt={grp.name} className="h-full w-full object-cover" />
+                          ) : (
+                            <GroupIcon className="h-5 w-5 text-brand-600" />
+                          )}
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between gap-2">
@@ -1484,8 +1524,12 @@ export default function MessagesPage() {
                   <button type="button" onClick={() => setMobileShowChat(false)} className="rounded-lg p-1 text-ink-secondary hover:bg-surface-subtle sm:hidden" aria-label="Back">
                     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
                   </button>
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100">
-                    <GroupIcon className="h-4.5 w-4.5 text-brand-600" />
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-100">
+                    {activeGroupInfo.avatar_url ? (
+                      <img src={activeGroupInfo.avatar_url} alt={activeGroupInfo.name} className="h-full w-full object-cover" />
+                    ) : (
+                      <GroupIcon className="h-4.5 w-4.5 text-brand-600" />
+                    )}
                   </div>
                   <button type="button" className="min-w-0 flex-1 text-left" onClick={() => { setShowGroupInfo(true); setGroupInfoView('info'); }}>
                     <p className="font-medium text-ink hover:text-brand-600 transition">{activeGroupInfo.name}</p>
@@ -1730,7 +1774,35 @@ export default function MessagesPage() {
                   {/* Group details */}
                   <div className="px-4 py-4 border-b border-border dark:border-[#222]">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-100 text-xl dark:bg-brand-950">💬</div>
+                      <div className="relative">
+                        <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-brand-100 text-xl dark:bg-brand-950">
+                          {activeGroupInfo.avatar_url ? (
+                            <img src={activeGroupInfo.avatar_url} alt={activeGroupInfo.name} className="h-full w-full object-cover" />
+                          ) : (
+                            <span>💬</span>
+                          )}
+                        </div>
+                        {myGroupRole === 'admin' && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => groupAvatarInputRef.current?.click()}
+                              disabled={uploadingGroupAvatar}
+                              aria-label="Change group photo"
+                              className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-brand-600 text-white shadow ring-2 ring-white transition hover:bg-brand-700 disabled:opacity-60 dark:ring-[#111]"
+                            >
+                              {uploadingGroupAvatar ? (
+                                <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                              ) : (
+                                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
+                                </svg>
+                              )}
+                            </button>
+                            <input ref={groupAvatarInputRef} type="file" accept="image/*" onChange={handleGroupAvatarChange} className="hidden" />
+                          </>
+                        )}
+                      </div>
                       <div>
                         <p className="font-semibold text-ink">{activeGroupInfo.name}</p>
                         <p className="text-sm text-ink-muted">{activeGroupInfo.member_count} members</p>

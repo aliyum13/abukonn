@@ -309,13 +309,14 @@ async function updateGroupSettingsHandler(req, res) {
     if (!(await Group.isAdmin(groupId, req.user.id))) {
       return res.status(403).json({ message: 'Only admins can update settings' });
     }
-    const { name, description, require_approval, only_admins_can_add, invite_enabled } = req.body;
+    const { name, description, require_approval, only_admins_can_add, invite_enabled, avatar_url } = req.body;
     const updated = await Group.updateGroupSettings(groupId, {
       name: name?.trim(),
       description: description !== undefined ? (description?.trim() || null) : undefined,
       requireApproval: require_approval,
       onlyAdminsCanAdd: only_admins_can_add,
       inviteEnabled: invite_enabled,
+      avatarUrl: avatar_url !== undefined ? (avatar_url || null) : undefined,
     });
     res.json({ group: updated });
   } catch (err) {
