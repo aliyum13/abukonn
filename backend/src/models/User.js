@@ -22,6 +22,15 @@ ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS username VARCHAR(100);
 ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'user';
 ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS date_of_birth DATE;
 
+-- Backfill: pre-existing admin accounts may have is_admin=true but role='user'
+-- (the two were managed separately historically). Sync them so role-based admin
+-- scoping works. Only touches accounts that are admin but not already a scoped
+-- admin-panel role.
+UPDATE abukonn.users
+SET role = 'admin'
+WHERE is_admin = TRUE
+  AND role NOT IN ('admin', 'class_coordinator', 'editor');
+
 DO $$
 BEGIN
   IF NOT EXISTS (

@@ -88,7 +88,10 @@ export default function AdminDashboard() {
   }, [user, router]);
 
   useEffect(() => {
-    if (!token || (user && user.role !== 'admin')) return;
+    if (!token) return;
+    // Only full admins load the dashboard stats. Scoped roles are being
+    // redirected away anyway (above), so skip the fetch for them.
+    if (user && (user.role === 'class_coordinator' || user.role === 'editor')) return;
 
     const headers = { Authorization: `Bearer ${token}` };
 

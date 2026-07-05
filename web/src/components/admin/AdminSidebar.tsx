@@ -80,10 +80,16 @@ export function AdminSidebar() {
     router.push('/login');
   };
 
-  // Scope nav to the user's role. Admin sees everything; class_coordinator and
-  // editor see only their permitted sections.
+  // Scope nav to the user's role. Anyone with is_admin AND role 'admin' (or
+  // is_admin with no scoped role) sees everything; class_coordinator and editor
+  // see only their permitted sections. Keying off is_admin here is important:
+  // pre-existing admin accounts may have is_admin=true but an unset/legacy role
+  // string, and they must still see the full menu.
   const role = user?.role || 'user';
-  const visibleNav = role === 'admin' ? NAV : NAV.filter(item => item.roles.includes(role));
+  const isScopedRole = role === 'class_coordinator' || role === 'editor';
+  const visibleNav = (user?.is_admin && !isScopedRole)
+    ? NAV
+    : NAV.filter(item => item.roles.includes(role));
 
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col bg-brand-950">
