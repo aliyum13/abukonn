@@ -38,13 +38,24 @@ interface Material {
   download_count: number; created_at: string; uploader_name: string | null;
 }
 
-const VIEWABLE_INLINE_EXTENSIONS = new Set(['pdf', 'txt', 'csv']);
 const OFFICE_VIEWER_EXTENSIONS = new Set(['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx']);
 
 function formatSize(bytes: number | null) {
   if (!bytes) return '';
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// Builds the URL to open a document in a new browser tab. PDFs and text render
+// natively in the browser, so we open them directly. Office files (Word, PPT,
+// Excel) can't be rendered by the browser, so we route them through Microsoft's
+// online viewer, which displays them in the new tab.
+function externalViewUrl(fileUrl: string, fileName: string): string {
+  const ext = (fileName.split('.').pop() || '').toLowerCase();
+  if (OFFICE_VIEWER_EXTENSIONS.has(ext)) {
+    return `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(fileUrl)}`;
+  }
+  return fileUrl;
 }
 
 export default function LibraryPage() {
@@ -82,8 +93,6 @@ export default function LibraryPage() {
   }, [token, typeFilter, department, level, search, page]);
 
   useEffect(() => { fetchMaterials(); }, [fetchMaterials]);
-
-  const [docViewer, setDocViewer] = useState<{ url: string; name: string } | null>(null);
 
   const handleDownload = async (material: Material) => {
     await fetch(`${API_URL}/api/library/${material.id}`, {
@@ -231,7 +240,7 @@ export default function LibraryPage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => setDocViewer({ url: m.file_url, name: m.file_name || m.title })}
+                      onClick={() => window.open(externalViewUrl(m.file_url, m.file_name || m.title), '_blank', 'noopener,noreferrer')}
                     >
                       View
                     </Button>
@@ -253,117 +262,6 @@ export default function LibraryPage() {
         </div>
       )}
 
-      {/* ── Document viewer ──────────────────────────────────────────── */}
-      {docViewer && (() => {
-        const ext = (docViewer.name.split('.').pop() || '').toLowerCase();
-        const isNativelyViewable = VIEWABLE_INLINE_EXTENSIONS.has(ext);
-        const isOfficeDoc = OFFICE_VIEWER_EXTENSIONS.has(ext);
-        // Office docs (Word/PowerPoint/Excel) can't be reliably previewed in a
-        // mobile browser without a paid conversion service, so we send them
-        // straight to a clean download panel instead of a flaky embedded viewer.
-        // PDF/TXT/CSV render natively and reliably.
-        const embedSrc = isNativelyViewable
-          ? (ext === 'pdf' ? `${docViewer.url}#view=FitH&toolbar=1` : docViewer.url)
-          : null;
-
-        return (
-          <div className="fixed inset-0 z-50 flex flex-col bg-black/90" style={{ height: '100dvh' }}>
-            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-[#111] px-4 py-3">
-              <p className="min-w-0 flex-1 truncate text-[14px] font-medium text-white">{docViewer.name}</p>
-              <div className="flex shrink-0 items-center gap-2">
-                {embedSrc && (
-                  <a
-                    href={embedSrc}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-[12px] font-medium text-white transition hover:bg-white/20"
-                    title="Open in a new tab for full zoom & scroll"
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-                    </svg>
-                    Full screen
-                  </a>
-                )}
-                <a
-                  href={docViewer.url}
-                  download={docViewer.name}
-                  className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-[12px] font-medium text-white transition hover:bg-white/20"
-                >
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                  </svg>
-                  Download
-                </a>
-                <button
-                  type="button"
-                  onClick={() => setDocViewer(null)}
-                  className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
-                  aria-label="Close"
-                >
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-            <div className="relative min-h-0 flex-1 overflow-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
-              {embedSrc ? (
-                <iframe
-                  key={docViewer.url}
-                  src={embedSrc}
-                  title={docViewer.name}
-                  scrolling="yes"
-                  className="absolute inset-0 h-full w-full border-0 bg-white"
-                  style={{ WebkitOverflowScrolling: 'touch' }}
-                />
-              ) : (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 overflow-y-auto px-6 text-center">
-                  <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 text-[13px] font-bold text-white">
-                    {ext.toUpperCase().slice(0, 4)}
-                  </span>
-                  <div>
-                    <p className="text-[15px] font-medium text-white">{isOfficeDoc ? 'Open this document' : 'This file can\u2019t be previewed'}</p>
-                    <p className="mt-1 text-[13px] text-white/70">
-                      {isOfficeDoc
-                        ? 'Word and PowerPoint files open in a viewer in a new tab. Or download to open in your device\u2019s app.'
-                        : 'Download it to open it on your device.'}
-                    </p>
-                  </div>
-                  {isOfficeDoc && (
-                    <a
-                      href={`https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(docViewer.url)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 rounded-full bg-brand-600 px-5 py-2.5 text-[14px] font-medium text-white transition hover:bg-brand-700"
-                    >
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-                      </svg>
-                      Open in viewer
-                    </a>
-                  )}
-                  <a
-                    href={docViewer.url}
-                    download={docViewer.name}
-                    className={cn(
-                      'flex items-center gap-1.5 rounded-full px-5 py-2.5 text-[14px] font-medium transition',
-                      isOfficeDoc
-                        ? 'bg-white/10 text-white hover:bg-white/20'
-                        : 'bg-brand-600 text-white hover:bg-brand-700'
-                    )}
-                  >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                    </svg>
-                    Download {ext.toUpperCase()}
-                  </a>
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })()}
     </div>
   );
 }
