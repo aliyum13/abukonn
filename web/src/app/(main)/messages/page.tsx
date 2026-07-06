@@ -474,6 +474,9 @@ export default function MessagesPage() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [groupInfoToast, setGroupInfoToast] = useState('');
   const [inviteCode, setInviteCode] = useState('');
+  const [showAddMembers, setShowAddMembers] = useState(false);
+  const [addMemberSearch, setAddMemberSearch] = useState('');
+  const [addingMemberId, setAddingMemberId] = useState<number | null>(null);
   const [copiedInvite, setCopiedInvite] = useState(false);
 
   // Create group modal
@@ -757,13 +760,9 @@ export default function MessagesPage() {
     });
   }, [conversations]);
 
-  // ── Fetch followers for group creation ─────────────────────────────────────
-  const openCreateGroup = async () => {
+  // ── Fetch followers (for group creation + adding members) ──────────────────
+  const fetchFollowers = async () => {
     if (!token || !user) return;
-    setShowCreateGroup(true);
-    setCreateGroupName('');
-    setSelectedMemberIds([]);
-    setFollowerSearch('');
     try {
       const res = await fetch(`${API_URL}/api/follows/${user.id}/following`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -771,6 +770,50 @@ export default function MessagesPage() {
       const data = await res.json();
       setFollowers(data.following || []);
     } catch { setFollowers([]); }
+  };
+
+  const openCreateGroup = async () => {
+    if (!token || !user) return;
+    setShowCreateGroup(true);
+    setCreateGroupName('');
+    setSelectedMemberIds([]);
+    setFollowerSearch('');
+    fetchFollowers();
+  };
+
+  // Add a member to an already-created group
+  const addMemberToGroup = async (person: Follower) => {
+    if (!token || !activeGroupInfo) return;
+    setAddingMemberId(person.id);
+    try {
+      const res = await fetch(`${API_URL}/api/groups/${activeGroupInfo.id}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ user_id: person.id }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        // If the group requires approval, they go to pending; otherwise active.
+        if (data.message && data.message.includes('request')) {
+          setGroupInfoToast(`${person.full_name} has a pending request`);
+        } else {
+          setGroupMembers(prev => prev.some(m => m.id === person.id) ? prev : [...prev, {
+            id: person.id, full_name: person.full_name, profile_photo_url: person.profile_photo_url,
+            department: person.department, role: 'member', status: 'active',
+          }]);
+          setActiveGroupInfo(g => g ? { ...g, member_count: (g.member_count || 0) + 1 } : g);
+          setGroupInfoToast(`${person.full_name} added to the group`);
+        }
+      } else {
+        setGroupInfoToast(data.message || 'Could not add member');
+      }
+      setTimeout(() => setGroupInfoToast(''), 3000);
+    } catch {
+      setGroupInfoToast('Could not add member');
+      setTimeout(() => setGroupInfoToast(''), 3000);
+    } finally {
+      setAddingMemberId(null);
+    }
   };
 
   const handleCreateGroup = async () => {
@@ -1191,6 +1234,12 @@ export default function MessagesPage() {
 
   const filteredFollowers = followers.filter(f =>
     f.full_name.toLowerCase().includes(followerSearch.toLowerCase())
+  );
+
+  // For the add-members modal: followers not already in the group, matching search
+  const addableFollowers = followers.filter(f =>
+    !groupMembers.some(m => m.id === f.id) &&
+    f.full_name.toLowerCase().includes(addMemberSearch.toLowerCase())
   );
 
   const showList = !mobileShowChat || (!activeId && !activeGroupId);
@@ -1831,7 +1880,21 @@ export default function MessagesPage() {
 
                   {/* Members */}
                   <div className="px-4 py-3">
-                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-muted">{groupMembers.length} Members</p>
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">{groupMembers.length} Members</p>
+                      {(myGroupRole === 'admin' || !activeGroupInfo.only_admins_can_add) && (
+                        <button
+                          type="button"
+                          onClick={() => { setShowAddMembers(true); setAddMemberSearch(''); if (followers.length === 0) fetchFollowers(); }}
+                          className="flex items-center gap-1 rounded-full bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-600 transition hover:bg-brand-100 dark:bg-brand-950 dark:text-brand-400"
+                        >
+                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM3 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 019.374 21c-2.331 0-4.512-.645-6.374-1.766z" />
+                          </svg>
+                          Add
+                        </button>
+                      )}
+                    </div>
                     <div className="space-y-1">
                       {groupMembers.map(m => (
                         <div key={m.id} className="flex items-center gap-3 rounded-xl px-2 py-2 transition hover:bg-surface-muted dark:hover:bg-[#1a1a1a]">
@@ -2007,6 +2070,54 @@ export default function MessagesPage() {
       )}
 
       {/* ── Create Group Modal ─────────────────────────────────────────── */}
+      {/* Add members to existing group */}
+      {showAddMembers && activeGroupInfo && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 sm:items-center" onClick={() => setShowAddMembers(false)}>
+          <div className="max-h-[80vh] w-full max-w-md overflow-hidden rounded-t-3xl bg-white dark:bg-[#111] sm:rounded-3xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-border px-4 py-3 dark:border-[#222]">
+              <h2 className="text-[16px] font-bold text-ink">Add members</h2>
+              <button type="button" onClick={() => setShowAddMembers(false)} className="flex h-8 w-8 items-center justify-center rounded-full text-ink-muted transition hover:bg-surface-muted dark:hover:bg-[#222]" aria-label="Close">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="p-4">
+              <input
+                type="text"
+                value={addMemberSearch}
+                onChange={e => setAddMemberSearch(e.target.value)}
+                placeholder="Search people you follow…"
+                className="mb-3 w-full rounded-xl border border-border bg-surface-muted/50 px-3 py-2 text-[14px] text-ink outline-none focus:border-brand-500 dark:border-[#222] dark:bg-[#1a1a1a]"
+              />
+              <div className="max-h-[52vh] space-y-1 overflow-y-auto">
+                {addableFollowers.length === 0 ? (
+                  <p className="py-8 text-center text-[13px] text-ink-muted">
+                    {followers.length === 0 ? 'Loading…' : 'No one left to add'}
+                  </p>
+                ) : (
+                  addableFollowers.map(f => (
+                    <div key={f.id} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-surface-muted dark:hover:bg-[#1a1a1a]">
+                      <Avatar src={f.profile_photo_url} name={f.full_name} size="sm" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[13px] font-medium text-ink">{f.full_name}</p>
+                        <p className="truncate text-[11px] text-ink-muted">{f.department}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => addMemberToGroup(f)}
+                        disabled={addingMemberId === f.id}
+                        className="shrink-0 rounded-full bg-brand-600 px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-brand-700 disabled:opacity-60"
+                      >
+                        {addingMemberId === f.id ? 'Adding…' : 'Add'}
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showCreateGroup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={e => { if (e.target === e.currentTarget) setShowCreateGroup(false); }}>
           <div className="flex w-full max-w-md flex-col rounded-2xl bg-white dark:bg-[#111] dark:border dark:border-[#222] shadow-2xl">
