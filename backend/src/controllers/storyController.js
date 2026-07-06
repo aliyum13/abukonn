@@ -197,6 +197,24 @@ async function getReactionsHandler(req, res) {
   }
 }
 
+// Owner-only: full list of who viewed a story and when.
+async function getViewersHandler(req, res) {
+  try {
+    const storyId = parseInt(req.params.id, 10);
+    const story = await Story.getStoryById(storyId);
+    if (!story) return res.status(404).json({ message: 'Story not found' });
+    // Only the story owner may see who viewed it.
+    if (story.user_id !== req.user.id) {
+      return res.status(403).json({ message: 'Not allowed' });
+    }
+    const viewers = await Story.getStoryViewers(storyId);
+    res.json({ viewers });
+  } catch (err) {
+    console.error('Get story viewers error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
 async function replyToStory(req, res) {
   try {
     const storyId = parseInt(req.params.id, 10);
@@ -255,4 +273,4 @@ async function recordView(req, res) {
   }
 }
 
-module.exports = { getUploadSignature, createStory, getStories, getMyStories, deleteStory, reactToStory, getReactionsHandler, replyToStory, getStoryRepliesHandler, recordView };
+module.exports = { getUploadSignature, createStory, getStories, getMyStories, deleteStory, reactToStory, getReactionsHandler, replyToStory, getStoryRepliesHandler, recordView, getViewersHandler };

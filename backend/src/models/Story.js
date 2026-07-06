@@ -110,6 +110,22 @@ async function recordStoryView(storyId, viewerId) {
   );
 }
 
+// Full viewer list for a story — name, photo, and when they viewed it.
+// Only ever returned to the story owner (enforced in the controller).
+async function getStoryViewers(storyId) {
+  const { rows } = await pool.query(
+    `SELECT sv.viewer_id AS user_id, sv.viewed_at,
+            u.full_name AS user_name, u.profile_photo_url AS user_photo,
+            u.department
+     FROM abukonn.story_views sv
+     JOIN abukonn.users u ON sv.viewer_id = u.id
+     WHERE sv.story_id = $1
+     ORDER BY sv.viewed_at DESC`,
+    [storyId]
+  );
+  return rows;
+}
+
 // ── Story reactions ──────────────────────────────────────────────────────────
 
 const CREATE_STORY_REACTIONS_TABLE = `
@@ -219,6 +235,7 @@ module.exports = {
   getStoryById,
   createStoryViewsTable,
   recordStoryView,
+  getStoryViewers,
   createStoryReactionsTable,
   toggleStoryReaction,
   getStoryReactions,

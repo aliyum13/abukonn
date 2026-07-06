@@ -24,6 +24,17 @@ import {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
+// Insert Cloudinary delivery transformations into an image URL so images load
+// fast: f_auto (modern formats like WebP/AVIF), q_auto (smart compression), and
+// a sensible max width. Full-res phone photos otherwise load at several MB.
+function optimizedImage(url: string | null | undefined, width = 1080): string {
+  if (!url) return '';
+  if (!url.includes('/upload/')) return url; // not a Cloudinary URL
+  // Avoid double-transforming
+  if (url.includes('/upload/f_auto') || url.includes('/upload/q_auto')) return url;
+  return url.replace('/upload/', `/upload/f_auto,q_auto,w_${width},c_limit/`);
+}
+
 const NAV_ITEMS = [
   { href: '/feed', label: 'Feed', icon: 'M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 01.778-.332 48.294 48.294 0 005.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z' },
   { href: '/news', label: 'News', icon: 'M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 01-2.25 2.25M16.5 7.5V18a2.25 2.25 0 002.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 002.25 2.25h13.5M6 7.5h3v3H6v-3z' },
@@ -372,6 +383,30 @@ function StoryViewer({
   const [videoDuration, setVideoDuration] = useState(0);
   const [videoCurrentTime, setVideoCurrentTime] = useState(0);
   const pauseIconTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pressStartedHoldRef = useRef(false);
+  const [showViewers, setShowViewers] = useState(false);
+  const [viewers, setViewers] = useState<Array<{ user_id: number; user_name: string; user_photo: string | null; department: string; viewed_at: string }>>([]);
+  const [viewersLoading, setViewersLoading] = useState(false);
+
+  const openViewers = async () => {
+    if (!group.is_own) return;
+    onPauseToggle(); // pause while viewing the list
+    setShowViewers(true);
+    setViewersLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/stories/${story.id}/viewers`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      });
+      const data = await res.json();
+      setViewers(data.viewers || []);
+    } catch { setViewers([]); }
+    finally { setViewersLoading(false); }
+  };
+
+  const closeViewers = () => {
+    setShowViewers(false);
+    if (isPaused) onPauseToggle(); // resume
+  };
 
   useEffect(() => {
     if (!videoRef.current) return;
@@ -388,13 +423,45 @@ function StoryViewer({
     setVideoDuration(0);
   }, [story?.id]);
 
+  // Preload the next story's image so tapping forward feels instant
+  useEffect(() => {
+    const next = group.stories[index + 1];
+    if (next && next.story_type === 'image' && next.media_url) {
+      const img = new Image();
+      img.src = optimizedImage(next.media_url);
+    }
+  }, [index, group.stories]);
+
   if (!story) return null;
 
-  const handleCenterTap = () => {
-    onPauseToggle();
-    setShowPauseIcon(true);
-    if (pauseIconTimerRef.current) clearTimeout(pauseIconTimerRef.current);
-    pauseIconTimerRef.current = setTimeout(() => setShowPauseIcon(false), 1000);
+  // WhatsApp-style gestures: tap left = previous, tap right = next,
+  // press-and-hold anywhere = pause (release = resume). We distinguish a tap
+  // from a hold using a timer: if the press lasts longer than ~200ms it's a
+  // hold (pause), otherwise it's a tap (navigate).
+  const holdTimerRef = pauseIconTimerRef; // reuse timer ref slot
+
+  const beginPress = () => {
+    pressStartedHoldRef.current = false;
+    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+    holdTimerRef.current = setTimeout(() => {
+      pressStartedHoldRef.current = true;
+      if (!isPaused) onPauseToggle();
+    }, 200);
+  };
+
+  const endPress = (side: 'left' | 'right') => {
+    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+    if (pressStartedHoldRef.current) {
+      if (isPaused) onPauseToggle();
+    } else {
+      if (side === 'left') onPrev();
+      else onNext();
+    }
+  };
+
+  const cancelPress = () => {
+    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+    if (pressStartedHoldRef.current && isPaused) onPauseToggle();
   };
 
   return (
@@ -496,7 +563,7 @@ function StoryViewer({
             onEnded={() => onNext()}
           />
         ) : (
-          <img src={story.media_url!} alt="Story" className="max-h-full w-full object-contain" />
+          <img src={optimizedImage(story.media_url)} alt="Story" className="max-h-full w-full object-contain" loading="eager" decoding="async" />
         )}
       </div>
       {/* Caption overlay — image/video only */}
@@ -507,10 +574,29 @@ function StoryViewer({
           </div>
         </div>
       )}
-      {/* Tap zones — z-[5] so header buttons at z-10 remain clickable */}
-      <button type="button" className="absolute left-0 top-0 z-[5] h-full w-1/3" onClick={onPrev} aria-label="Previous" />
-      <button type="button" className="absolute left-1/3 right-1/3 top-0 z-[5] h-full" onClick={handleCenterTap} aria-label="Pause/Resume" />
-      <button type="button" className="absolute right-0 top-0 z-[5] h-full w-1/3" onClick={onNext} aria-label="Next" />
+      {/* Gesture zones — WhatsApp style. Left half: tap = previous, hold = pause.
+          Right half: tap = next, hold = pause. z-[5] keeps header buttons (z-10)
+          clickable. Touch + mouse handlers both wired for mobile and desktop. */}
+      <div
+        className="absolute left-0 top-0 z-[5] h-full w-1/2"
+        onTouchStart={beginPress}
+        onTouchEnd={() => endPress('left')}
+        onTouchCancel={cancelPress}
+        onMouseDown={beginPress}
+        onMouseUp={() => endPress('left')}
+        onMouseLeave={cancelPress}
+        aria-label="Previous / hold to pause"
+      />
+      <div
+        className="absolute right-0 top-0 z-[5] h-full w-1/2"
+        onTouchStart={beginPress}
+        onTouchEnd={() => endPress('right')}
+        onTouchCancel={cancelPress}
+        onMouseDown={beginPress}
+        onMouseUp={() => endPress('right')}
+        onMouseLeave={cancelPress}
+        aria-label="Next / hold to pause"
+      />
       {/* Pause/play icon — brief overlay feedback */}
       {showPauseIcon && (
         <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
@@ -536,7 +622,7 @@ function StoryViewer({
               {/* Story preview chip */}
               <div className="flex items-center gap-2 rounded-xl bg-black/40 px-3 py-2 backdrop-blur-sm">
                 {story.story_type === 'image' && story.media_url && (
-                  <img src={story.media_url} alt="Story preview" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
+                  <img src={optimizedImage(story.media_url, 120)} alt="Story preview" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
                 )}
                 {story.story_type === 'video' && story.media_url && (
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-black/60">
@@ -600,32 +686,64 @@ function StoryViewer({
         </div>
       )}
 
-      {/* Bottom bar — own story: views + who liked it */}
+      {/* Bottom bar — own story: views + who liked it. Tap to see full viewer list. */}
       {group.is_own && ((viewCount ?? 0) > 0 || (likers && likers.length > 0)) && (
         <div className="absolute bottom-0 left-0 right-0 z-20 px-4 pb-8">
-          <div className="rounded-xl bg-black/40 px-4 py-3 backdrop-blur-sm">
-            <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-white">
+          <button
+            type="button"
+            onClick={openViewers}
+            className="w-full rounded-xl bg-black/40 px-4 py-3 text-left backdrop-blur-sm transition hover:bg-black/55"
+          >
+            <p className="flex items-center gap-1.5 text-sm font-semibold text-white">
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
               {viewCount ?? 0} {(viewCount ?? 0) === 1 ? 'view' : 'views'}
+              <span className="ml-auto text-xs font-normal text-white/60">Tap to see who</span>
             </p>
-            {likers && likers.length > 0 && (
-              <>
-                <p className="mb-2 text-xs font-medium text-white/60">
-                  ❤ {likers.length} {likers.length === 1 ? 'like' : 'likes'}
-                </p>
-                <div className="flex max-h-24 flex-col gap-1.5 overflow-y-auto">
-                  {likers.map(l => (
-                    <div key={l.user_id} className="flex items-center gap-2">
-                      <Avatar src={l.user_photo} name={l.user_name} size="xs" />
-                      <span className="text-xs text-white">{l.user_name}</span>
+          </button>
+        </div>
+      )}
+
+      {/* Viewers sheet — owner only. Shows who viewed and when. */}
+      {group.is_own && showViewers && (
+        <div className="absolute inset-0 z-30 flex flex-col justify-end" onClick={closeViewers}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div
+            className="relative max-h-[70%] overflow-hidden rounded-t-3xl bg-[#111] pb-6"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+              <p className="flex items-center gap-2 text-[15px] font-bold text-white">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Viewed by {viewers.length}
+              </p>
+              <button type="button" onClick={closeViewers} className="flex h-8 w-8 items-center justify-center rounded-full text-white/70 hover:bg-white/10" aria-label="Close">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="max-h-[calc(70vh-56px)] overflow-y-auto px-4 py-2">
+              {viewersLoading ? (
+                <p className="py-8 text-center text-[13px] text-white/50">Loading…</p>
+              ) : viewers.length === 0 ? (
+                <p className="py-8 text-center text-[13px] text-white/50">No views yet</p>
+              ) : (
+                viewers.map(v => (
+                  <div key={v.user_id} className="flex items-center gap-3 py-2">
+                    <Avatar src={v.user_photo} name={v.user_name} size="sm" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[14px] font-medium text-white">{v.user_name}</p>
+                      {v.department && <p className="truncate text-[11px] text-white/50">{v.department}</p>}
                     </div>
-                  ))}
-                </div>
-              </>
-            )}
+                    <span className="shrink-0 text-[11px] text-white/50">{timeAgo(v.viewed_at)}</span>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       )}
