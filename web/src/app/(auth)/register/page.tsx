@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { AuthSplitLayout } from '@/components/auth/AuthSplitLayout';
 import { Button, Input, Select, PasswordInput, PasswordStrengthMeter, getPasswordStrength, COMMON_PASSWORDS } from '@/components/ui';
-import { DepartmentOptions } from '@/lib/departments';
+import { DEPARTMENTS_ALPHABETICAL } from '@/lib/departments';
 
 const LEVELS = [
   '100 Level',
@@ -106,7 +106,9 @@ export default function RegisterPage() {
           required
         >
           <option value="">Select department</option>
-          <DepartmentOptions />
+          {DEPARTMENTS_ALPHABETICAL.map((dept) => (
+            <option key={dept} value={dept}>{dept}</option>
+          ))}
         </Select>
 
         <Select

@@ -26,6 +26,10 @@ export const DEPARTMENT_GROUPS: { faculty: string; departments: string[] }[] = [
 // Flat, deduplicated list of all department names.
 export const DEPARTMENTS = Array.from(new Set(DEPARTMENT_GROUPS.flatMap((g) => g.departments)));
 
+// Flat list sorted alphabetically — for simple pickers (e.g. registration)
+// where a clean A–Z list reads better than faculty groupings.
+export const DEPARTMENTS_ALPHABETICAL = [...DEPARTMENTS].sort((a, b) => a.localeCompare(b));
+
 export const LEVELS = ['100 Level', '200 Level', '300 Level', '400 Level', '500 Level', 'Postgraduate'] as const;
 
 /**
