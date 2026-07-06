@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const Post = require('../models/Post');
+const Comment = require('../models/Comment');
 const Follow = require('../models/Follow');
 const { isBlocked } = require('../models/ReportBlock');
 const cloudinary = require('../config/cloudinary');
@@ -20,12 +21,14 @@ async function getProfile(req, res) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    const posts = await Post.getPostsByUserId(req.user.id);
+    const posts = await Post.getPostsByUserId(req.user.id, req.user.id);
+    const replies = await Comment.getCommentsByUser(req.user.id);
 
     // Own profile — include matric_number
     res.json({
       user: User.toPrivateUser(user),
       posts,
+      replies,
     });
   } catch (err) {
     console.error('Get profile error:', err.message);
@@ -52,10 +55,11 @@ async function getUserById(req, res) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    const [posts, stats, following] = await Promise.all([
-      Post.getPostsByUserId(userId),
+    const [posts, stats, following, replies] = await Promise.all([
+      Post.getPostsByUserId(userId, req.user.id),
       Follow.getStats(userId),
       Follow.isFollowing(req.user.id, userId),
+      Comment.getCommentsByUser(userId),
     ]);
 
     const publicUser = User.toPublicUser(user);
@@ -68,6 +72,7 @@ async function getUserById(req, res) {
         is_following: following,
       },
       posts,
+      replies,
     });
   } catch (err) {
     console.error('Get user error:', err.message);

@@ -11,13 +11,35 @@ import { Avatar, Button, Skeleton, RoleBadge, PostContent } from '@/components/u
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
+interface ProfileReply {
+  id: number;
+  content: string;
+  created_at: string;
+  post_id: number;
+  post_content: string;
+  post_subtype?: string;
+  post_title?: string | null;
+  post_author_name: string;
+}
+
 interface ProfilePost {
   id: number;
+  user_id?: number;
   content: string;
   image_url?: string | null;
   likes_count: number;
   comments_count: number;
   created_at: string;
+  post_subtype?: 'post' | 'discussion' | 'poll' | 'question' | 'event';
+  discussion_title?: string | null;
+  category?: string;
+  poll_options?: Array<{ id: number; option_text: string; vote_count: number }> | null;
+  voted_option_id?: number | null;
+  poll_ends_at?: string | null;
+  event_title?: string | null;
+  event_date?: string | null;
+  event_location?: string | null;
+  event_rsvp_count?: number;
 }
 
 interface FollowUser {
@@ -131,6 +153,7 @@ export default function ProfilePage() {
   const router = useRouter();
 
   const [posts, setPosts] = useState<ProfilePost[]>([]);
+  const [replies, setReplies] = useState<ProfileReply[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [photoLightboxOpen, setPhotoLightboxOpen] = useState(false);
@@ -173,6 +196,7 @@ export default function ProfilePage() {
       .then(data => {
         if (data.user) {
           setPosts(data.posts || []);
+          setReplies(data.replies || []);
         }
       })
       .catch(() => setError('Failed to load profile'))
@@ -500,7 +524,7 @@ export default function ProfilePage() {
                 ? 'border-brand-600 text-brand-600'
                 : 'border-transparent text-ink-muted hover:text-ink'
             )}>
-            {tab === 'posts' ? `Posts${posts.length > 0 ? ` (${posts.length})` : ''}` : 'Replies'}
+            {tab === 'posts' ? `Posts${posts.length > 0 ? ` (${posts.length})` : ''}` : `Replies${replies.length > 0 ? ` (${replies.length})` : ''}`}
           </button>
         ))}
       </div>
@@ -522,7 +546,11 @@ export default function ProfilePage() {
           </div>
         ) : (
           posts.map(post => (
-            <div key={post.id} className="border-b border-border px-4 py-4 transition hover:bg-gray-50/40 dark:hover:bg-white/[0.03] dark:border-[#222]">
+            <div
+              key={post.id}
+              onClick={() => router.push(`/post/${post.id}`)}
+              className="cursor-pointer border-b border-border px-4 py-4 transition hover:bg-gray-50/40 dark:hover:bg-white/[0.03] dark:border-[#222]"
+            >
               <div className="flex gap-3">
                 <div className="h-10 w-10 shrink-0 rounded-full bg-gradient-to-tr from-brand-500 to-emerald-400 p-[2px]">
                   <div className="h-full w-full rounded-full bg-white dark:bg-[#0a0a0a] p-[1.5px]">
@@ -533,13 +561,80 @@ export default function ProfilePage() {
                   <div className="flex items-baseline gap-2">
                     <span className="text-[14px] font-semibold text-ink">{user.full_name}</span>
                     <span className="text-[12px] text-ink-muted">{timeAgo(post.created_at)}</span>
+                    {post.post_subtype && post.post_subtype !== 'post' && (
+                      <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-600 dark:bg-brand-950 dark:text-brand-400">
+                        {post.post_subtype}
+                      </span>
+                    )}
                   </div>
-                  <p className="mt-1.5 text-[15px] leading-relaxed text-ink">
-                    <PostContent content={post.content} />
-                  </p>
+
+                  {/* Discussion / question title */}
+                  {(post.post_subtype === 'discussion' || post.post_subtype === 'question') && post.discussion_title && (
+                    <p className="mt-1.5 text-[15px] font-bold text-ink">{post.discussion_title}</p>
+                  )}
+
+                  {post.content && (
+                    <p className="mt-1.5 text-[15px] leading-relaxed text-ink">
+                      <PostContent content={post.content} />
+                    </p>
+                  )}
+
                   {post.image_url && (
                     <img src={post.image_url} alt="Post" className="mt-3 max-h-72 w-full rounded-2xl border border-border/60 object-cover" />
                   )}
+
+                  {/* Poll */}
+                  {post.post_subtype === 'poll' && post.poll_options && post.poll_options.length > 0 && (() => {
+                    const totalVotes = post.poll_options.reduce((s, o) => s + o.vote_count, 0);
+                    return (
+                      <div className="mt-3 space-y-2">
+                        {post.poll_options.map(opt => {
+                          const pct = totalVotes > 0 ? Math.round((opt.vote_count / totalVotes) * 100) : 0;
+                          const isVoted = post.voted_option_id === opt.id;
+                          return (
+                            <div key={opt.id} className="relative overflow-hidden rounded-xl border border-border dark:border-[#222]">
+                              <div className={cn('absolute inset-y-0 left-0', isVoted ? 'bg-brand-100 dark:bg-brand-950' : 'bg-surface-muted dark:bg-white/[0.04]')} style={{ width: `${pct}%` }} />
+                              <div className="relative flex items-center justify-between px-3 py-2">
+                                <span className={cn('text-[13px]', isVoted ? 'font-semibold text-brand-700 dark:text-brand-300' : 'text-ink')}>
+                                  {opt.option_text}{isVoted ? ' ✓' : ''}
+                                </span>
+                                <span className="text-[12px] font-medium text-ink-muted">{pct}%</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        <p className="text-[12px] text-ink-muted">{totalVotes} vote{totalVotes !== 1 ? 's' : ''}</p>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Event */}
+                  {post.post_subtype === 'event' && post.event_title && (
+                    <div className="mt-3 rounded-2xl border border-border p-3 dark:border-[#222]">
+                      <p className="font-bold text-[15px] text-ink">{post.event_title}</p>
+                      {post.event_date && (
+                        <p className="mt-1 flex items-center gap-1.5 text-[13px] text-ink-muted">
+                          <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5" />
+                          </svg>
+                          {new Date(post.event_date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                        </p>
+                      )}
+                      {post.event_location && (
+                        <p className="mt-1 flex items-center gap-1.5 text-[13px] text-ink-muted">
+                          <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+                          </svg>
+                          {post.event_location}
+                        </p>
+                      )}
+                      {typeof post.event_rsvp_count === 'number' && (
+                        <p className="mt-2 text-[12px] font-medium text-brand-600 dark:text-brand-400">{post.event_rsvp_count} attending</p>
+                      )}
+                    </div>
+                  )}
+
                   <div className="mt-3 flex items-center gap-5 text-[13px] text-ink-muted">
                     <span className="flex items-center gap-1.5">
                       <svg className="h-4 w-4" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} fill="none">
@@ -563,13 +658,52 @@ export default function ProfilePage() {
 
       {/* ── Replies tab ── */}
       {activeTab === 'replies' && (
-        <div className="flex flex-col items-center px-4 py-16 text-center">
-          <svg className="mb-3 h-10 w-10 text-ink-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.74 1.676v2.954a.75.75 0 01-1.088.67L6.19 21.1a.75.75 0 01-.365-.633v-1.44C3.512 17.962 3 15.075 3 12z" />
-          </svg>
-          <p className="font-semibold text-[15px] text-ink">No replies yet</p>
-          <p className="mt-1 text-[14px] text-ink-muted">Your comments on posts will appear here</p>
-        </div>
+        loading ? (
+          <><PostSkeleton /><PostSkeleton /></>
+        ) : replies.length === 0 ? (
+          <div className="flex flex-col items-center px-4 py-16 text-center">
+            <svg className="mb-3 h-10 w-10 text-ink-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.74 1.676v2.954a.75.75 0 01-1.088.67L6.19 21.1a.75.75 0 01-.365-.633v-1.44C3.512 17.962 3 15.075 3 12z" />
+            </svg>
+            <p className="font-semibold text-[15px] text-ink">No replies yet</p>
+            <p className="mt-1 text-[14px] text-ink-muted">Your comments on posts will appear here</p>
+          </div>
+        ) : (
+          replies.map(reply => (
+            <div
+              key={reply.id}
+              onClick={() => router.push(`/post/${reply.post_id}`)}
+              className="cursor-pointer border-b border-border px-4 py-4 transition hover:bg-gray-50/40 dark:hover:bg-white/[0.03] dark:border-[#222]"
+            >
+              {/* Context: the post being replied to */}
+              <div className="mb-2 rounded-xl border border-border/70 bg-surface-muted/50 px-3 py-2 dark:border-[#222] dark:bg-white/[0.02]">
+                <p className="text-[12px] text-ink-muted">
+                  Replying to <span className="font-medium text-ink">{reply.post_author_name}</span>
+                </p>
+                <p className="mt-0.5 line-clamp-2 text-[13px] text-ink-secondary">
+                  {reply.post_title || reply.post_content || '(post)'}
+                </p>
+              </div>
+              {/* The reply itself */}
+              <div className="flex gap-3">
+                <div className="h-9 w-9 shrink-0 rounded-full bg-gradient-to-tr from-brand-500 to-emerald-400 p-[2px]">
+                  <div className="h-full w-full rounded-full bg-white dark:bg-[#0a0a0a] p-[1.5px]">
+                    <Avatar src={user.profile_photo_url} name={user.full_name} size="sm" className="h-full w-full" />
+                  </div>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-[14px] font-semibold text-ink">{user.full_name}</span>
+                    <span className="text-[12px] text-ink-muted">{timeAgo(reply.created_at)}</span>
+                  </div>
+                  <p className="mt-1 text-[15px] leading-relaxed text-ink">
+                    <PostContent content={reply.content} />
+                  </p>
+                </div>
+              </div>
+            </div>
+          ))
+        )
       )}
 
       {/* ── Story viewer ── */}

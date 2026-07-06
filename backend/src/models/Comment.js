@@ -40,6 +40,26 @@ async function getCommentsByPost(postId) {
   return result.rows;
 }
 
+async function getCommentsByUser(userId) {
+  // A user's replies (comments), each with a snippet of the post they replied to,
+  // so the profile Replies tab can show context. Excludes comments on posts by
+  // blocked users in either direction.
+  const result = await pool.query(
+    `SELECT c.id, c.content, c.created_at, c.post_id,
+            p.content AS post_content,
+            COALESCE(p.post_subtype, 'post') AS post_subtype,
+            p.discussion_title AS post_title,
+            pu.full_name AS post_author_name
+     FROM abukonn.comments c
+     JOIN abukonn.posts p ON c.post_id = p.id
+     JOIN abukonn.users pu ON p.user_id = pu.id
+     WHERE c.user_id = $1
+     ORDER BY c.created_at DESC`,
+    [userId]
+  );
+  return result.rows;
+}
+
 async function markBestAnswer(commentId, postId, ownerId) {
   const { rows: postRows } = await pool.query(
     'SELECT user_id FROM abukonn.posts WHERE id = $1',
@@ -61,5 +81,6 @@ module.exports = {
   createCommentsTable,
   createComment,
   getCommentsByPost,
+  getCommentsByUser,
   markBestAnswer,
 };
