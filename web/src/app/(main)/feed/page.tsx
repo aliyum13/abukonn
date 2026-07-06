@@ -2486,6 +2486,42 @@ export default function FeedPage() {
             </form>
           </div>
 
+          {/* Who to follow — mobile only (desktop shows it in the right sidebar) */}
+          {suggestions.length > 0 && (
+            <div className="border-b border-border px-4 py-4 lg:hidden dark:border-[#222]">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-[15px] font-semibold text-ink">Who to follow</h3>
+              </div>
+              <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1" style={{ scrollbarWidth: 'none' }}>
+                {suggestions.slice(0, 10).map((person) => (
+                  <div
+                    key={person.id}
+                    className="flex w-36 shrink-0 flex-col items-center rounded-2xl border border-border p-3 text-center dark:border-[#222]"
+                  >
+                    <Link href={`/profile/${person.id}`} className="flex flex-col items-center">
+                      <div className="h-14 w-14 overflow-hidden rounded-full bg-brand-100 dark:bg-brand-950">
+                        {person.profile_photo_url ? (
+                          <img src={person.profile_photo_url} alt={person.full_name} className="h-full w-full object-cover" />
+                        ) : (
+                          <span className="flex h-full w-full items-center justify-center text-[18px] font-bold text-brand-700 dark:text-brand-400">
+                            {person.full_name?.charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-2 line-clamp-1 w-full text-[13px] font-semibold text-ink">{person.full_name}</p>
+                      {person.department && (
+                        <p className="line-clamp-1 w-full text-[11px] text-ink-muted">{person.department}</p>
+                      )}
+                    </Link>
+                    <div className="mt-2 w-full">
+                      <MobileFollowButton user={person} token={token} onFollowed={removeSuggestion} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Posts */}
           {loading ? (
             <>
@@ -3402,6 +3438,35 @@ export default function FeedPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function MobileFollowButton({
+  user,
+  token,
+  onFollowed,
+}: {
+  user: SuggestedUser;
+  token: string | null;
+  onFollowed: (userId: number) => void;
+}) {
+  const { isFollowing, loading, toggle } = useFollow(user.id, false, 0, token);
+
+  const handleClick = async () => {
+    await toggle();
+    if (!isFollowing) setTimeout(() => onFollowed(user.id), 700);
+  };
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={handleClick}
+      loading={loading}
+      className="w-full min-w-0"
+    >
+      {isFollowing ? 'Following' : 'Follow'}
+    </Button>
   );
 }
 
