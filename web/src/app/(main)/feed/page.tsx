@@ -490,8 +490,10 @@ function StoryViewer({
       {/* Header */}
       <div className="absolute top-6 left-0 right-0 z-20 flex items-center justify-between px-4">
         <div className="flex items-center gap-2">
-          <Avatar src={group.user_photo} name={group.user_name} size="sm" />
-          <span className="text-sm font-medium text-white">{group.user_name}</span>
+          <Link href={`/profile/${group.user_id}`} onClick={onClose} className="flex items-center gap-2">
+            <Avatar src={group.user_photo} name={group.user_name} size="sm" />
+            <span className="text-sm font-medium text-white hover:underline">{group.user_name}</span>
+          </Link>
           <span className="text-xs text-white/60">{new Date(story.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
           {story.story_type === 'video' && videoDuration > 0 && (
             <span className="text-xs text-white/60">{storyFormatTime(videoCurrentTime)} / {storyFormatTime(videoDuration)}</span>
@@ -2533,7 +2535,7 @@ export default function FeedPage() {
                   )}
 
                   <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
-                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                       <button type="button" onClick={() => imageInputRef.current?.click()}
                         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-brand-600 transition hover:bg-brand-50" title="Add photo">
                         <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -2569,13 +2571,19 @@ export default function FeedPage() {
                         className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[17px] transition',
                           composerMode === 'event' ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300' : 'text-green-600 hover:bg-green-50 dark:hover:bg-green-950/40'
                         )}>📅</button>
-                      <select
-                        value={newPostCategory}
-                        onChange={e => setNewPostCategory(e.target.value as PostCategory)}
-                        className="min-w-0 rounded-full border border-border bg-transparent py-1.5 pl-3 pr-2 text-[13px] text-ink-secondary focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-                      >
-                        {POST_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                      </select>
+                      <div className="relative flex shrink-0 items-center">
+                        <svg className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-ink-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 6h.008v.008H6V6z" />
+                        </svg>
+                        <select
+                          value={newPostCategory}
+                          onChange={e => setNewPostCategory(e.target.value as PostCategory)}
+                          className="min-w-[7rem] rounded-full border border-border bg-transparent py-1.5 pl-7 pr-2 text-[13px] font-medium text-ink-secondary focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                        >
+                          {POST_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                        </select>
+                      </div>
                     </div>
                     <Button type="submit" size="sm"
                       disabled={posting || (

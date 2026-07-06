@@ -654,11 +654,13 @@ export default function PostDetailPage() {
             {comments.map(c => (
               <div key={c.id}>
                 <div className="flex gap-2.5">
-                  <Avatar src={c.author_photo} name={c.author_name} size="sm" className="mt-0.5 shrink-0" />
+                  <Link href={`/profile/${c.user_id}`} className="shrink-0">
+                    <Avatar src={c.author_photo} name={c.author_name} size="sm" className="mt-0.5" />
+                  </Link>
                   <div className="min-w-0 flex-1">
                     <div className="rounded-xl bg-surface-muted px-3 py-2">
                       <div className="flex items-baseline gap-2">
-                        <span className="text-body-sm font-semibold text-ink">{c.author_name}</span>
+                        <Link href={`/profile/${c.user_id}`} className="text-body-sm font-semibold text-ink hover:text-brand-600 transition">{c.author_name}</Link>
                         <span className="text-caption text-ink-muted">{timeAgo(c.created_at)}</span>
                       </div>
                       <p className="mt-0.5 text-body-sm text-ink leading-relaxed"><PostContent content={c.content} /></p>
@@ -722,10 +724,12 @@ export default function PostDetailPage() {
                         ) : (
                           (replies[c.id] ?? []).map(r => (
                             <div key={r.id} className="flex gap-2">
-                              <Avatar src={r.author_photo} name={r.author_name} size="sm" className="h-6 w-6 shrink-0" />
+                              <Link href={`/profile/${r.user_id}`} className="shrink-0">
+                                <Avatar src={r.author_photo} name={r.author_name} size="sm" className="h-6 w-6" />
+                              </Link>
                               <div className="rounded-lg bg-surface-subtle px-2.5 py-1.5">
                                 <div className="flex items-baseline gap-1.5">
-                                  <span className="text-caption font-semibold text-ink">{r.author_name}</span>
+                                  <Link href={`/profile/${r.user_id}`} className="text-caption font-semibold text-ink hover:text-brand-600 transition">{r.author_name}</Link>
                                   <span className="text-[10px] text-ink-muted">{timeAgo(r.created_at)}</span>
                                 </div>
                                 <p className="mt-0.5 text-caption text-ink leading-relaxed"><PostContent content={r.content} /></p>

@@ -98,13 +98,19 @@ function ActorAvatars({ actors, actorCount }: { actors: Actor[]; actorCount: num
   return (
     <div className="flex items-center">
       {shown.map((a, i) => (
-        <Avatar
+        <Link
           key={a.id}
-          src={a.profile_photo_url}
-          name={a.full_name}
-          size="md"
-          className={cn('ring-2 ring-white dark:ring-[#0a0a0a]', i > 0 && '-ml-3')}
-        />
+          href={`/profile/${a.id}`}
+          onClick={(e) => e.stopPropagation()}
+          className={cn(i > 0 && '-ml-3')}
+        >
+          <Avatar
+            src={a.profile_photo_url}
+            name={a.full_name}
+            size="md"
+            className="ring-2 ring-white transition hover:opacity-90 dark:ring-[#0a0a0a]"
+          />
+        </Link>
       ))}
       {extra > 0 && (
         <div className={cn(

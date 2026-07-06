@@ -1389,10 +1389,10 @@ export default function MessagesPage() {
                   <button type="button" onClick={() => { setMobileShowChat(false); setTypingText(''); }} className="rounded-lg p-1 text-ink-secondary hover:bg-surface-subtle sm:hidden" aria-label="Back">
                     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
                   </button>
-                  <div className="relative shrink-0">
+                  <Link href={`/profile/${activeConversation.other_user_id}`} className="relative shrink-0">
                     <Avatar src={activeConversation.other_user_photo} name={activeConversation.other_user_name} size="sm" />
                     {isOtherOnline && <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-brand-500" />}
-                  </div>
+                  </Link>
                   <div className="min-w-0 flex-1">
                     <Link href={`/profile/${activeConversation.other_user_id}`} className="font-medium text-ink hover:text-brand-600">{activeConversation.other_user_name}</Link>
                     <p className="text-caption text-ink-muted">{isOtherOnline ? <span className="font-medium text-brand-600">Online</span> : activeConversation.other_user_department}</p>
@@ -1611,7 +1611,11 @@ export default function MessagesPage() {
                           <div className={cn('group/msg flex items-end gap-2', isSent ? 'justify-end' : 'justify-start')}>
                             {!isSent && (
                               <div className="w-7 shrink-0">
-                                {showSenderInfo && <Avatar src={msg.sender_photo} name={msg.sender_name} size="sm" className="h-7 w-7" />}
+                                {showSenderInfo && (
+                                  <Link href={`/profile/${msg.sender_id}`}>
+                                    <Avatar src={msg.sender_photo} name={msg.sender_name} size="sm" className="h-7 w-7" />
+                                  </Link>
+                                )}
                               </div>
                             )}
                             {isSent && !isDeleted && (
@@ -1628,7 +1632,7 @@ export default function MessagesPage() {
                             )}
                             <div className={cn('max-w-[75%] min-w-0', isSent ? 'items-end' : 'items-start', 'flex flex-col')}>
                               {showSenderInfo && !isSent && (
-                                <p className="mb-0.5 ml-1 text-caption font-medium text-ink-secondary">{msg.sender_name}</p>
+                                <Link href={`/profile/${msg.sender_id}`} className="mb-0.5 ml-1 text-caption font-medium text-ink-secondary hover:text-brand-600 transition">{msg.sender_name}</Link>
                               )}
                               {(() => {
                                 if (isDeleted) {
@@ -1898,11 +1902,13 @@ export default function MessagesPage() {
                     <div className="space-y-1">
                       {groupMembers.map(m => (
                         <div key={m.id} className="flex items-center gap-3 rounded-xl px-2 py-2 transition hover:bg-surface-muted dark:hover:bg-[#1a1a1a]">
-                          <Avatar src={m.profile_photo_url} name={m.full_name} size="sm" />
-                          <div className="min-w-0 flex-1">
-                            <p className="text-[13px] font-medium text-ink truncate">{m.full_name}</p>
-                            <p className="text-[11px] text-ink-muted">{m.department}</p>
-                          </div>
+                          <Link href={`/profile/${m.id}`} className="flex min-w-0 flex-1 items-center gap-3">
+                            <Avatar src={m.profile_photo_url} name={m.full_name} size="sm" />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[13px] font-medium text-ink truncate">{m.full_name}</p>
+                              <p className="text-[11px] text-ink-muted">{m.department}</p>
+                            </div>
+                          </Link>
                           {m.role === 'admin' && (
                             <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-semibold text-brand-700 dark:bg-brand-950 dark:text-brand-300">Admin</span>
                           )}
