@@ -1328,7 +1328,9 @@ export default function MessagesPage() {
                     const conv = item;
                     const isActive = activeId === conv.id;
                     return (
-                      <button key={`dm-${conv.id}`} type="button" onClick={() => selectDM(conv.id)}
+                      <button key={`dm-${conv.id}`} type="button"
+                        onPointerDown={() => selectDM(conv.id)}
+                        onClick={() => selectDM(conv.id)}
                         className={cn('flex w-full items-center gap-3 px-4 py-3 text-left transition', isActive ? 'border-r-2 border-brand-600 bg-brand-50 dark:bg-brand-950/40' : 'hover:bg-surface-muted dark:hover:bg-[#1a1a1a]')}>
                         <div className="relative shrink-0">
                           <Avatar src={conv.other_user_photo} name={conv.other_user_name || 'User'} size="md" />
@@ -1352,7 +1354,9 @@ export default function MessagesPage() {
                     const grp = item;
                     const isActive = activeGroupId === grp.id;
                     return (
-                      <button key={`group-${grp.id}`} type="button" onClick={() => selectGroup(grp.id)}
+                      <button key={`group-${grp.id}`} type="button"
+                        onPointerDown={() => selectGroup(grp.id)}
+                        onClick={() => selectGroup(grp.id)}
                         className={cn('flex w-full items-center gap-3 px-4 py-3 text-left transition', isActive ? 'border-r-2 border-brand-600 bg-brand-50 dark:bg-brand-950/40' : 'hover:bg-surface-muted dark:hover:bg-[#1a1a1a]')}>
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-100">
                           {grp.avatar_url ? (
