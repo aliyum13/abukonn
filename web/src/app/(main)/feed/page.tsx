@@ -383,7 +383,7 @@ function storyFormatTime(secs: number) {
 }
 
 function StoryViewer({
-  group, index, onClose, onPrev, onNext, onDelete, onAddStory,
+  group, index, onClose, onPrev, onNext, onNextPerson, onPrevPerson, onDelete, onAddStory,
   reactions, onReact, showReplyInput, onToggleReply, replyText, onReplyChange, onSendReply, replySending,
   likers, viewCount, isPaused, onPauseToggle,
 }: {
@@ -392,6 +392,8 @@ function StoryViewer({
   onClose: () => void;
   onPrev: () => void;
   onNext: () => void;
+  onNextPerson?: () => void;
+  onPrevPerson?: () => void;
   onDelete?: (storyId: number) => void;
   onAddStory?: () => void;
   reactions?: { count: number; is_liked: boolean };
@@ -473,6 +475,7 @@ function StoryViewer({
   const holdTimerRef = pauseIconTimerRef; // reuse timer ref slot
 
   const pressStartTimeRef = useRef(0);
+  const pointerStartRef = useRef({ x: 0, y: 0 });
 
   // Unified pointer handling (covers touch, mouse, pen) — avoids the double-fire
   // you get from mixing touch + mouse events. Arm a hold timer on press down;
@@ -487,17 +490,42 @@ function StoryViewer({
     }, 350);
   };
 
-  const onZonePointerUp = (side: 'left' | 'right') => () => {
+  const onZonePointerUp = (side: 'left' | 'right') => (e: React.PointerEvent) => {
     if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+    const dx = e.clientX - pointerStartRef.current.x;
+    const dy = e.clientY - pointerStartRef.current.y;
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+    const SWIPE = 60; // px threshold for a deliberate swipe
+
+    // Swipe down → close the viewer
+    if (dy > SWIPE && absY > absX) {
+      if (pressStartedHoldRef.current && isPaused) onPauseToggle();
+      pressStartedHoldRef.current = false;
+      onClose();
+      return;
+    }
+    // Horizontal swipe → change person
+    if (absX > SWIPE && absX > absY) {
+      if (pressStartedHoldRef.current && isPaused) onPauseToggle();
+      pressStartedHoldRef.current = false;
+      if (dx < 0) onNextPerson?.();   // swipe left → next person
+      else onPrevPerson?.();          // swipe right → previous person
+      return;
+    }
+    // Not a swipe — treat as tap or hold
     if (pressStartedHoldRef.current) {
-      // Was a hold → resume playback, don't navigate
-      if (isPaused) onPauseToggle();
+      if (isPaused) onPauseToggle(); // was a hold → resume
     } else {
-      // Quick tap → navigate
       if (side === 'left') onPrev();
       else onNext();
     }
     pressStartedHoldRef.current = false;
+  };
+
+  const onZonePointerDownPos = (e: React.PointerEvent) => {
+    pointerStartRef.current = { x: e.clientX, y: e.clientY };
+    onZonePointerDown();
   };
 
   const onZonePointerCancel = () => {
@@ -573,7 +601,7 @@ function StoryViewer({
         </div>
       </div>
       {/* Media / Text */}
-      <div className="relative z-10 flex h-full w-full max-w-sm items-center justify-center">
+      <div key={story.id} className="relative z-10 flex h-full w-full max-w-sm items-center justify-center animate-[fadeIn_0.25s_ease-out]">
         {story.story_type === 'text' ? (
           <div className="flex h-full w-full items-center justify-center px-8"
             style={{ backgroundColor: story.bg_color || '#16a34a' }}>
@@ -623,7 +651,7 @@ function StoryViewer({
           clickable. Touch + mouse handlers both wired for mobile and desktop. */}
       <div
         className="absolute left-0 top-0 z-[5] h-full w-1/2"
-        onPointerDown={onZonePointerDown}
+        onPointerDown={onZonePointerDownPos}
         onPointerUp={onZonePointerUp('left')}
         onPointerCancel={onZonePointerCancel}
         onPointerLeave={onZonePointerCancel}
@@ -632,7 +660,7 @@ function StoryViewer({
       />
       <div
         className="absolute right-0 top-0 z-[5] h-full w-1/2"
-        onPointerDown={onZonePointerDown}
+        onPointerDown={onZonePointerDownPos}
         onPointerUp={onZonePointerUp('right')}
         onPointerCancel={onZonePointerCancel}
         onPointerLeave={onZonePointerCancel}
@@ -1272,11 +1300,39 @@ export default function FeedPage() {
       if (viewingIdx < viewingGroup.stories.length - 1) {
         setViewingIdx(i => i + 1);
       } else {
-        setViewingGroup(null);
+        goToNextPerson();
       }
     }, 5000);
     return () => { if (storyTimerRef.current) clearTimeout(storyTimerRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewingGroup, viewingIdx, showUploadStory, showStoryReply, storyPaused]);
+
+  // Move to the next person's stories, or close if this is the last person.
+  const goToNextPerson = () => {
+    if (!viewingGroup) return;
+    const idx = storyGroups.findIndex(g => g.user_id === viewingGroup.user_id);
+    if (idx >= 0 && idx < storyGroups.length - 1) {
+      const next = storyGroups[idx + 1];
+      setViewingGroup(next);
+      const firstUnseen = next.stories.findIndex(s => !viewedStoryIds.has(s.id));
+      setViewingIdx(firstUnseen >= 0 ? firstUnseen : 0);
+    } else {
+      setViewingGroup(null); // last person — close the viewer
+    }
+  };
+
+  // Move to the previous person's stories, or restart if already first.
+  const goToPrevPerson = () => {
+    if (!viewingGroup) return;
+    const idx = storyGroups.findIndex(g => g.user_id === viewingGroup.user_id);
+    if (idx > 0) {
+      const prev = storyGroups[idx - 1];
+      setViewingGroup(prev);
+      setViewingIdx(0); // going back — start at their first story
+    } else {
+      setViewingIdx(0); // first person — just restart their first story
+    }
+  };
 
   // Reset pause state when navigating to a different story
   useEffect(() => {
@@ -2299,7 +2355,13 @@ export default function FeedPage() {
               storiesLoaded={storiesLoaded}
               user={user}
               onAddStory={() => setShowUploadStory(true)}
-              onViewGroup={(g) => { setViewingGroup(g); setViewingIdx(0); }}
+              onViewGroup={(g) => {
+                setViewingGroup(g);
+                // Start at the first unseen story (WhatsApp behaviour); if all seen,
+                // start at the beginning.
+                const firstUnseen = g.stories.findIndex(s => !viewedStoryIds.has(s.id));
+                setViewingIdx(firstUnseen >= 0 ? firstUnseen : 0);
+              }}
               viewedStoryIds={viewedStoryIds}
             />
           </div>
@@ -3403,8 +3465,10 @@ export default function FeedPage() {
           group={viewingGroup}
           index={viewingIdx}
           onClose={() => setViewingGroup(null)}
-          onPrev={() => viewingIdx > 0 ? setViewingIdx(i => i - 1) : setViewingGroup(null)}
-          onNext={() => viewingIdx < viewingGroup.stories.length - 1 ? setViewingIdx(i => i + 1) : setViewingGroup(null)}
+          onPrev={() => viewingIdx > 0 ? setViewingIdx(i => i - 1) : goToPrevPerson()}
+          onNext={() => viewingIdx < viewingGroup.stories.length - 1 ? setViewingIdx(i => i + 1) : goToNextPerson()}
+          onNextPerson={goToNextPerson}
+          onPrevPerson={goToPrevPerson}
           onDelete={handleDeleteStory}
           onAddStory={() => setShowUploadStory(true)}
           reactions={storyReactions[viewingGroup.stories[viewingIdx]?.id]}
