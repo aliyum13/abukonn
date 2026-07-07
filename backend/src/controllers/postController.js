@@ -220,11 +220,40 @@ async function likePost(req, res) {
 async function getComments(req, res) {
   try {
     const postId = parseInt(req.params.id, 10);
-    const comments = await Comment.getCommentsByPost(postId);
+    const comments = await Comment.getCommentsByPost(postId, req.user.id);
     res.json({ comments });
   } catch (err) {
     console.error('Get comments error:', err.message);
     res.status(500).json({ message: 'Server error fetching comments' });
+  }
+}
+
+// Toggle a like on a comment
+async function likeCommentHandler(req, res) {
+  try {
+    const commentId = parseInt(req.params.commentId, 10);
+    const result = await Comment.toggleCommentLike(commentId, req.user.id);
+    res.json(result);
+  } catch (err) {
+    console.error('Like comment error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// Delete own comment (author only)
+async function deleteCommentHandler(req, res) {
+  try {
+    const commentId = parseInt(req.params.commentId, 10);
+    const deleted = await Comment.deleteComment(commentId, req.user.id);
+    if (!deleted) {
+      return res.status(403).json({ message: 'You can only delete your own comment' });
+    }
+    // Keep the post's comment count in sync
+    await Post.decrementCommentsCount(deleted.post_id);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Delete comment error:', err.message);
+    res.status(500).json({ message: 'Server error' });
   }
 }
 
@@ -357,4 +386,4 @@ async function addReply(req, res) {
   }
 }
 
-module.exports = { createPost, getFeed, getFollowingFeed, getSinglePost, likePost, addComment, getComments, deletePost, getReplies, addReply, repostPost, viewPost, voteOnPoll, getPollVotersHandler, toggleRSVP, setBestAnswer };
+module.exports = { createPost, getFeed, getFollowingFeed, getSinglePost, likePost, addComment, getComments, likeCommentHandler, deleteCommentHandler, deletePost, getReplies, addReply, repostPost, viewPost, voteOnPoll, getPollVotersHandler, toggleRSVP, setBestAnswer };

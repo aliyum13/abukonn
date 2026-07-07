@@ -147,6 +147,12 @@ async function getAllPosts(currentUserId) {
             COALESCE(p.category, 'GENERAL') AS category,
             COALESCE(p.is_repost, FALSE) AS is_repost,
             p.original_post_id, p.original_author_name,
+            orig_u.full_name AS original_author_full_name,
+            orig_u.profile_photo_url AS original_author_photo,
+            orig_u.id AS original_author_id,
+            COALESCE(orig.likes_count, 0) AS original_likes_count,
+            COALESCE(orig.comments_count, 0) AS original_comments_count,
+            COALESCE(orig.repost_count, 0) AS original_repost_count,
             COALESCE(p.post_subtype, 'post') AS post_subtype,
             p.discussion_title,
             p.created_at,
@@ -172,6 +178,8 @@ async function getAllPosts(currentUserId) {
             EXISTS(SELECT 1 FROM abukonn.event_rsvps er WHERE er.post_id = p.id AND er.user_id = $1) AS is_attending
      FROM abukonn.posts p
      JOIN abukonn.users u ON p.user_id = u.id
+     LEFT JOIN abukonn.posts orig ON p.is_repost = TRUE AND orig.id = p.original_post_id
+     LEFT JOIN abukonn.users orig_u ON orig.user_id = orig_u.id
      WHERE p.user_id NOT IN (
        SELECT blocked_id FROM abukonn.blocks WHERE blocker_id = $1
      )
@@ -268,6 +276,13 @@ async function toggleLike(postId, userId) {
 async function incrementCommentsCount(id) {
   await pool.query(
     `UPDATE abukonn.posts SET comments_count = comments_count + 1 WHERE id = $1`,
+    [id]
+  );
+}
+
+async function decrementCommentsCount(id) {
+  await pool.query(
+    `UPDATE abukonn.posts SET comments_count = GREATEST(comments_count - 1, 0) WHERE id = $1`,
     [id]
   );
 }
@@ -420,6 +435,7 @@ module.exports = {
   getPostByIdForUser,
   toggleLike,
   incrementCommentsCount,
+  decrementCommentsCount,
   repostPost,
   incrementViewCount,
   deletePost,

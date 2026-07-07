@@ -76,6 +76,8 @@ interface Comment {
   author_name: string;
   author_photo: string | null;
   reply_count: number;
+  likes_count?: number;
+  is_liked?: boolean;
 }
 
 interface Reply {
@@ -250,6 +252,44 @@ export default function PostDetailPage() {
       setExpandedReplies(prev => new Set([...prev, commentId]));
     } catch {}
     finally { setRepliesLoading(prev => ({ ...prev, [commentId]: false })); }
+  };
+
+  const handleLikeComment = async (commentId: number) => {
+    if (!token) return;
+    // optimistic
+    setComments(prev => prev.map(c => c.id === commentId
+      ? { ...c, is_liked: !c.is_liked, likes_count: (c.likes_count ?? 0) + (c.is_liked ? -1 : 1) }
+      : c));
+    try {
+      const res = await fetch(`${API_URL}/api/posts/${postId}/comments/${commentId}/like`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setComments(prev => prev.map(c => c.id === commentId
+          ? { ...c, is_liked: data.liked, likes_count: data.likes_count }
+          : c));
+      }
+    } catch { /* revert on failure */
+      setComments(prev => prev.map(c => c.id === commentId
+        ? { ...c, is_liked: !c.is_liked, likes_count: (c.likes_count ?? 0) + (c.is_liked ? 1 : -1) }
+        : c));
+    }
+  };
+
+  const handleDeleteComment = async (commentId: number) => {
+    if (!token) return;
+    if (!confirm('Delete this comment?')) return;
+    const prev = comments;
+    setComments(cs => cs.filter(c => c.id !== commentId));
+    try {
+      const res = await fetch(`${API_URL}/api/posts/${postId}/comments/${commentId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) setComments(prev); // revert
+    } catch { setComments(prev); }
   };
 
   const toggleReplies = (commentId: number) => {
@@ -669,6 +709,15 @@ export default function PostDetailPage() {
                     {/* Reply controls */}
                     <div className="ml-2 mt-1 flex items-center gap-3">
                       <button type="button"
+                        onClick={() => handleLikeComment(c.id)}
+                        className={cn('flex items-center gap-1 text-caption font-medium transition',
+                          c.is_liked ? 'text-red-500' : 'text-ink-secondary hover:text-red-500')}>
+                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" fill={c.is_liked ? 'currentColor' : 'none'}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
+                        </svg>
+                        {(c.likes_count ?? 0) > 0 && c.likes_count}
+                      </button>
+                      <button type="button"
                         onClick={() => {
                           if (replyingTo === c.id) { setReplyingTo(null); }
                           else { setReplyingTo(c.id); setReplyText(''); }
@@ -683,6 +732,13 @@ export default function PostDetailPage() {
                           {expandedReplies.has(c.id)
                             ? 'Hide replies'
                             : `View ${c.reply_count > 0 ? c.reply_count : replies[c.id]?.length} ${(c.reply_count === 1 || replies[c.id]?.length === 1) ? 'reply' : 'replies'}`}
+                        </button>
+                      )}
+                      {c.user_id === user.id && (
+                        <button type="button"
+                          onClick={() => handleDeleteComment(c.id)}
+                          className="text-caption font-medium text-ink-secondary transition hover:text-red-500">
+                          Delete
                         </button>
                       )}
                     </div>

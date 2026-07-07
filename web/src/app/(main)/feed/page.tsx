@@ -132,6 +132,12 @@ interface Post {
   is_repost: boolean;
   original_post_id: number | null;
   original_author_name: string | null;
+  original_author_full_name?: string | null;
+  original_author_photo?: string | null;
+  original_author_id?: number | null;
+  original_likes_count?: number;
+  original_comments_count?: number;
+  original_repost_count?: number;
   is_following_author: boolean;
   post_subtype: 'post' | 'discussion' | 'poll' | 'question' | 'event';
   discussion_title: string | null;
@@ -385,6 +391,7 @@ function StoryViewer({
   const pauseIconTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pressStartedHoldRef = useRef(false);
   const [showViewers, setShowViewers] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const [viewers, setViewers] = useState<Array<{ user_id: number; user_name: string; user_photo: string | null; department: string; viewed_at: string }>>([]);
   const [viewersLoading, setViewersLoading] = useState(false);
 
@@ -518,7 +525,7 @@ function StoryViewer({
             </button>
           )}
           {group.is_own && onDelete && (
-            <button type="button" onClick={() => onDelete(story.id)}
+            <button type="button" onClick={() => setConfirmDelete(story.id)}
               className="rounded-full bg-black/30 p-1.5 text-white hover:bg-red-500/80" title="Delete story">
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
@@ -745,6 +752,31 @@ function StoryViewer({
                   </div>
                 ))
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Delete confirmation — prevents accidental story deletion */}
+      {confirmDelete !== null && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/60 px-6" onClick={() => setConfirmDelete(null)}>
+          <div className="w-full max-w-xs rounded-2xl bg-[#1b1b1b] p-5 text-center" onClick={e => e.stopPropagation()}>
+            <p className="text-[16px] font-bold text-white">Delete this story?</p>
+            <p className="mt-1 text-[13px] text-white/60">This can&apos;t be undone.</p>
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(null)}
+                className="flex-1 rounded-full bg-white/10 py-2.5 text-[14px] font-semibold text-white transition hover:bg-white/20"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => { const id = confirmDelete; setConfirmDelete(null); if (onDelete) onDelete(id); }}
+                className="flex-1 rounded-full bg-red-600 py-2.5 text-[14px] font-semibold text-white transition hover:bg-red-700"
+              >
+                Delete
+              </button>
             </div>
           </div>
         </div>
@@ -2727,6 +2759,11 @@ export default function FeedPage() {
               .map((post) => {
                 const isExpanded = expandedPosts.has(post.id);
                 const longContent = post.content.length > 280;
+                // For reposts, show the original post's engagement so it doesn't
+                // look like it's starting from zero.
+                const displayLikes = post.is_repost && post.original_likes_count !== undefined ? post.original_likes_count : post.likes_count;
+                const displayComments = post.is_repost && post.original_comments_count !== undefined ? post.original_comments_count : post.comments_count;
+                const displayReposts = post.is_repost && post.original_repost_count !== undefined ? post.original_repost_count : post.repost_count;
               return (
               /* ── Post Card (flat, Twitter-style) ── */
               <article key={post.id} id={`post-${post.id}`} data-post-id={post.id}
@@ -2738,14 +2775,18 @@ export default function FeedPage() {
                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" />
                     </svg>
-                    {post.author_name} reposted
+                    <Link href={`/profile/${post.user_id}`} className="hover:underline">{post.author_name}</Link> reposted
                   </div>
                 )}
 
                 <div className="flex gap-3">
-                  {/* Avatar */}
-                  <Link href={`/profile/${post.user_id}`} className="shrink-0">
-                    <Avatar src={post.author_photo} name={post.author_name} size="md" className="mt-0.5" />
+                  {/* Avatar — original author for reposts, else the poster */}
+                  <Link href={`/profile/${post.is_repost && post.original_author_id ? post.original_author_id : post.user_id}`} className="shrink-0">
+                    <Avatar
+                      src={post.is_repost && post.original_author_photo !== undefined ? post.original_author_photo : post.author_photo}
+                      name={post.is_repost && post.original_author_full_name ? post.original_author_full_name : post.author_name}
+                      size="md" className="mt-0.5"
+                    />
                   </Link>
 
                   {/* Post body */}
@@ -2754,9 +2795,9 @@ export default function FeedPage() {
                     <div className="flex items-start gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                          <Link href={`/profile/${post.user_id}`}
+                          <Link href={`/profile/${post.is_repost && post.original_author_id ? post.original_author_id : post.user_id}`}
                             className="font-semibold text-[15px] text-ink hover:underline">
-                            {post.author_name}
+                            {post.is_repost && post.original_author_full_name ? post.original_author_full_name : post.author_name}
                           </Link>
                           <RoleBadge role={post.author_role || 'user'} iconOnly />
                           {post.category && post.category !== 'GENERAL' && (
@@ -2852,7 +2893,7 @@ export default function FeedPage() {
                     </div>
 
                     {/* Content with show more/less */}
-                    <div className="mt-2">
+                    <div className="mt-2 cursor-pointer" onClick={() => router.push(`/post/${post.id}`)}>
                       {post.post_subtype === 'discussion' && post.discussion_title && (
                         <p className="mb-1 text-[16px] font-bold text-ink leading-snug">{post.discussion_title}</p>
                       )}
@@ -2861,7 +2902,7 @@ export default function FeedPage() {
                       </p>
                       {longContent && (
                         <button type="button"
-                          onClick={() => setExpandedPosts(prev => { const n = new Set(prev); if (isExpanded) n.delete(post.id); else n.add(post.id); return n; })}
+                          onClick={(e) => { e.stopPropagation(); setExpandedPosts(prev => { const n = new Set(prev); if (isExpanded) n.delete(post.id); else n.add(post.id); return n; }); }}
                           className="mt-0.5 text-[14px] font-medium text-brand-600 hover:text-brand-700">
                           {isExpanded ? 'Show less' : 'Show more'}
                         </button>
@@ -2872,7 +2913,7 @@ export default function FeedPage() {
                     {post.image_url && (
                       <button type="button" onClick={() => setLightboxUrl(post.image_url)}
                         className="mt-3 block w-full overflow-hidden rounded-2xl border border-border/60">
-                        <img src={post.image_url} alt="Post" className="max-h-[400px] w-full object-cover transition hover:opacity-95" />
+                        <img src={optimizedImage(post.image_url)} alt="Post" className="max-h-[400px] w-full object-cover transition hover:opacity-95" loading="lazy" />
                       </button>
                     )}
 
@@ -2971,7 +3012,7 @@ export default function FeedPage() {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
                           </svg>
                         </span>
-                        {post.likes_count > 0 && <span>{post.likes_count}</span>}
+                        {displayLikes > 0 && <span>{displayLikes}</span>}
                       </button>
 
                       {/* Comment */}
@@ -2983,9 +3024,9 @@ export default function FeedPage() {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.74 1.676v2.954a.75.75 0 01-1.088.67L6.19 21.1a.75.75 0 01-.365-.633v-1.44C3.512 17.962 3 15.075 3 12z" />
                           </svg>
                         </span>
-                        {post.comments_count > 0 && (
+                        {displayComments > 0 && (
                           <span>
-                            {post.comments_count}
+                            {displayComments}
                             {post.post_subtype === 'discussion' && <span className="ml-0.5 text-[11px]"> replies</span>}
                             {post.post_subtype === 'question' && <span className="ml-0.5 text-[11px]"> answers</span>}
                           </span>
@@ -3001,7 +3042,7 @@ export default function FeedPage() {
                               <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" />
                             </svg>
                           </span>
-                          {post.repost_count > 0 && <span>{post.repost_count}</span>}
+                          {displayReposts > 0 && <span>{displayReposts}</span>}
                         </button>
                       ) : <span className="w-9" />}
 

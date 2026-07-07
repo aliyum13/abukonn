@@ -10,6 +10,8 @@ const {
   likePost,
   addComment,
   getComments,
+  likeCommentHandler,
+  deleteCommentHandler,
   deletePost,
   getReplies,
   addReply,
@@ -41,5 +43,7 @@ router.post('/:id/rsvp', toggleRSVP);
 router.get('/:id/comments/:commentId/replies', getReplies);
 router.post('/:id/comments/:commentId/replies', addReply);
 router.post('/:id/comments/:commentId/best-answer', setBestAnswer);
+router.post('/:id/comments/:commentId/like', likeCommentHandler);
+router.delete('/:id/comments/:commentId', deleteCommentHandler);
 
 module.exports = router;

@@ -13,7 +13,48 @@ CREATE TABLE IF NOT EXISTS abukonn.comments (
 async function createCommentsTable() {
   await pool.query(CREATE_COMMENTS_TABLE);
   await pool.query(`ALTER TABLE abukonn.comments ADD COLUMN IF NOT EXISTS is_best_answer BOOLEAN DEFAULT FALSE`);
+  await pool.query(`ALTER TABLE abukonn.comments ADD COLUMN IF NOT EXISTS likes_count INTEGER NOT NULL DEFAULT 0`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS abukonn.comment_likes (
+      id SERIAL PRIMARY KEY,
+      comment_id INTEGER NOT NULL REFERENCES abukonn.comments(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES abukonn.users(id) ON DELETE CASCADE,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(comment_id, user_id)
+    )
+  `);
   console.log('Comments table ready');
+}
+
+// Toggle a like on a comment. Returns { liked, likes_count }.
+async function toggleCommentLike(commentId, userId) {
+  const existing = await pool.query(
+    'SELECT id FROM abukonn.comment_likes WHERE comment_id = $1 AND user_id = $2',
+    [commentId, userId]
+  );
+  if (existing.rows.length > 0) {
+    await pool.query('DELETE FROM abukonn.comment_likes WHERE comment_id = $1 AND user_id = $2', [commentId, userId]);
+    const { rows } = await pool.query(
+      'UPDATE abukonn.comments SET likes_count = GREATEST(likes_count - 1, 0) WHERE id = $1 RETURNING likes_count',
+      [commentId]
+    );
+    return { liked: false, likes_count: rows[0]?.likes_count ?? 0 };
+  }
+  await pool.query('INSERT INTO abukonn.comment_likes (comment_id, user_id) VALUES ($1, $2)', [commentId, userId]);
+  const { rows } = await pool.query(
+    'UPDATE abukonn.comments SET likes_count = likes_count + 1 WHERE id = $1 RETURNING likes_count',
+    [commentId]
+  );
+  return { liked: true, likes_count: rows[0]?.likes_count ?? 0 };
+}
+
+// Delete a comment — only by its author. Returns the deleted row (or null).
+async function deleteComment(commentId, userId) {
+  const { rows } = await pool.query(
+    'DELETE FROM abukonn.comments WHERE id = $1 AND user_id = $2 RETURNING post_id',
+    [commentId, userId]
+  );
+  return rows[0] || null;
 }
 
 async function createComment({ postId, userId, content }) {
@@ -26,16 +67,18 @@ async function createComment({ postId, userId, content }) {
   return result.rows[0];
 }
 
-async function getCommentsByPost(postId) {
+async function getCommentsByPost(postId, currentUserId = null) {
   const result = await pool.query(
     `SELECT c.*, u.full_name AS author_name, u.profile_photo_url AS author_photo,
             COALESCE(c.is_best_answer, FALSE) AS is_best_answer,
+            COALESCE(c.likes_count, 0) AS likes_count,
+            EXISTS(SELECT 1 FROM abukonn.comment_likes cl WHERE cl.comment_id = c.id AND cl.user_id = $2) AS is_liked,
             (SELECT COUNT(*) FROM abukonn.comment_replies cr WHERE cr.comment_id = c.id)::int AS reply_count
      FROM abukonn.comments c
      JOIN abukonn.users u ON c.user_id = u.id
      WHERE c.post_id = $1
      ORDER BY c.is_best_answer DESC, c.created_at ASC`,
-    [postId]
+    [postId, currentUserId]
   );
   return result.rows;
 }
@@ -82,5 +125,7 @@ module.exports = {
   createComment,
   getCommentsByPost,
   getCommentsByUser,
+  toggleCommentLike,
+  deleteComment,
   markBestAnswer,
 };
