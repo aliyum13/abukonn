@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { timeAgo } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { optimizedImage } from '@/lib/image';
 import { Avatar, Button, Skeleton, PostContent, RoleBadge } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
@@ -207,7 +208,7 @@ export default function HashtagPage() {
                   {/* Image */}
                   {post.image_url && (
                     <img
-                      src={post.image_url}
+                      src={optimizedImage(post.image_url)}
                       alt="Post"
                       className="mt-3 max-h-80 w-full rounded-2xl border border-border/60 object-cover"
                     />

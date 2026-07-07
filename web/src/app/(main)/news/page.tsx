@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { timeAgo } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { optimizedImage } from '@/lib/image';
 import { Skeleton } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 
@@ -144,7 +145,7 @@ function NewsItem({ article }: { article: NewsArticle }) {
       {article.image_url && (
         <Link href={`/news/${article.id}`} className="block mb-3">
           <img
-            src={article.image_url}
+            src={optimizedImage(article.image_url)}
             alt={article.title}
             className="w-full rounded-xl object-cover max-h-64"
           />

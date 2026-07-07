@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, FormEvent } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { optimizedImage } from '@/lib/image';
 import { Avatar, Badge, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Input, Select, Skeleton } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
@@ -344,7 +345,7 @@ export default function AdminNewsPage() {
                 <div key={article.id} className="flex items-start gap-4 px-5 py-4">
                   {article.image_url ? (
                     <img
-                      src={article.image_url}
+                      src={optimizedImage(article.image_url)}
                       alt={article.title}
                       className="h-16 w-24 shrink-0 rounded-xl object-cover"
                     />

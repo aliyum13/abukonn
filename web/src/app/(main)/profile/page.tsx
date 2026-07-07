@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { timeAgo } from '@/lib/format';
+import { optimizedImage } from '@/lib/image';
 import { cn } from '@/lib/utils';
 import { useFollow } from '@/hooks/useFollow';
 import { Avatar, Button, Skeleton, RoleBadge, PostContent } from '@/components/ui';
@@ -619,7 +620,7 @@ export default function ProfilePage() {
                   )}
 
                   {post.image_url && (
-                    <img src={post.image_url} alt="Post" className="mt-3 max-h-96 w-full rounded-2xl border border-border/60 bg-black/5 object-contain dark:bg-white/5" />
+                    <img src={optimizedImage(post.image_url)} alt="Post" className="mt-3 max-h-96 w-full rounded-2xl border border-border/60 bg-black/5 object-contain dark:bg-white/5" />
                   )}
 
                   {/* Poll */}

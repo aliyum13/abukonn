@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { optimizedImage } from '@/lib/image';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -71,7 +72,7 @@ export default function NewsDetailPage() {
 
       <article className="bg-white dark:bg-[#111] rounded-xl border border-gray-200 dark:border-[#222] shadow-sm overflow-hidden">
         {article.image_url ? (
-          <img src={article.image_url} alt={article.title} className="w-full h-56 object-cover" />
+          <img src={optimizedImage(article.image_url)} alt={article.title} className="w-full h-56 object-cover" />
         ) : (
           <div className="w-full h-56 bg-gradient-to-br from-green-50 to-green-100 flex items-center justify-center">
             <span className="text-6xl font-bold text-[#16a34a]/20">ABU</span>

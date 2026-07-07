@@ -1,5 +1,5 @@
-import Image from 'next/image';
 import { cn } from '@/lib/utils';
+import { optimizedAvatar } from '@/lib/image';
 
 const sizes = {
   xs: 'h-6 w-6 text-[10px]',
@@ -8,6 +8,15 @@ const sizes = {
   lg: 'h-12 w-12 text-base',
   xl: 'h-16 w-16 text-lg',
 } as const;
+
+// Pixel size to request from Cloudinary per avatar size (2x for retina).
+const pixelSizes: Record<keyof typeof sizes, number> = {
+  xs: 48,
+  sm: 64,
+  md: 80,
+  lg: 96,
+  xl: 128,
+};
 
 export type AvatarSize = keyof typeof sizes;
 
@@ -41,12 +50,13 @@ export function Avatar({ src, alt, name = '', size = 'md', className }: AvatarPr
           className
         )}
       >
-        <Image
-          src={src}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={optimizedAvatar(src, pixelSizes[size])}
           alt={alt || name || 'Avatar'}
-          fill
-          className="object-cover"
-          sizes="64px"
+          loading="lazy"
+          decoding="async"
+          className="h-full w-full object-cover"
         />
       </div>
     );

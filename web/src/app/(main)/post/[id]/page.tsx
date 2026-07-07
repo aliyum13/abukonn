@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { timeAgo } from '@/lib/format';
+import { optimizedImage } from '@/lib/image';
 import { cn } from '@/lib/utils';
 import { useMentionAutocomplete, MentionDropdown } from '@/hooks/useMentionAutocomplete';
 import {
@@ -554,7 +555,7 @@ export default function PostDetailPage() {
             {post.image_url && (
               <button type="button" onClick={() => setLightboxUrl(post.image_url)}
                 className="mt-3 block w-full overflow-hidden rounded-2xl border border-border/60">
-                <img src={post.image_url} alt="Post" className="max-h-[500px] w-full bg-black/5 object-contain transition hover:opacity-95 dark:bg-white/5" />
+                <img src={optimizedImage(post.image_url)} alt="Post" className="max-h-[500px] w-full bg-black/5 object-contain transition hover:opacity-95 dark:bg-white/5" />
               </button>
             )}
 

@@ -7,6 +7,7 @@ import { io, Socket } from 'socket.io-client';
 import { useAuth } from '@/context/AuthContext';
 import { formatTime, timeAgo } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { optimizedImage, optimizedAvatar } from '@/lib/image';
 import { Avatar, Button, Card, EmptyState, Input, Skeleton } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
@@ -168,7 +169,7 @@ function SharedPostCard({ data, isSent }: { data: SharedPostData; isSent: boolea
       )}>
         {data.image_url && (
           <img
-            src={data.image_url}
+            src={optimizedImage(data.image_url, 240)}
             alt="Shared post"
             className="h-32 w-full object-cover"
           />
@@ -209,7 +210,7 @@ function StoryReplyCard({ data, isSent }: { data: StoryReplyData; isSent: boolea
         isSent ? 'border-brand-500/50 bg-white/10' : 'border-border bg-surface-muted dark:bg-[#1a1a1a]'
       )}>
         {data.story_type === 'image' && data.media_url && (
-          <img src={data.media_url} alt="Story" className="h-24 w-full object-cover" />
+          <img src={optimizedImage(data.media_url, 240)} alt="Story" className="h-24 w-full object-cover" />
         )}
         {data.story_type === 'video' && data.media_url && (
           <div className="flex h-24 items-center justify-center bg-black/60">
@@ -1360,7 +1361,7 @@ export default function MessagesPage() {
                         className={cn('flex w-full items-center gap-3 px-4 py-3 text-left transition', isActive ? 'border-r-2 border-brand-600 bg-brand-50 dark:bg-brand-950/40' : 'hover:bg-surface-muted dark:hover:bg-[#1a1a1a]')}>
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-100">
                           {grp.avatar_url ? (
-                            <img src={grp.avatar_url} alt={grp.name} className="h-full w-full object-cover" />
+                            <img src={optimizedAvatar(grp.avatar_url, 80)} alt={grp.name} className="h-full w-full object-cover" />
                           ) : (
                             <GroupIcon className="h-5 w-5 text-brand-600" />
                           )}
@@ -1466,7 +1467,7 @@ export default function MessagesPage() {
                                     : <>
                                         {msg.image_url && (
                                           <button type="button" onClick={() => setImageLightbox(msg.image_url!)} className="mb-1.5 block w-full">
-                                            <img src={msg.image_url} alt="Image" className="max-h-60 w-full rounded-xl object-cover" />
+                                            <img src={optimizedImage(msg.image_url)} alt="Image" className="max-h-60 w-full rounded-xl object-cover" />
                                           </button>
                                         )}
                                         {msg.file_url && msg.file_name && (
@@ -1579,7 +1580,7 @@ export default function MessagesPage() {
                   </button>
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-100">
                     {activeGroupInfo.avatar_url ? (
-                      <img src={activeGroupInfo.avatar_url} alt={activeGroupInfo.name} className="h-full w-full object-cover" />
+                      <img src={optimizedAvatar(activeGroupInfo.avatar_url, 96)} alt={activeGroupInfo.name} className="h-full w-full object-cover" />
                     ) : (
                       <GroupIcon className="h-4.5 w-4.5 text-brand-600" />
                     )}
@@ -1669,7 +1670,7 @@ export default function MessagesPage() {
                                       : <>
                                           {msg.image_url && (
                                             <button type="button" onClick={() => setImageLightbox(msg.image_url!)} className="mb-1.5 block w-full">
-                                              <img src={msg.image_url} alt="Image" className="max-h-60 w-full rounded-xl object-cover" />
+                                              <img src={optimizedImage(msg.image_url)} alt="Image" className="max-h-60 w-full rounded-xl object-cover" />
                                             </button>
                                           )}
                                           {msg.file_url && msg.file_name && (
@@ -1834,7 +1835,7 @@ export default function MessagesPage() {
                       <div className="relative">
                         <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-brand-100 text-xl dark:bg-brand-950">
                           {activeGroupInfo.avatar_url ? (
-                            <img src={activeGroupInfo.avatar_url} alt={activeGroupInfo.name} className="h-full w-full object-cover" />
+                            <img src={optimizedAvatar(activeGroupInfo.avatar_url, 96)} alt={activeGroupInfo.name} className="h-full w-full object-cover" />
                           ) : (
                             <span>💬</span>
                           )}

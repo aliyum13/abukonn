@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { timeAgo } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { optimizedImage } from '@/lib/image';
 import { useFollow } from '@/hooks/useFollow';
 import { useMentionAutocomplete, MentionDropdown } from '@/hooks/useMentionAutocomplete';
 import ReportModal from '@/components/ReportModal';
@@ -47,17 +48,6 @@ async function fetchWithRetry(input: RequestInfo | URL, init?: RequestInit, retr
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error('Network error — check your connection');
-}
-
-// Insert Cloudinary delivery transformations into an image URL so images load
-// fast: f_auto (modern formats like WebP/AVIF), q_auto (smart compression), and
-// a sensible max width. Full-res phone photos otherwise load at several MB.
-function optimizedImage(url: string | null | undefined, width = 1080): string {
-  if (!url) return '';
-  if (!url.includes('/upload/')) return url; // not a Cloudinary URL
-  // Avoid double-transforming
-  if (url.includes('/upload/f_auto') || url.includes('/upload/q_auto')) return url;
-  return url.replace('/upload/', `/upload/f_auto,q_auto,w_${width},c_limit/`);
 }
 
 const NAV_ITEMS = [
