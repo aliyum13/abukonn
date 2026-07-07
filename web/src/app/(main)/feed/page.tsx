@@ -472,28 +472,38 @@ function StoryViewer({
   // hold (pause), otherwise it's a tap (navigate).
   const holdTimerRef = pauseIconTimerRef; // reuse timer ref slot
 
-  const beginPress = () => {
+  const pressStartTimeRef = useRef(0);
+
+  // Unified pointer handling (covers touch, mouse, pen) — avoids the double-fire
+  // you get from mixing touch + mouse events. Arm a hold timer on press down;
+  // a quick release navigates, a long hold pauses.
+  const onZonePointerDown = () => {
     pressStartedHoldRef.current = false;
+    pressStartTimeRef.current = Date.now();
     if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
     holdTimerRef.current = setTimeout(() => {
       pressStartedHoldRef.current = true;
       if (!isPaused) onPauseToggle();
-    }, 200);
+    }, 350);
   };
 
-  const endPress = (side: 'left' | 'right') => {
+  const onZonePointerUp = (side: 'left' | 'right') => () => {
     if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
     if (pressStartedHoldRef.current) {
+      // Was a hold → resume playback, don't navigate
       if (isPaused) onPauseToggle();
     } else {
+      // Quick tap → navigate
       if (side === 'left') onPrev();
       else onNext();
     }
+    pressStartedHoldRef.current = false;
   };
 
-  const cancelPress = () => {
+  const onZonePointerCancel = () => {
     if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
     if (pressStartedHoldRef.current && isPaused) onPauseToggle();
+    pressStartedHoldRef.current = false;
   };
 
   return (
@@ -613,22 +623,20 @@ function StoryViewer({
           clickable. Touch + mouse handlers both wired for mobile and desktop. */}
       <div
         className="absolute left-0 top-0 z-[5] h-full w-1/2"
-        onTouchStart={beginPress}
-        onTouchEnd={() => endPress('left')}
-        onTouchCancel={cancelPress}
-        onMouseDown={beginPress}
-        onMouseUp={() => endPress('left')}
-        onMouseLeave={cancelPress}
+        onPointerDown={onZonePointerDown}
+        onPointerUp={onZonePointerUp('left')}
+        onPointerCancel={onZonePointerCancel}
+        onPointerLeave={onZonePointerCancel}
+        style={{ touchAction: 'none' }}
         aria-label="Previous / hold to pause"
       />
       <div
         className="absolute right-0 top-0 z-[5] h-full w-1/2"
-        onTouchStart={beginPress}
-        onTouchEnd={() => endPress('right')}
-        onTouchCancel={cancelPress}
-        onMouseDown={beginPress}
-        onMouseUp={() => endPress('right')}
-        onMouseLeave={cancelPress}
+        onPointerDown={onZonePointerDown}
+        onPointerUp={onZonePointerUp('right')}
+        onPointerCancel={onZonePointerCancel}
+        onPointerLeave={onZonePointerCancel}
+        style={{ touchAction: 'none' }}
         aria-label="Next / hold to pause"
       />
       {/* Pause/play icon — brief overlay feedback */}
