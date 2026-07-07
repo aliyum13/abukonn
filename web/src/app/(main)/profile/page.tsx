@@ -182,6 +182,7 @@ export default function ProfilePage() {
   const [uploadBgColor, setUploadBgColor] = useState('#16a34a');
   const [uploadCaption, setUploadCaption] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState('');
   const uploadInputRef = useRef<HTMLInputElement>(null);
 
@@ -279,6 +280,7 @@ export default function ProfilePage() {
   const handleUploadStory = async () => {
     if (!token) return;
     setUploading(true);
+    setUploadProgress(0);
     setUploadError('');
     try {
       if (uploadTab === 'text') {
@@ -290,20 +292,57 @@ export default function ProfilePage() {
         });
         if (!res.ok) throw new Error('Failed to share story');
       } else if (uploadFile) {
-        // Image stories — direct to Railway then Cloudinary
-        await new Promise<void>((resolve, reject) => {
+        // Direct-to-Cloudinary upload — bypasses Railway's ~30s proxy timeout,
+        // which was causing story uploads from the profile to time out.
+        const sigRes = await fetch(`${API_URL}/api/stories/upload-signature`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!sigRes.ok) throw new Error('Failed to get upload signature');
+        const { signature, timestamp, api_key, cloud_name, folder } = await sigRes.json() as {
+          signature: string; timestamp: number; api_key: string; cloud_name: string; folder: string;
+        };
+
+        const isVideo = uploadFile.type.startsWith('video/');
+        const cloudinaryUrl = await new Promise<string>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
-          const tid = setTimeout(() => xhr.abort(), 30000);
-          xhr.onload = () => { clearTimeout(tid); xhr.status < 300 ? resolve() : reject(new Error('Upload failed')); };
-          xhr.onerror = () => { clearTimeout(tid); reject(new Error('Network error')); };
-          xhr.onabort = () => { clearTimeout(tid); reject(new Error('Upload timed out')); };
+          const tid = setTimeout(() => xhr.abort(), 300000); // 5 min, like the feed
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100));
+          };
+          xhr.onload = () => {
+            clearTimeout(tid);
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try { resolve((JSON.parse(xhr.responseText) as { secure_url: string }).secure_url); }
+              catch { reject(new Error('Invalid Cloudinary response')); }
+            } else {
+              try { reject(new Error((JSON.parse(xhr.responseText) as { error?: { message: string } }).error?.message || 'Upload failed')); }
+              catch { reject(new Error('Upload failed')); }
+            }
+          };
+          xhr.onerror = () => { clearTimeout(tid); reject(new Error('Network error — check your connection')); };
+          xhr.onabort = () => { clearTimeout(tid); reject(new Error('Upload timed out — please try again')); };
           const fd = new FormData();
-          fd.append('media', uploadFile);
-          if (uploadCaption.trim()) fd.append('caption', uploadCaption.trim());
-          xhr.open('POST', `${API_URL}/api/stories`);
-          xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+          fd.append('file', uploadFile);
+          fd.append('api_key', api_key);
+          fd.append('timestamp', String(timestamp));
+          fd.append('signature', signature);
+          fd.append('folder', folder);
+          const resourceType = isVideo ? 'video' : 'image';
+          xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloud_name}/${resourceType}/upload`);
           xhr.send(fd);
         });
+
+        const saveRes = await fetch(`${API_URL}/api/stories`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            story_type: isVideo ? 'video' : 'image',
+            media_url: cloudinaryUrl,
+            direct_upload: true,
+            caption: uploadCaption.trim() || undefined,
+          }),
+        });
+        if (!saveRes.ok) throw new Error('Failed to share story');
       } else {
         setUploadError('Please select a photo');
         setUploading(false);
@@ -842,10 +881,10 @@ export default function ProfilePage() {
                 )}
 
                 <div className="flex gap-3 pt-1">
-                  <Button variant="outline" className="flex-1" onClick={closeUploadModal}>Cancel</Button>
+                  <Button variant="outline" className="flex-1" onClick={closeUploadModal} disabled={uploading}>Cancel</Button>
                   <Button className="flex-1" disabled={!canShare || uploading} loading={uploading}
                     onClick={handleUploadStory}>
-                    Share Story
+                    {uploading && uploadProgress > 0 && uploadProgress < 100 ? `Uploading… ${uploadProgress}%` : 'Share Story'}
                   </Button>
                 </div>
               </div>
