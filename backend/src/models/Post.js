@@ -368,6 +368,31 @@ async function votePoll(postId, userId, optionId) {
   await pool.query('UPDATE abukonn.poll_options SET vote_count = vote_count + 1 WHERE id = $1', [optionId]);
 }
 
+// Who voted for what on a poll — grouped by option. Owner-only (enforced in
+// the controller). Returns each option with the list of voters.
+async function getPollVoters(postId) {
+  const { rows } = await pool.query(
+    `SELECT po.id AS option_id, po.option_text,
+            COALESCE(
+              json_agg(
+                json_build_object('user_id', u.id, 'full_name', u.full_name,
+                                  'profile_photo_url', u.profile_photo_url,
+                                  'department', u.department)
+                ORDER BY u.full_name
+              ) FILTER (WHERE u.id IS NOT NULL),
+              '[]'
+            ) AS voters
+     FROM abukonn.poll_options po
+     LEFT JOIN abukonn.poll_votes pv ON pv.option_id = po.id
+     LEFT JOIN abukonn.users u ON pv.user_id = u.id
+     WHERE po.post_id = $1
+     GROUP BY po.id, po.option_text
+     ORDER BY po.id`,
+    [postId]
+  );
+  return rows;
+}
+
 async function toggleEventRSVP(postId, userId) {
   const { rows } = await pool.query(
     'SELECT id FROM abukonn.event_rsvps WHERE post_id = $1 AND user_id = $2',
@@ -399,5 +424,6 @@ module.exports = {
   incrementViewCount,
   deletePost,
   votePoll,
+  getPollVoters,
   toggleEventRSVP,
 };

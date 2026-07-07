@@ -241,9 +241,15 @@ export default function AdminTimetablePage() {
   };
 
   const dayOrder = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  // Parse "H:MM" or "HH:MM" into minutes so 8:00 sorts before 10:00 (string
+  // comparison would wrongly put "10:00" before "8:00").
+  const toMinutes = (t: string) => {
+    const [h, m] = (t || '').split(':').map(n => parseInt(n, 10));
+    return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
+  };
   const sortedClasses = [...classes].sort((a, b) => {
     const di = dayOrder.indexOf(a.day) - dayOrder.indexOf(b.day);
-    return di !== 0 ? di : a.start_time.localeCompare(b.start_time);
+    return di !== 0 ? di : toMinutes(a.start_time) - toMinutes(b.start_time);
   });
 
   const inputCls = 'w-full rounded-lg border border-border bg-white px-2.5 py-1.5 text-[13px] text-ink focus:border-brand-500 focus:outline-none dark:bg-[#0a0a0a] dark:border-[#333]';

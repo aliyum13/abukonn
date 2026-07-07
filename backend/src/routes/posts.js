@@ -16,6 +16,7 @@ const {
   repostPost,
   viewPost,
   voteOnPoll,
+  getPollVotersHandler,
   toggleRSVP,
   setBestAnswer,
 } = require('../controllers/postController');
@@ -35,6 +36,7 @@ router.delete('/:id', deletePost);
 router.post('/:id/repost', repostPost);
 router.post('/:id/view', viewPost);
 router.post('/:id/vote', voteOnPoll);
+router.get('/:id/voters', getPollVotersHandler);
 router.post('/:id/rsvp', toggleRSVP);
 router.get('/:id/comments/:commentId/replies', getReplies);
 router.post('/:id/comments/:commentId/replies', addReply);

@@ -70,7 +70,7 @@ const getTodayClasses = async (department, level) => {
      WHERE department = $1 
      AND (level = $2 OR level = $3 OR REPLACE(LOWER(level), ' level', '') = $4)
      AND day = $5
-     ORDER BY start_time ASC`,
+     ORDER BY (CASE WHEN start_time ~ '^[0-9]{1,2}:[0-9]{2}' THEN (LPAD(SPLIT_PART(start_time, ':', 1), 2, '0') || ':' || SPLIT_PART(start_time, ':', 2))::time ELSE '00:00'::time END) ASC`,
     [department, level, normalLevel, normalLevel.toLowerCase(), dayName]
   );
   return { classes: rows, day: dayName };
@@ -86,7 +86,7 @@ const getWeekClasses = async (department, level) => {
        CASE day
          WHEN 'Monday' THEN 1 WHEN 'Tuesday' THEN 2 WHEN 'Wednesday' THEN 3
          WHEN 'Thursday' THEN 4 WHEN 'Friday' THEN 5 ELSE 6 END,
-       start_time ASC`,
+       (CASE WHEN start_time ~ '^[0-9]{1,2}:[0-9]{2}' THEN (LPAD(SPLIT_PART(start_time, ':', 1), 2, '0') || ':' || SPLIT_PART(start_time, ':', 2))::time ELSE '00:00'::time END) ASC`,
     [department, level, normalLevel, normalLevel.toLowerCase()]
   );
   return rows;
@@ -102,7 +102,7 @@ const getTimetable = async (department, level) => {
        CASE day
          WHEN 'Monday' THEN 1 WHEN 'Tuesday' THEN 2 WHEN 'Wednesday' THEN 3
          WHEN 'Thursday' THEN 4 WHEN 'Friday' THEN 5 ELSE 6 END,
-       start_time ASC`,
+       (CASE WHEN start_time ~ '^[0-9]{1,2}:[0-9]{2}' THEN (LPAD(SPLIT_PART(start_time, ':', 1), 2, '0') || ':' || SPLIT_PART(start_time, ':', 2))::time ELSE '00:00'::time END) ASC`,
     [department, level, normalLevel, normalLevel.toLowerCase()]
   );
   return rows;

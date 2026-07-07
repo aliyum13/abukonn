@@ -1061,6 +1061,22 @@ export default function FeedPage() {
 
   // Category filter
   const [categoryFilter, setCategoryFilter] = useState<PostCategory | 'ALL'>('ALL');
+  const [pollVoters, setPollVoters] = useState<{ postId: number; options: Array<{ option_id: number; option_text: string; voters: Array<{ user_id: number; full_name: string; profile_photo_url: string | null; department: string }> }> } | null>(null);
+  const [pollVotersLoading, setPollVotersLoading] = useState(false);
+
+  const openPollVoters = async (postId: number) => {
+    setPollVotersLoading(true);
+    setPollVoters({ postId, options: [] });
+    try {
+      const res = await fetch(`${API_URL}/api/posts/${postId}/voters`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (res.ok) setPollVoters({ postId, options: data.options || [] });
+      else setPollVoters(null);
+    } catch { setPollVoters(null); }
+    finally { setPollVotersLoading(false); }
+  };
   const [newPostCategory, setNewPostCategory] = useState<PostCategory>('GENERAL');
 
   // Repost
@@ -2327,6 +2343,49 @@ export default function FeedPage() {
             </div>
           )}
 
+          {/* Poll voters modal — owner only */}
+          {pollVoters && (
+            <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center" onClick={() => setPollVoters(null)}>
+              <div className="max-h-[80vh] w-full max-w-md overflow-hidden rounded-t-3xl bg-white dark:bg-[#111] sm:rounded-3xl" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between border-b border-border px-4 py-3 dark:border-[#222]">
+                  <h2 className="text-[16px] font-bold text-ink">Poll results — who voted</h2>
+                  <button type="button" onClick={() => setPollVoters(null)} className="flex h-8 w-8 items-center justify-center rounded-full text-ink-muted transition hover:bg-surface-muted dark:hover:bg-[#222]" aria-label="Close">
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
+                <div className="max-h-[calc(80vh-56px)] overflow-y-auto p-4">
+                  {pollVotersLoading ? (
+                    <p className="py-8 text-center text-[13px] text-ink-muted">Loading…</p>
+                  ) : (
+                    pollVoters.options.map(opt => (
+                      <div key={opt.option_id} className="mb-4 last:mb-0">
+                        <div className="mb-2 flex items-center justify-between">
+                          <p className="text-[14px] font-semibold text-ink">{opt.option_text}</p>
+                          <span className="text-[12px] text-ink-muted">{opt.voters.length} vote{opt.voters.length !== 1 ? 's' : ''}</span>
+                        </div>
+                        {opt.voters.length === 0 ? (
+                          <p className="text-[12px] text-ink-muted">No votes</p>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {opt.voters.map(v => (
+                              <Link key={v.user_id} href={`/profile/${v.user_id}`} onClick={() => setPollVoters(null)} className="flex items-center gap-2.5 rounded-lg p-1.5 transition hover:bg-surface-muted dark:hover:bg-[#1a1a1a]">
+                                <Avatar src={v.profile_photo_url} name={v.full_name} size="sm" />
+                                <div className="min-w-0">
+                                  <p className="truncate text-[13px] font-medium text-ink">{v.full_name}</p>
+                                  {v.department && <p className="truncate text-[11px] text-ink-muted">{v.department}</p>}
+                                </div>
+                              </Link>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Birthdays Today */}
           {(isMyBirthday || birthdayUsers.length > 0) && (
             <div className="border-b border-border px-4 py-3 animate-[fadeIn_0.4s_ease-out]">
@@ -2850,6 +2909,18 @@ export default function FeedPage() {
                             {totalVotes} vote{totalVotes !== 1 ? 's' : ''}
                             {post.poll_ends_at && <> · {new Date(post.poll_ends_at) > new Date() ? `ends ${timeAgo(post.poll_ends_at)}` : 'Poll ended'}</>}
                           </p>
+                          {post.user_id === user.id && totalVotes > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => openPollVoters(post.id)}
+                              className="mt-1 flex items-center gap-1 text-[12px] font-semibold text-brand-600 transition hover:text-brand-700 dark:text-brand-400"
+                            >
+                              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+                              </svg>
+                              See who voted
+                            </button>
+                          )}
                         </div>
                       );
                     })()}

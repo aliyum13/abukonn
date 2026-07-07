@@ -105,6 +105,24 @@ async function voteOnPoll(req, res) {
   }
 }
 
+// Owner-only: who voted for each option on a poll.
+async function getPollVotersHandler(req, res) {
+  try {
+    const postId = parseInt(req.params.id, 10);
+    const post = await Post.getPostById(postId);
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+    // Only the poll's creator can see who voted.
+    if (post.user_id !== req.user.id) {
+      return res.status(403).json({ message: 'Only the poll creator can see who voted' });
+    }
+    const options = await Post.getPollVoters(postId);
+    res.json({ options });
+  } catch (err) {
+    console.error('getPollVoters error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
 async function toggleRSVP(req, res) {
   try {
     const postId = parseInt(req.params.id, 10);
@@ -339,4 +357,4 @@ async function addReply(req, res) {
   }
 }
 
-module.exports = { createPost, getFeed, getFollowingFeed, getSinglePost, likePost, addComment, getComments, deletePost, getReplies, addReply, repostPost, viewPost, voteOnPoll, toggleRSVP, setBestAnswer };
+module.exports = { createPost, getFeed, getFollowingFeed, getSinglePost, likePost, addComment, getComments, deletePost, getReplies, addReply, repostPost, viewPost, voteOnPoll, getPollVotersHandler, toggleRSVP, setBestAnswer };
