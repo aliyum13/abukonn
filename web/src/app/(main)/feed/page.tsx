@@ -24,6 +24,31 @@ import {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
+// Fetch with automatic retry for transient network failures (common on campus
+// wifi/data). Only retries on network errors or 5xx — never on 4xx (client
+// errors like validation), so we don't hammer the server on a real rejection.
+async function fetchWithRetry(input: RequestInfo | URL, init?: RequestInit, retries = 2, backoffMs = 800): Promise<Response> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(input, init);
+      // Retry only on server errors; return everything else (incl. 4xx) as-is
+      if (res.status >= 500 && attempt < retries) {
+        await new Promise(r => setTimeout(r, backoffMs * (attempt + 1)));
+        continue;
+      }
+      return res;
+    } catch (err) {
+      lastErr = err;
+      if (attempt < retries) {
+        await new Promise(r => setTimeout(r, backoffMs * (attempt + 1)));
+        continue;
+      }
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('Network error — check your connection');
+}
+
 // Insert Cloudinary delivery transformations into an image URL so images load
 // fast: f_auto (modern formats like WebP/AVIF), q_auto (smart compression), and
 // a sensible max width. Full-res phone photos otherwise load at several MB.
@@ -1329,7 +1354,7 @@ export default function FeedPage() {
   const fetchPosts = async (isRetry = false) => {
     if (!token) return;
     try {
-      const res = await fetch(`${API_URL}/api/posts`, {
+      const res = await fetchWithRetry(`${API_URL}/api/posts`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.status === 401 && !isRetry) {
@@ -1495,7 +1520,7 @@ export default function FeedPage() {
         formData.append('image_url', cloudinaryUrl);
       }
 
-      const res = await fetch(endpoint, {
+      const res = await fetchWithRetry(endpoint, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
@@ -1517,7 +1542,9 @@ export default function FeedPage() {
       setImagePreview(null);
       await fetchPosts();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create post');
+      const msg = err instanceof Error ? err.message : 'Failed to create post';
+      // Reassure the user their text is still in the composer to retry
+      setError(msg.includes('Network') ? `${msg}. Your post wasn't sent — tap Post to try again.` : msg);
     } finally {
       setPosting(false);
     }
