@@ -2252,7 +2252,7 @@ export default function FeedPage() {
                             </div>
                             {post.image_url && (
                               <button type="button" onClick={() => setLightboxUrl(post.image_url!)} className="mt-2 block w-full">
-                                <img src={post.image_url} alt="Post image" className="rounded-2xl max-h-80 w-full object-cover" />
+                                <img src={optimizedImage(post.image_url)} alt="Post image" className="rounded-2xl max-h-[500px] w-full bg-black/5 object-contain dark:bg-white/5" loading="lazy" />
                               </button>
                             )}
                             {/* Actions */}
@@ -2642,7 +2642,7 @@ export default function FeedPage() {
 
                   {imagePreview && (
                     <div className="relative mt-3">
-                      <img src={imagePreview} alt="Preview" className="max-h-56 w-full rounded-2xl object-cover" />
+                      <img src={imagePreview} alt="Preview" className="max-h-80 w-full rounded-2xl bg-black/5 object-contain dark:bg-white/5" />
                       <button type="button" onClick={removeImage}
                         className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition">
                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -2940,7 +2940,7 @@ export default function FeedPage() {
                     {post.image_url && (
                       <button type="button" onClick={() => setLightboxUrl(post.image_url)}
                         className="mt-3 block w-full overflow-hidden rounded-2xl border border-border/60">
-                        <img src={optimizedImage(post.image_url)} alt="Post" className="max-h-[400px] w-full object-cover transition hover:opacity-95" loading="lazy" />
+                        <img src={optimizedImage(post.image_url)} alt="Post" className="max-h-[500px] w-full rounded-2xl bg-black/5 object-contain transition hover:opacity-95 dark:bg-white/5" loading="lazy" />
                       </button>
                     )}
 
@@ -3457,7 +3457,7 @@ export default function FeedPage() {
                           {storyFile?.type.startsWith('video') ? (
                             <video src={storyPreview} className="max-h-64 w-full rounded-xl object-cover" controls />
                           ) : (
-                            <img src={storyPreview} alt="Preview" className="max-h-64 w-full rounded-xl object-cover" />
+                            <img src={storyPreview} alt="Preview" className="max-h-64 w-full rounded-xl bg-black/20 object-contain" />
                           )}
                           <button type="button" onClick={() => { setStoryFile(null); setStoryPreview(null); setStoryCaption(''); }}
                             className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80">

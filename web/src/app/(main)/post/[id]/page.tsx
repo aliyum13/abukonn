@@ -554,7 +554,7 @@ export default function PostDetailPage() {
             {post.image_url && (
               <button type="button" onClick={() => setLightboxUrl(post.image_url)}
                 className="mt-3 block w-full overflow-hidden rounded-2xl border border-border/60">
-                <img src={post.image_url} alt="Post" className="max-h-[400px] w-full object-cover transition hover:opacity-95" />
+                <img src={post.image_url} alt="Post" className="max-h-[500px] w-full bg-black/5 object-contain transition hover:opacity-95 dark:bg-white/5" />
               </button>
             )}
 
