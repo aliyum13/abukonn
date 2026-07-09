@@ -49,7 +49,10 @@ async function getUsers(req, res) {
 
     const usersResult = await pool.query(
       `SELECT u.id, u.full_name, u.email, u.department, u.level,
-              u.profile_photo_url, u.is_admin, COALESCE(u.role, 'user') AS role, u.created_at,
+              u.profile_photo_url, u.is_admin, COALESCE(u.role, 'user') AS role,
+              COALESCE(u.is_verified, FALSE) AS is_verified,
+              COALESCE(u.is_content_creator, FALSE) AS is_content_creator,
+              u.created_at,
               COUNT(p.id) AS post_count
        FROM abukonn.users u
        LEFT JOIN abukonn.posts p ON p.user_id = u.id
