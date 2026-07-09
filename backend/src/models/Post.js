@@ -111,6 +111,8 @@ async function getFollowingPosts(currentUserId) {
             u.full_name AS author_name, u.department AS author_department,
             u.profile_photo_url AS author_photo,
             COALESCE(u.role, 'user') AS author_role,
+            COALESCE(u.is_verified, FALSE) AS author_is_verified,
+            COALESCE(u.is_content_creator, FALSE) AS author_is_content_creator,
             EXISTS(
               SELECT 1 FROM abukonn.post_likes pl
               WHERE pl.post_id = p.id AND pl.user_id = $1
@@ -159,6 +161,8 @@ async function getAllPosts(currentUserId) {
             u.full_name AS author_name, u.department AS author_department,
             u.profile_photo_url AS author_photo,
             COALESCE(u.role, 'user') AS author_role,
+            COALESCE(u.is_verified, FALSE) AS author_is_verified,
+            COALESCE(u.is_content_creator, FALSE) AS author_is_content_creator,
             EXISTS(
               SELECT 1 FROM abukonn.post_likes pl
               WHERE pl.post_id = p.id AND pl.user_id = $1
@@ -214,6 +218,8 @@ async function getPostByIdForUser(id, currentUserId) {
             u.full_name AS author_name, u.department AS author_department,
             u.profile_photo_url AS author_photo,
             COALESCE(u.role, 'user') AS author_role,
+            COALESCE(u.is_verified, FALSE) AS author_is_verified,
+            COALESCE(u.is_content_creator, FALSE) AS author_is_content_creator,
             EXISTS(
               SELECT 1 FROM abukonn.post_likes pl
               WHERE pl.post_id = p.id AND pl.user_id = $2
@@ -305,6 +311,8 @@ async function getPostsByUserId(userId, currentUserId = null) {
             u.full_name AS author_name, u.department AS author_department,
             u.profile_photo_url AS author_photo,
             COALESCE(u.role, 'user') AS author_role,
+            COALESCE(u.is_verified, FALSE) AS author_is_verified,
+            COALESCE(u.is_content_creator, FALSE) AS author_is_content_creator,
             EXISTS(
               SELECT 1 FROM abukonn.post_likes pl
               WHERE pl.post_id = p.id AND pl.user_id = $2

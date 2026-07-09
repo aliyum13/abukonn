@@ -2,7 +2,7 @@ const pool = require('../config/db');
 const cloudinary = require('../config/cloudinary');
 const News = require('../models/News');
 const Whitelist = require('../models/Whitelist');
-const { updateRole } = require('../models/User');
+const { updateRole, setVerified, setContentCreator } = require('../models/User');
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
 
@@ -353,6 +353,32 @@ async function setUserRole(req, res) {
   }
 }
 
+// Toggle the verified badge on a user (independent of their role).
+async function setUserVerified(req, res) {
+  try {
+    const { verified } = req.body;
+    const updated = await setVerified(parseInt(req.params.id, 10), !!verified);
+    if (!updated) return res.status(404).json({ message: 'User not found' });
+    return res.json({ message: verified ? 'User verified' : 'Verification removed', user: updated });
+  } catch (err) {
+    console.error('setUserVerified:', err.message);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// Toggle the content-creator badge on a user.
+async function setUserContentCreator(req, res) {
+  try {
+    const { is_content_creator } = req.body;
+    const updated = await setContentCreator(parseInt(req.params.id, 10), !!is_content_creator);
+    if (!updated) return res.status(404).json({ message: 'User not found' });
+    return res.json({ message: is_content_creator ? 'Marked as content creator' : 'Content creator removed', user: updated });
+  } catch (err) {
+    console.error('setUserContentCreator:', err.message);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
 module.exports = {
   getStats,
   getUsers,
@@ -360,6 +386,8 @@ module.exports = {
   deleteUser,
   toggleAdmin,
   setUserRole,
+  setUserVerified,
+  setUserContentCreator,
   adminGetAllNews,
   adminCreateNews,
   adminUpdateNews,

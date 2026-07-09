@@ -20,6 +20,8 @@ import {
   Input,
   Skeleton,
   RoleBadge,
+  VerifiedBadge,
+  ContentCreatorBadge,
   PostContent,
 } from '@/components/ui';
 
@@ -170,6 +172,8 @@ interface Post {
   author_department: string;
   author_photo: string | null;
   author_role?: string;
+  author_is_verified?: boolean;
+  author_is_content_creator?: boolean;
   engagement_score: number;
   is_trending: boolean;
   is_hot: boolean;
@@ -2887,6 +2891,8 @@ export default function FeedPage() {
                             {post.is_repost && post.original_author_full_name ? post.original_author_full_name : post.author_name}
                           </Link>
                           <RoleBadge role={post.author_role || 'user'} iconOnly />
+                          <VerifiedBadge verified={post.author_is_verified} />
+                          <ContentCreatorBadge isCreator={post.author_is_content_creator} iconOnly />
                           {post.category && post.category !== 'GENERAL' && (
                             <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold', CATEGORY_COLORS[post.category] ?? 'bg-gray-100 text-gray-600')}>
                               {POST_CATEGORIES.find(c => c.value === post.category)?.label}

@@ -21,6 +21,8 @@ ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEF
 ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS username VARCHAR(100);
 ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'user';
 ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS date_of_birth DATE;
+ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS is_content_creator BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- Backfill: pre-existing admin accounts may have is_admin=true but role='user'
 -- (the two were managed separately historically). Sync them so role-based admin
@@ -96,7 +98,7 @@ async function findByUsername(username) {
   return result.rows[0] || null;
 }
 
-const COLS = 'id, username, full_name, email, department, level, profile_photo_url, bio, is_admin, role, date_of_birth, created_at';
+const COLS = 'id, username, full_name, email, department, level, profile_photo_url, bio, is_admin, role, is_verified, is_content_creator, date_of_birth, created_at';
 
 async function findById(id) {
   const result = await pool.query(
@@ -137,6 +139,22 @@ async function updateRole(id, role) {
   const result = await pool.query(
     `UPDATE abukonn.users SET role = $2 WHERE id = $1 RETURNING ${COLS}`,
     [id, role]
+  );
+  return result.rows[0] || null;
+}
+
+async function setVerified(id, verified) {
+  const result = await pool.query(
+    `UPDATE abukonn.users SET is_verified = $2 WHERE id = $1 RETURNING ${COLS}`,
+    [id, !!verified]
+  );
+  return result.rows[0] || null;
+}
+
+async function setContentCreator(id, isCreator) {
+  const result = await pool.query(
+    `UPDATE abukonn.users SET is_content_creator = $2 WHERE id = $1 RETURNING ${COLS}`,
+    [id, !!isCreator]
   );
   return result.rows[0] || null;
 }
@@ -204,6 +222,8 @@ function toPublicUser(user) {
     bio: user.bio,
     is_admin: user.is_admin || false,
     role: user.role || 'user',
+    is_verified: user.is_verified || false,
+    is_content_creator: user.is_content_creator || false,
     created_at: user.created_at,
   };
 }
@@ -226,6 +246,8 @@ module.exports = {
   findByIdWithPassword,
   updateProfile,
   updateRole,
+  setVerified,
+  setContentCreator,
   updateProfilePhoto,
   updateEmail,
   updatePassword,

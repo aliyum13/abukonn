@@ -28,7 +28,7 @@ export type { EmptyStateProps } from './EmptyState';
 export { Select } from './Select';
 export type { SelectProps } from './Select';
 
-export { RoleBadge, usesFollowSystem } from './RoleBadge';
+export { RoleBadge, usesFollowSystem, VerifiedBadge, ContentCreatorBadge } from './RoleBadge';
 export type { UserRole } from './RoleBadge';
 
 export { PostContent } from './PostContent';

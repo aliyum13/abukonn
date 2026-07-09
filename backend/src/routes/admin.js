@@ -10,6 +10,8 @@ const {
   deleteUser,
   toggleAdmin,
   setUserRole,
+  setUserVerified,
+  setUserContentCreator,
   adminGetAllNews,
   adminCreateNews,
   adminUpdateNews,
@@ -32,6 +34,8 @@ router.get('/users/recent', getRecentUsers);
 router.delete('/users/:id', deleteUser);
 router.patch('/users/:id/toggle-admin', toggleAdmin);
 router.patch('/users/:id/role', setUserRole);
+router.patch('/users/:id/verified', setUserVerified);
+router.patch('/users/:id/content-creator', setUserContentCreator);
 
 // News
 router.get('/news', adminGetAllNews);
