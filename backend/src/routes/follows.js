@@ -10,13 +10,17 @@ const {
   getMyFollowers,
   getMyFollowing,
   getSuggestions,
-} = require('../controllers/followController');
+  discover,
+  search,
+} = require("../controllers/followController");
 
 const router = express.Router();
 router.use(auth);
 
 // Static routes must come before /:userId to avoid conflicts
 router.get('/suggestions', getSuggestions);
+router.get('/discover', discover);
+router.get('/search', search);
 router.get('/followers', getMyFollowers);
 router.get('/following', getMyFollowing);
 

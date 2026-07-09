@@ -2801,6 +2801,7 @@ export default function FeedPage() {
             <div className="border-b border-border px-4 py-4 lg:hidden dark:border-[#222]">
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="text-[15px] font-semibold text-ink">Who to follow</h3>
+                <Link href="/discover" className="text-[13px] font-semibold text-brand-600">See all</Link>
               </div>
               <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1" style={{ scrollbarWidth: 'none' }}>
                 {suggestions.slice(0, 10).map((person) => (
@@ -3368,7 +3369,10 @@ export default function FeedPage() {
             {suggestions.length > 0 && (
               <Card>
                 <CardContent className="p-5">
-                  <h3 className="font-semibold text-ink">Who to follow</h3>
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-ink">Who to follow</h3>
+                    <Link href="/discover" className="text-[13px] font-semibold text-brand-600 hover:text-brand-700">See all</Link>
+                  </div>
                   <div className="mt-4 space-y-4">
                     {suggestions.map((person) => (
                       <SuggestionRow

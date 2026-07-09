@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { Avatar, Badge, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Input, Skeleton, RoleBadge } from '@/components/ui';
+import { Avatar, Badge, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Input, Skeleton, RoleBadge, VerifiedBadge, ContentCreatorBadge } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 const PAGE_LIMIT = 20;
@@ -18,6 +18,8 @@ interface AdminUser {
   profile_photo_url: string | null;
   is_admin: boolean;
   role?: string;
+  is_verified?: boolean;
+  is_content_creator?: boolean;
   post_count: string;
   created_at: string;
 }
@@ -123,6 +125,54 @@ export default function AdminUsersPage() {
       const data = await res.json();
       showToast(data.message);
       fetchUsers();
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleToggleVerified = async (userId: number, current: boolean) => {
+    if (!token) return;
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_verified: !current } : u));
+    setActionLoading(userId);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/users/${userId}/verified`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ verified: !current }),
+      });
+      if (!res.ok) {
+        setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_verified: current } : u));
+        showToast('Failed to update verification', true);
+      } else {
+        showToast(!current ? '✓ User verified' : 'Verification removed');
+      }
+    } catch {
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_verified: current } : u));
+      showToast('Network error', true);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleToggleCreator = async (userId: number, current: boolean) => {
+    if (!token) return;
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_content_creator: !current } : u));
+    setActionLoading(userId);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/users/${userId}/content-creator`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_content_creator: !current }),
+      });
+      if (!res.ok) {
+        setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_content_creator: current } : u));
+        showToast('Failed to update creator status', true);
+      } else {
+        showToast(!current ? '✓ Marked as content creator' : 'Content creator removed');
+      }
+    } catch {
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_content_creator: current } : u));
+      showToast('Network error', true);
     } finally {
       setActionLoading(null);
     }
@@ -237,6 +287,8 @@ export default function AdminUsersPage() {
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-medium text-ink truncate">{u.full_name}</span>
                               <RoleBadge role={u.role || (u.is_admin ? 'admin' : 'user')} />
+                              <VerifiedBadge verified={u.is_verified} />
+                              <ContentCreatorBadge isCreator={u.is_content_creator} iconOnly />
                               {me?.id === u.id && <Badge variant="outline">You</Badge>}
                             </div>
                             <p className="text-caption text-ink-muted truncate">{u.email}</p>
@@ -258,15 +310,37 @@ export default function AdminUsersPage() {
                         </select>
                       </td>
                       <td className="px-4 py-3">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={me?.id === u.id || actionLoading === u.id}
-                          onClick={() => handleDelete(u.id, u.full_name)}
-                          className="border-red-200 text-red-600 hover:bg-red-50"
-                        >
-                          Delete
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={actionLoading === u.id}
+                            onClick={() => handleToggleVerified(u.id, !!u.is_verified)}
+                            className={u.is_verified ? 'border-blue-300 text-blue-600' : ''}
+                            title="Toggle verified badge"
+                          >
+                            {u.is_verified ? 'Verified ✓' : 'Verify'}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={actionLoading === u.id}
+                            onClick={() => handleToggleCreator(u.id, !!u.is_content_creator)}
+                            className={u.is_content_creator ? 'border-amber-300 text-amber-600' : ''}
+                            title="Toggle content creator"
+                          >
+                            {u.is_content_creator ? 'Creator ✓' : 'Creator'}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={me?.id === u.id || actionLoading === u.id}
+                            onClick={() => handleDelete(u.id, u.full_name)}
+                            className="border-red-200 text-red-600 hover:bg-red-50"
+                          >
+                            Delete
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
