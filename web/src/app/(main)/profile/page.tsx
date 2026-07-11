@@ -155,6 +155,7 @@ export default function ProfilePage() {
 
   const [posts, setPosts] = useState<ProfilePost[]>([]);
   const [replies, setReplies] = useState<ProfileReply[]>([]);
+  const [classRepFor, setClassRepFor] = useState<Array<{ id: number; department: string; level: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [photoLightboxOpen, setPhotoLightboxOpen] = useState(false);
@@ -200,6 +201,7 @@ export default function ProfilePage() {
           setPosts(data.posts || []);
           setReplies(data.replies || []);
         }
+        setClassRepFor(data.class_rep_for || []);
       })
       .catch(() => setError('Failed to load profile'))
       .finally(() => setLoading(false));
@@ -435,7 +437,22 @@ export default function ProfilePage() {
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-[22px] font-bold leading-tight text-ink">{user.full_name}</h1>
             <RoleBadge role={profileRole} />
+            {classRepFor.length > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-brand-100 px-2 py-0.5 text-[11px] font-semibold text-brand-700 dark:bg-brand-950 dark:text-brand-300">
+                🎓 Class Rep
+              </span>
+            )}
           </div>
+          {classRepFor.length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <p className="text-[12px] text-ink-muted">
+                Rep for {classRepFor.map(c => `${c.department} (${c.level})`).join(', ')}
+              </p>
+              <Link href="/class-rep" className="rounded-full bg-brand-600 px-3 py-1 text-[12px] font-semibold text-white hover:bg-brand-700">
+                Manage timetable →
+              </Link>
+            </div>
+          )}
           <p className="mt-0.5 text-[14px] text-ink-muted">@{displayUsername}</p>
 
           {/* Bio */}

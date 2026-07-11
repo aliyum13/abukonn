@@ -76,6 +76,70 @@ const getTodayClasses = async (department, level) => {
   return { classes: rows, day: dayName };
 };
 
+// Today's classes with any class-rep overrides applied. Each returned class
+// carries an `override` field describing the change (edited/cancelled/added)
+// so the frontend can show the original struck through + the change. Falls back
+// silently to the plain timetable if the overrides table doesn't exist yet.
+const getTodayClassesWithOverrides = async (department, level) => {
+  const base = await getTodayClasses(department, level);
+  let overrides = [];
+  try {
+    const TimetableOverride = require('./TimetableOverride');
+    const today = new Date().toISOString().slice(0, 10);
+    overrides = await TimetableOverride.getOverridesForDate(department, level, today);
+  } catch {
+    return base;
+  }
+
+  const byOriginal = new Map();
+  const additions = [];
+  for (const o of overrides) {
+    if (o.kind === 'add') additions.push(o);
+    else if (o.original_class_id != null) byOriginal.set(o.original_class_id, o);
+  }
+
+  const merged = base.classes.map((cls) => {
+    const o = byOriginal.get(cls.id);
+    if (!o) return { ...cls, override: null };
+    if (o.kind === 'cancel') {
+      return { ...cls, override: { kind: 'cancel', note: o.note, override_id: o.id } };
+    }
+    return {
+      ...cls,
+      override: {
+        kind: 'edit',
+        override_id: o.id,
+        note: o.note,
+        new: {
+          start_time: o.start_time, end_time: o.end_time,
+          course_code: o.course_code, course_title: o.course_title,
+          venue: o.venue, lecturer: o.lecturer,
+        },
+      },
+    };
+  });
+
+  for (const o of additions) {
+    merged.push({
+      id: `override-${o.id}`,
+      department, level, day: base.day,
+      start_time: o.start_time, end_time: o.end_time,
+      course_code: o.course_code, course_title: o.course_title,
+      venue: o.venue, lecturer: o.lecturer, status: 'holding',
+      override: { kind: 'add', override_id: o.id, note: o.note },
+    });
+  }
+
+  const toMin = (t) => {
+    if (!t) return 0;
+    const [h, m] = String(t).split(':').map((n) => parseInt(n, 10));
+    return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
+  };
+  merged.sort((a, b) => toMin(a.start_time) - toMin(b.start_time));
+
+  return { classes: merged, day: base.day, has_overrides: overrides.length > 0 };
+};
+
 const getWeekClasses = async (department, level) => {
   const normalLevel = normalizeLevel(level);
   const { rows } = await pool.query(
@@ -172,7 +236,7 @@ const deleteUploadRecord = async (department, level) => {
 };
 
 module.exports = {
-  createTimetableTable, getTodayClasses, getWeekClasses, getTimetable,
+  createTimetableTable, getTodayClasses, getTodayClassesWithOverrides, getWeekClasses, getTimetable,
   clearTimetable, bulkInsert, saveUploadRecord, getUploads, deleteUploadRecord,
 };
 

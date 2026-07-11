@@ -235,6 +235,7 @@ app.use('/api/hashtags', hashtagRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/highlights', highlightRoutes);
 app.use('/api/timetable', require('./routes/timetable'));
+app.use('/api/class-reps', require('./routes/classReps'));
 app.use('/api/support', require('./routes/support'));
 app.use('/api/library', require('./routes/library'));
 app.use('/api/moderation', require('./routes/moderation'));
@@ -273,6 +274,8 @@ createUsersTable()
   .then(() => createChannelTables())
   .then(() => createPasswordResetsTable())
   .then(() => createTimetableTable())
+  .then(() => require('./models/ClassRep').createClassRepsTable())
+  .then(() => require('./models/TimetableOverride').createTimetableOverridesTable())
   .then(() => createSupportTable())
   .then(() => createLibraryTable())
   .then(() => createReportBlockTables())

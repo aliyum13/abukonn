@@ -1142,7 +1142,7 @@ export default function FeedPage() {
   const [isMyBirthday, setIsMyBirthday] = useState(false);
 
   // Today's classes
-  interface TodayClass { id: number; course_code: string | null; course_title: string; start_time: string; end_time: string; venue: string | null; lecturer: string | null; status?: 'holding' | 'cancelled'; }
+  interface TodayClass { id: number | string; course_code: string | null; course_title: string; start_time: string; end_time: string; venue: string | null; lecturer: string | null; status?: 'holding' | 'cancelled'; override?: { kind: 'add' | 'edit' | 'cancel'; override_id: number; note?: string | null; new?: { start_time: string | null; end_time: string | null; course_code: string | null; course_title: string | null; venue: string | null; lecturer: string | null } } | null; }
   const [todayClasses, setTodayClasses] = useState<TodayClass[]>([]);
   const [noTimetableProfile, setNoTimetableProfile] = useState(false);
 
@@ -2379,11 +2379,19 @@ export default function FeedPage() {
               ) : (
                 <div className="flex gap-3 overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none' }}>
                   {todayClasses.map(cls => {
-                    const isCancelled = cls.status === 'cancelled';
+                    const ov = cls.override;
+                    const isCancelled = cls.status === 'cancelled' || ov?.kind === 'cancel';
+                    const isAdded = ov?.kind === 'add';
+                    const isEdited = ov?.kind === 'edit';
+                    // For an edit, the new values to show highlighted
+                    const nv = isEdited ? ov?.new : null;
                     return (
                       <div key={cls.id} className={cn(
-                        'flex min-w-[200px] max-w-[240px] shrink-0 flex-col gap-1.5 rounded-2xl p-3.5',
-                        isCancelled ? 'bg-red-50 dark:bg-red-950/30' : 'bg-indigo-50 dark:bg-indigo-950/40'
+                        'flex min-w-[200px] max-w-[260px] shrink-0 flex-col gap-1.5 rounded-2xl p-3.5',
+                        isCancelled ? 'bg-red-50 dark:bg-red-950/30'
+                          : isAdded ? 'bg-amber-50 dark:bg-amber-950/30'
+                          : isEdited ? 'bg-amber-50 dark:bg-amber-950/30'
+                          : 'bg-indigo-50 dark:bg-indigo-950/40'
                       )}>
                         <div className="flex items-center justify-between gap-2">
                           <p className={cn(
@@ -2394,18 +2402,48 @@ export default function FeedPage() {
                           </p>
                           <span className={cn(
                             'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold',
-                            isCancelled
-                              ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
+                            isCancelled ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
+                              : isAdded ? 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
                               : 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
                           )}>
-                            {isCancelled ? 'Cancelled' : 'Holding'}
+                            {isCancelled ? 'Cancelled' : isAdded ? 'Extra class' : 'Holding'}
                           </span>
                         </div>
-                        <p className={cn('text-[11px] font-semibold', isCancelled ? 'text-red-600 dark:text-red-400' : 'text-indigo-600 dark:text-indigo-400')}>
-                          {cls.start_time} – {cls.end_time}
-                        </p>
-                        {cls.venue && <p className={cn('text-[11px]', isCancelled ? 'text-red-500 dark:text-red-400' : 'text-indigo-500 dark:text-indigo-400')}>📍 {cls.venue}</p>}
-                        {cls.lecturer && <p className={cn('text-[11px]', isCancelled ? 'text-red-500 dark:text-red-400' : 'text-indigo-500 dark:text-indigo-400')}>👨‍🏫 {cls.lecturer}</p>}
+
+                        {/* Time — for edits, show original struck through + the new time */}
+                        {isEdited && nv ? (
+                          <div className="flex flex-col gap-0.5">
+                            <p className="text-[11px] font-semibold text-ink-muted line-through">{cls.start_time} – {cls.end_time}</p>
+                            <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">{nv.start_time} – {nv.end_time}</p>
+                          </div>
+                        ) : (
+                          <p className={cn('text-[11px] font-semibold', isCancelled ? 'text-red-600 dark:text-red-400' : isAdded ? 'text-amber-600 dark:text-amber-400' : 'text-indigo-600 dark:text-indigo-400')}>
+                            {cls.start_time} – {cls.end_time}
+                          </p>
+                        )}
+
+                        {/* Venue — show edited value highlighted if changed */}
+                        {isEdited && nv?.venue ? (
+                          <p className="text-[11px] text-amber-700 dark:text-amber-300">📍 {nv.venue}
+                            {cls.venue && cls.venue !== nv.venue && <span className="ml-1 text-ink-muted line-through">{cls.venue}</span>}
+                          </p>
+                        ) : cls.venue ? (
+                          <p className={cn('text-[11px]', isCancelled ? 'text-red-500 dark:text-red-400' : isAdded ? 'text-amber-500 dark:text-amber-400' : 'text-indigo-500 dark:text-indigo-400')}>📍 {cls.venue}</p>
+                        ) : null}
+
+                        {cls.lecturer && !isEdited && (
+                          <p className={cn('text-[11px]', isCancelled ? 'text-red-500 dark:text-red-400' : isAdded ? 'text-amber-500 dark:text-amber-400' : 'text-indigo-500 dark:text-indigo-400')}>👨‍🏫 {cls.lecturer}</p>
+                        )}
+
+                        {/* "Updated by class rep" note */}
+                        {ov && (
+                          <div className="mt-0.5 flex items-center gap-1 border-t border-black/5 pt-1.5 dark:border-white/10">
+                            <span className="text-[10px]">✎</span>
+                            <p className="text-[10px] font-medium text-ink-muted">
+                              {ov.note ? ov.note : 'Updated by class rep'}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
