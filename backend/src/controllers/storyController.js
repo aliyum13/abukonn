@@ -6,6 +6,22 @@ const Follow = require('../models/Follow');
 // Allowed text-story fonts. Whitelisted rather than free-text so nothing
 // arbitrary from the client ends up driving CSS on the viewer.
 const STORY_FONTS = ['classic', 'bold', 'serif', 'mono', 'script'];
+const { getLinkPreview, firstUrlIn } = require('../lib/linkPreview');
+
+// Preview a URL for the composer. Auth'd (router-level) so this isn't an open
+// proxy for anonymous users, and the fetcher itself refuses anything internal.
+async function previewLink(req, res) {
+  try {
+    const url = (req.query.url || '').toString().trim();
+    if (!url) return res.status(400).json({ message: 'url is required' });
+    const preview = await getLinkPreview(url);
+    if (!preview) return res.status(404).json({ message: 'No preview available for that link' });
+    res.json({ preview });
+  } catch (err) {
+    console.error('Link preview error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
 const STORY_AUDIENCES = ['all', 'except', 'only'];
 
 // Work out the audience for a new story. The client may send one (which also
@@ -151,6 +167,15 @@ async function createStory(req, res) {
     // One audience decision for whichever path this story takes.
     const { audience, userIds: audienceUserIds } = await resolveAudience(req.user.id, req.body);
 
+    // Link preview for text stories. Deliberately re-fetched here rather than
+    // trusting a card sent by the client — otherwise anyone could post a preview
+    // showing a trusted site's name and image while linking somewhere else.
+    let link = null;
+    if (storyType === 'text') {
+      const url = firstUrlIn(req.body?.text_content || '');
+      if (url) link = await getLinkPreview(url);
+    }
+
     if (storyType === 'text') {
       const textContent = (req.body?.text_content || '').trim();
       const bgColor = req.body?.bg_color || '#16a34a';
@@ -166,6 +191,7 @@ async function createStory(req, res) {
         bgColor,
         fontStyle,
         audience,
+        link,
         // No caption for text stories — the text content is the story
       });
       await Story.setStoryAudience(story.id, audienceUserIds);
@@ -405,6 +431,7 @@ async function unmuteStories(req, res) {
 }
 
 module.exports = {
+  previewLink,
   getStoryAudiencePref,
   setStoryAudiencePref,
   muteStories,
