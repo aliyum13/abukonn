@@ -1188,6 +1188,11 @@ export default function FeedPage() {
   const [storyText, setStoryText] = useState('');
   const [storyBgColor, setStoryBgColor] = useState('#16a34a');
   const [storyFont, setStoryFont] = useState('classic');
+  // Story privacy audience: 'all' | 'except' | 'only'. Remembered between posts.
+  const [storyAudience, setStoryAudience] = useState<'all' | 'except' | 'only'>('all');
+  const [storyAudienceIds, setStoryAudienceIds] = useState<number[]>([]);
+  const [showAudiencePicker, setShowAudiencePicker] = useState(false);
+  const [audienceCandidates, setAudienceCandidates] = useState<Array<{ id: number; full_name: string; profile_photo_url: string | null }>>([]);
   const [storyCaption, setStoryCaption] = useState('');
   const [viewedStoryIds, setViewedStoryIds] = useState<Set<number>>(new Set());
   // Story reactions & replies
@@ -1271,6 +1276,24 @@ export default function FeedPage() {
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [showUploadStory]);
+
+  // Load the saved story audience preference, and the followers we can pick from.
+  useEffect(() => {
+    if (!token || !showUploadStory) return;
+    fetch(`${API_URL}/api/stories/audience`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => {
+        setStoryAudience((d.audience as 'all' | 'except' | 'only') || 'all');
+        setStoryAudienceIds(d.user_ids || []);
+      })
+      .catch(() => {});
+    // The audience list is chosen from your followers — they're the only people
+    // who could see the story in the first place.
+    fetch(`${API_URL}/api/follows/followers`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => setAudienceCandidates(d.followers || []))
+      .catch(() => {});
+  }, [token, showUploadStory]);
 
   // Fetch stories
   useEffect(() => {
@@ -1978,7 +2001,7 @@ export default function FeedPage() {
     const saveRes = await fetch(`${API_URL}/api/stories`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ story_type: 'image', media_url: cloudinaryUrl, direct_upload: true, caption }),
+      body: JSON.stringify({ story_type: 'image', media_url: cloudinaryUrl, direct_upload: true, caption, audience: storyAudience, audience_user_ids: storyAudienceIds }),
     });
     if (!saveRes.ok) {
       const d = await saveRes.json().catch(() => ({})) as { message?: string };
@@ -2030,7 +2053,7 @@ export default function FeedPage() {
         const res = await fetch(`${API_URL}/api/stories`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ story_type: 'text', text_content: storyText, bg_color: storyBgColor, font_style: storyFont }),
+          body: JSON.stringify({ story_type: 'text', text_content: storyText, bg_color: storyBgColor, font_style: storyFont, audience: storyAudience, audience_user_ids: storyAudienceIds }),
           signal: controller.signal,
         }).finally(() => clearTimeout(tid));
         if (!res.ok) {
@@ -3678,7 +3701,9 @@ export default function FeedPage() {
       {showUploadStory && (() => {
         const BG_PRESETS = ['#16a34a','#1d4ed8','#7c3aed','#dc2626','#ea580c','#0891b2','#111827','#be185d'];
         const closeModal = () => { setShowUploadStory(false); setStoryFiles([]); setStoryPreviews([]); setStoryText(''); setStoryBgColor('#16a34a'); setStoryFont('classic'); setStoryTab('media'); setStoryCaption(''); setStoryUploadError(''); setStoryUploadProgress(null); };
-        const canShare = storyTab === 'text' ? storyText.trim().length > 0 : storyFiles.length > 0;
+        // 'Only…' with nobody picked would post a story visible to no one.
+        const audienceOk = storyAudience !== 'only' || storyAudienceIds.length > 0;
+        const canShare = (storyTab === 'text' ? storyText.trim().length > 0 : storyFiles.length > 0) && audienceOk;
         const shareLabel = storyTab === 'media' && storyFiles.length > 1
           ? `Share ${storyFiles.length} photos`
           : 'Share';
@@ -3849,6 +3874,63 @@ export default function FeedPage() {
                     </div>
                   </div>
                 )}
+                {/* Privacy — who can see this story. Applies to future stories too. */}
+                <div className="mb-3 rounded-xl border border-border p-3 dark:border-[#222]">
+                  <p className="mb-2 text-[12px] font-semibold text-ink">Who can see this</p>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {([
+                      { key: 'all', label: 'Followers' },
+                      { key: 'except', label: 'Except…' },
+                      { key: 'only', label: 'Only…' },
+                    ] as const).map(opt => (
+                      <button key={opt.key} type="button"
+                        onClick={() => {
+                          setStoryAudience(opt.key);
+                          if (opt.key === 'all') setStoryAudienceIds([]);
+                          else setShowAudiencePicker(true);
+                        }}
+                        className={cn('rounded-lg border px-2 py-1.5 text-[12px] font-medium transition',
+                          storyAudience === opt.key
+                            ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300'
+                            : 'border-border text-ink-muted hover:text-ink dark:border-[#333]')}>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {storyAudience !== 'all' && (
+                    <button type="button" onClick={() => setShowAudiencePicker(true)}
+                      className="mt-2 w-full text-left text-[11px] text-ink-muted hover:text-ink">
+                      {storyAudienceIds.length === 0
+                        ? 'No one selected — tap to choose people'
+                        : `${storyAudienceIds.length} ${storyAudience === 'only' ? 'person' : 'person'}${storyAudienceIds.length === 1 ? '' : 's'} selected — tap to change`}
+                    </button>
+                  )}
+
+                  {/* Inline person picker */}
+                  {showAudiencePicker && storyAudience !== 'all' && (
+                    <div className="mt-2 max-h-44 overflow-y-auto rounded-lg border border-border dark:border-[#333]">
+                      {audienceCandidates.length === 0 ? (
+                        <p className="px-3 py-3 text-[12px] text-ink-muted">
+                          No followers yet — only followers can see your stories.
+                        </p>
+                      ) : audienceCandidates.map(p => {
+                        const picked = storyAudienceIds.includes(p.id);
+                        return (
+                          <button key={p.id} type="button"
+                            onClick={() => setStoryAudienceIds(prev =>
+                              picked ? prev.filter(id => id !== p.id) : [...prev, p.id])}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left transition hover:bg-surface-muted dark:hover:bg-[#1a1a1a]">
+                            <input type="checkbox" readOnly checked={picked} className="h-3.5 w-3.5 accent-brand-600" />
+                            <Avatar src={p.profile_photo_url} name={p.full_name} size="xs" />
+                            <span className="truncate text-[12px] text-ink">{p.full_name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex gap-3">
                   <Button variant="outline" className="flex-1" onClick={closeModal}>Cancel</Button>
                   <Button className="flex-1" disabled={!canShare || uploadingStory} loading={uploadingStory} onClick={handleUploadStory}>

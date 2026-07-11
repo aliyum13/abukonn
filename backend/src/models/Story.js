@@ -20,7 +20,87 @@ ALTER TABLE abukonn.stories ALTER COLUMN media_url DROP NOT NULL;
 ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS story_type VARCHAR(10) NOT NULL DEFAULT 'image';
 ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS text_content TEXT;
 ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS bg_color VARCHAR(20);
-ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS font_style VARCHAR(20);`;
+ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS font_style VARCHAR(20);
+-- Who can see this story:
+--   'all'    — every follower (default, existing behaviour)
+--   'except' — every follower EXCEPT the people listed in story_audience
+--   'only'   — ONLY the people listed in story_audience
+ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS audience VARCHAR(10) NOT NULL DEFAULT 'all';`;
+
+// The people named by a story's 'except'/'only' list. This is a SNAPSHOT taken
+// when the story is posted — deliberately not a live reference to the author's
+// current default, so that changing your privacy setting later can never
+// retroactively expose (or hide) a story you already posted.
+const CREATE_STORY_AUDIENCE_TABLE = `
+CREATE TABLE IF NOT EXISTS abukonn.story_audience (
+  story_id INTEGER NOT NULL REFERENCES abukonn.stories(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES abukonn.users(id) ON DELETE CASCADE,
+  PRIMARY KEY (story_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_story_audience_story ON abukonn.story_audience(story_id);`;
+
+// The author's remembered default — the audience applies to future statuses
+// until they change it.
+const CREATE_STORY_AUDIENCE_PREF_TABLE = `
+CREATE TABLE IF NOT EXISTS abukonn.story_audience_pref (
+  user_id INTEGER PRIMARY KEY REFERENCES abukonn.users(id) ON DELETE CASCADE,
+  audience VARCHAR(10) NOT NULL DEFAULT 'all'
+);
+CREATE TABLE IF NOT EXISTS abukonn.story_audience_pref_list (
+  user_id INTEGER NOT NULL REFERENCES abukonn.users(id) ON DELETE CASCADE,
+  target_id INTEGER NOT NULL REFERENCES abukonn.users(id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, target_id)
+);`;
+
+async function createStoryAudienceTables() {
+  await pool.query(CREATE_STORY_AUDIENCE_TABLE);
+  await pool.query(CREATE_STORY_AUDIENCE_PREF_TABLE);
+  console.log('Story audience tables ready');
+}
+
+// Read the author's saved audience preference.
+async function getAudiencePref(userId) {
+  const { rows } = await pool.query(
+    `SELECT audience FROM abukonn.story_audience_pref WHERE user_id = $1`,
+    [userId]
+  );
+  const { rows: list } = await pool.query(
+    `SELECT target_id FROM abukonn.story_audience_pref_list WHERE user_id = $1`,
+    [userId]
+  );
+  return {
+    audience: rows[0]?.audience || 'all',
+    user_ids: list.map(r => r.target_id),
+  };
+}
+
+// Save the author's audience preference for future stories.
+async function setAudiencePref(userId, audience, userIds = []) {
+  await pool.query(
+    `INSERT INTO abukonn.story_audience_pref (user_id, audience) VALUES ($1, $2)
+     ON CONFLICT (user_id) DO UPDATE SET audience = EXCLUDED.audience`,
+    [userId, audience]
+  );
+  await pool.query(`DELETE FROM abukonn.story_audience_pref_list WHERE user_id = $1`, [userId]);
+  if (audience !== 'all' && userIds.length > 0) {
+    await pool.query(
+      `INSERT INTO abukonn.story_audience_pref_list (user_id, target_id)
+       SELECT $1, unnest($2::int[]) ON CONFLICT DO NOTHING`,
+      [userId, userIds]
+    );
+  }
+  return getAudiencePref(userId);
+}
+
+// Snapshot the audience list onto a specific story.
+async function setStoryAudience(storyId, userIds = []) {
+  if (!userIds.length) return;
+  await pool.query(
+    `INSERT INTO abukonn.story_audience (story_id, user_id)
+     SELECT $1, unnest($2::int[]) ON CONFLICT DO NOTHING`,
+    [storyId, userIds]
+  );
+}
 
 async function createStoriesTable() {
   await pool.query(CREATE_STORIES_TABLE);
@@ -29,13 +109,45 @@ async function createStoriesTable() {
   console.log('Stories table ready');
 }
 
-async function createStory({ userId, mediaUrl, mediaType = 'image', storyType = 'image', textContent = null, bgColor = null, caption = null, fontStyle = null }) {
+async function createStory({ userId, mediaUrl, mediaType = 'image', storyType = 'image', textContent = null, bgColor = null, caption = null, fontStyle = null, audience = 'all' }) {
   const result = await pool.query(
-    `INSERT INTO abukonn.stories (user_id, media_url, media_type, story_type, text_content, bg_color, caption, font_style)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-    [userId, mediaUrl, mediaType, storyType, textContent, bgColor, caption, fontStyle]
+    `INSERT INTO abukonn.stories (user_id, media_url, media_type, story_type, text_content, bg_color, caption, font_style, audience)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+    [userId, mediaUrl, mediaType, storyType, textContent, bgColor, caption, fontStyle, audience]
   );
   return result.rows[0];
+}
+
+// Can this viewer see this story? Mirrors the audience rule in
+// getActiveStoriesForUser. Used to guard view/react/reply so a story that isn't
+// visible to someone can't be interacted with by guessing its id.
+async function canViewStory(storyId, viewerId) {
+  const { rows } = await pool.query(
+    `SELECT 1 FROM abukonn.stories s
+     WHERE s.id = $1
+       AND s.expires_at > NOW()
+       AND (
+         s.user_id = $2
+         OR (
+           s.user_id IN (SELECT following_id FROM abukonn.follows WHERE follower_id = $2)
+           AND NOT EXISTS (
+             SELECT 1 FROM abukonn.blocks b
+             WHERE (b.blocker_id = s.user_id AND b.blocked_id = $2)
+                OR (b.blocker_id = $2 AND b.blocked_id = s.user_id)
+           )
+           AND (
+             COALESCE(s.audience, 'all') = 'all'
+             OR (s.audience = 'except' AND NOT EXISTS (
+                   SELECT 1 FROM abukonn.story_audience a WHERE a.story_id = s.id AND a.user_id = $2))
+             OR (s.audience = 'only' AND EXISTS (
+                   SELECT 1 FROM abukonn.story_audience a WHERE a.story_id = s.id AND a.user_id = $2))
+           )
+         )
+       )
+     LIMIT 1`,
+    [storyId, viewerId]
+  );
+  return rows.length > 0;
 }
 
 async function getActiveStoriesForUser(userId) {
@@ -63,8 +175,36 @@ async function getActiveStoriesForUser(userId) {
      LEFT JOIN abukonn.story_views sv ON sv.story_id = s.id
      WHERE s.expires_at > NOW()
        AND (
+         -- Always see my own stories, whatever the audience.
          s.user_id = $1
-         OR s.user_id IN (SELECT following_id FROM abukonn.follows WHERE follower_id = $1)
+         OR (
+           -- Otherwise: I must follow them, they must not have blocked me
+           -- (and I must not have blocked them), and I must fall inside the
+           -- audience they chose for that specific story.
+           s.user_id IN (SELECT following_id FROM abukonn.follows WHERE follower_id = $1)
+           AND NOT EXISTS (
+             SELECT 1 FROM abukonn.blocks b
+             WHERE (b.blocker_id = s.user_id AND b.blocked_id = $1)
+                OR (b.blocker_id = $1 AND b.blocked_id = s.user_id)
+           )
+           AND (
+             COALESCE(s.audience, 'all') = 'all'
+             OR (
+               s.audience = 'except'
+               AND NOT EXISTS (
+                 SELECT 1 FROM abukonn.story_audience a
+                 WHERE a.story_id = s.id AND a.user_id = $1
+               )
+             )
+             OR (
+               s.audience = 'only'
+               AND EXISTS (
+                 SELECT 1 FROM abukonn.story_audience a
+                 WHERE a.story_id = s.id AND a.user_id = $1
+               )
+             )
+           )
+         )
        )
      GROUP BY s.id, u.full_name, u.profile_photo_url
      ORDER BY s.user_id = $1 DESC, s.user_id, s.created_at ASC`,
@@ -276,6 +416,11 @@ async function getStoryReplies(storyId) {
 }
 
 module.exports = {
+  createStoryAudienceTables,
+  getAudiencePref,
+  setAudiencePref,
+  setStoryAudience,
+  canViewStory,
   createStoryMutesTable,
   muteUserStories,
   unmuteUserStories,

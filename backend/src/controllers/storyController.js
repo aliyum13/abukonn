@@ -6,6 +6,51 @@ const Follow = require('../models/Follow');
 // Allowed text-story fonts. Whitelisted rather than free-text so nothing
 // arbitrary from the client ends up driving CSS on the viewer.
 const STORY_FONTS = ['classic', 'bold', 'serif', 'mono', 'script'];
+const STORY_AUDIENCES = ['all', 'except', 'only'];
+
+// Work out the audience for a new story. The client may send one (which also
+// becomes the author's remembered default for future stories); otherwise we use
+// whatever they last chose. The resulting list is SNAPSHOT onto the story, so
+// changing the default later never alters a story already posted.
+async function resolveAudience(userId, body) {
+  let audience = body?.audience;
+  let userIds = Array.isArray(body?.audience_user_ids) ? body.audience_user_ids : null;
+
+  if (STORY_AUDIENCES.includes(audience)) {
+    if (audience === 'all') userIds = [];
+    userIds = (userIds || []).map(Number).filter(Number.isInteger);
+    await Story.setAudiencePref(userId, audience, userIds); // remember for next time
+  } else {
+    const pref = await Story.getAudiencePref(userId);
+    audience = pref.audience;
+    userIds = pref.user_ids;
+  }
+  return { audience, userIds: audience === 'all' ? [] : userIds };
+}
+
+// Read / update the author's saved story audience.
+async function getStoryAudiencePref(req, res) {
+  try {
+    res.json(await Story.getAudiencePref(req.user.id));
+  } catch (err) {
+    console.error('Get audience pref error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function setStoryAudiencePref(req, res) {
+  try {
+    const { audience, user_ids } = req.body || {};
+    if (!STORY_AUDIENCES.includes(audience)) {
+      return res.status(400).json({ message: 'Invalid audience' });
+    }
+    const ids = Array.isArray(user_ids) ? user_ids.map(Number).filter(Number.isInteger) : [];
+    res.json(await Story.setAudiencePref(req.user.id, audience, audience === 'all' ? [] : ids));
+  } catch (err) {
+    console.error('Set audience pref error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
 const Notification = require('../models/Notification');
 const { emitNotificationToMany } = require('../lib/notify');
 
@@ -75,16 +120,25 @@ async function getUploadSignature(req, res) {
 // Notify followers who turned the bell ON for this author that they posted a
 // story. Fire-and-forget so it never slows down the upload response.
 // Stories aren't posts, so post_id stays null.
-function notifyFollowersOfStory(app, authorId) {
+function notifyFollowersOfStory(app, authorId, audience = 'all', audienceUserIds = []) {
   Follow.getNotifyFollowerIds(authorId)
     .then(async ids => {
+      // Only notify people who can actually SEE the story. Without this, someone
+      // excluded by an 'except'/'only' audience would still be told the author
+      // posted — leaking both the post and, by implication, their exclusion.
+      let recipients = ids;
+      const listed = new Set((audienceUserIds || []).map(Number));
+      if (audience === 'only') recipients = ids.filter(id => listed.has(Number(id)));
+      else if (audience === 'except') recipients = ids.filter(id => !listed.has(Number(id)));
+
+      if (recipients.length === 0) return;
       await Notification.createNotificationsForMany({
-        recipientIds: ids,
+        recipientIds: recipients,
         senderId: authorId,
         type: 'new_story',
         postId: null,
       });
-      emitNotificationToMany(app, ids);
+      emitNotificationToMany(app, recipients);
     })
     .catch(err => console.error('Story notification fan-out error:', err.message));
 }
@@ -93,6 +147,9 @@ async function createStory(req, res) {
   try {
     const storyType = req.body?.story_type;
     const caption = (req.body?.caption || '').trim().slice(0, 150) || null;
+
+    // One audience decision for whichever path this story takes.
+    const { audience, userIds: audienceUserIds } = await resolveAudience(req.user.id, req.body);
 
     if (storyType === 'text') {
       const textContent = (req.body?.text_content || '').trim();
@@ -108,9 +165,11 @@ async function createStory(req, res) {
         textContent,
         bgColor,
         fontStyle,
+        audience,
         // No caption for text stories — the text content is the story
       });
-      notifyFollowersOfStory(req.app, req.user.id);
+      await Story.setStoryAudience(story.id, audienceUserIds);
+      notifyFollowersOfStory(req.app, req.user.id, audience, audienceUserIds);
       return res.status(201).json({ story });
     }
 
@@ -124,8 +183,10 @@ async function createStory(req, res) {
         mediaType: 'image',
         storyType: 'image',
         caption,
+        audience,
       });
-      notifyFollowersOfStory(req.app, req.user.id);
+      await Story.setStoryAudience(story.id, audienceUserIds);
+      notifyFollowersOfStory(req.app, req.user.id, audience, audienceUserIds);
       return res.status(201).json({ story });
     }
 
@@ -150,8 +211,10 @@ async function createStory(req, res) {
       mediaType: 'image',
       storyType: 'image',
       caption,
+      audience,
     });
-    notifyFollowersOfStory(req.app, req.user.id);
+    await Story.setStoryAudience(story.id, audienceUserIds);
+    notifyFollowersOfStory(req.app, req.user.id, audience, audienceUserIds);
     res.status(201).json({ story });
   } catch (err) {
     console.error('Create story error:', err.message);
@@ -209,6 +272,9 @@ async function deleteStory(req, res) {
 async function reactToStory(req, res) {
   try {
     const storyId = parseInt(req.params.id, 10);
+    if (!(await Story.canViewStory(storyId, req.user.id))) {
+      return res.status(404).json({ message: 'Story not found' });
+    }
     const result = await Story.toggleStoryReaction(storyId, req.user.id);
     res.json(result);
   } catch (err) {
@@ -249,6 +315,9 @@ async function getViewersHandler(req, res) {
 async function replyToStory(req, res) {
   try {
     const storyId = parseInt(req.params.id, 10);
+    if (!(await Story.canViewStory(storyId, req.user.id))) {
+      return res.status(404).json({ message: 'Story not found' });
+    }
     const content = (req.body?.content || '').trim();
     if (!content) return res.status(400).json({ message: 'Reply content is required' });
 
@@ -293,6 +362,9 @@ async function getStoryRepliesHandler(req, res) {
 async function recordView(req, res) {
   try {
     const storyId = parseInt(req.params.id, 10);
+    if (!(await Story.canViewStory(storyId, req.user.id))) {
+      return res.status(404).json({ message: 'Story not found' });
+    }
     const story = await Story.getStoryById(storyId);
     if (!story) return res.status(404).json({ message: 'Story not found' });
     if (story.user_id !== req.user.id) {
@@ -333,5 +405,7 @@ async function unmuteStories(req, res) {
 }
 
 module.exports = {
+  getStoryAudiencePref,
+  setStoryAudiencePref,
   muteStories,
   unmuteStories, getUploadSignature, createStory, getStories, getMyStories, deleteStory, reactToStory, getReactionsHandler, replyToStory, getStoryRepliesHandler, recordView, getViewersHandler };
