@@ -3,6 +3,7 @@ const Comment = require('../models/Comment');
 const Reply = require('../models/Reply');
 const Notification = require('../models/Notification');
 const Follow = require('../models/Follow');
+const { emitNotification, emitNotificationToMany } = require('../lib/notify');
 const Hashtag = require('../models/Hashtag');
 const { isBlocked } = require('../models/ReportBlock');
 const { resolveMentions } = require('../utils/mentions');
@@ -77,9 +78,12 @@ async function createPost(req, res) {
 
     if (textToIndex) {
       resolveMentions(textToIndex, req.user.id)
-        .then(mentioned => Promise.all(mentioned.map(u =>
-          Notification.createNotification({ recipientId: u.id, senderId: req.user.id, type: 'mention', postId: post.id })
-        )))
+        .then(async mentioned => {
+          await Promise.all(mentioned.map(u =>
+            Notification.createNotification({ recipientId: u.id, senderId: req.user.id, type: 'mention', postId: post.id })
+          ));
+          emitNotificationToMany(req.app, mentioned.map(u => u.id));
+        })
         .catch(err => console.error('Mention notification error:', err.message));
     }
 
@@ -89,12 +93,15 @@ async function createPost(req, res) {
     {
       const activityType = (postSubtype === 'event') ? 'new_event' : 'new_post';
       Follow.getNotifyFollowerIds(req.user.id)
-        .then(ids => Notification.createNotificationsForMany({
-          recipientIds: ids,
-          senderId: req.user.id,
-          type: activityType,
-          postId: post.id,
-        }))
+        .then(async ids => {
+          await Notification.createNotificationsForMany({
+            recipientIds: ids,
+            senderId: req.user.id,
+            type: activityType,
+            postId: post.id,
+          });
+          emitNotificationToMany(req.app, ids);
+        })
         .catch(err => console.error('Post notification fan-out error:', err.message));
     }
 
@@ -223,7 +230,9 @@ async function likePost(req, res) {
         senderId: req.user.id,
         type: 'like',
         postId,
-      }).catch(() => {});
+      })
+        .then(() => emitNotification(req.app, existing.user_id))
+        .catch(() => {});
     }
 
     res.json({ message: is_liked ? 'Post liked' : 'Post unliked', post, is_liked });
@@ -303,13 +312,18 @@ async function addComment(req, res) {
         senderId: req.user.id,
         type: 'comment',
         postId,
-      }).catch(() => {});
+      })
+        .then(() => emitNotification(req.app, existing.user_id))
+        .catch(() => {});
     }
 
     resolveMentions(content.trim(), req.user.id)
-      .then(mentioned => Promise.all(mentioned.map(u =>
-        Notification.createNotification({ recipientId: u.id, senderId: req.user.id, type: 'mention', postId })
-      )))
+      .then(async mentioned => {
+        await Promise.all(mentioned.map(u =>
+          Notification.createNotification({ recipientId: u.id, senderId: req.user.id, type: 'mention', postId })
+        ));
+        emitNotificationToMany(req.app, mentioned.map(u => u.id));
+      })
       .catch(err => console.error('Mention notification error:', err.message));
 
     res.status(201).json({ message: 'Comment added', comment, post });

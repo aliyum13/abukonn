@@ -1,5 +1,6 @@
 const Follow = require('../models/Follow');
 const Notification = require('../models/Notification');
+const { emitNotification } = require('../lib/notify');
 const User = require('../models/User');
 const { departmentsInSameFaculty, facultyForDepartment } = require('../lib/departments');
 
@@ -20,7 +21,9 @@ async function follow(req, res) {
       recipientId: followingId,
       senderId: followerId,
       type: 'follow',
-    }).catch(() => {});
+    })
+      .then(() => emitNotification(req.app, followingId))
+      .catch(() => {});
 
     res.json({ message: 'Followed successfully', ...stats });
   } catch (err) {

@@ -102,6 +102,11 @@ io.on('connection', (socket) => {
   onlineUsers.get(uid).add(socket.id);
   socket.broadcast.emit('user_status', { userId: uid, online: true });
 
+  // Private per-user room. The id comes from the verified auth middleware (not
+  // from the client), so a user can only ever join their own room. This is how
+  // notifications get pushed to a specific person in real time.
+  socket.join(`user_${uid}`);
+
   // ── Presence ────────────────────────────────────────────────────────
   socket.on('get_online_status', (userIds, callback) => {
     if (typeof callback !== 'function') return;
