@@ -1,6 +1,8 @@
 const Story = require('../models/Story');
 const { findOrCreateConversation, sendMessage } = require('../models/Message');
 const cloudinary = require('../config/cloudinary');
+const Follow = require('../models/Follow');
+const Notification = require('../models/Notification');
 
 const CLOUDINARY_TIMEOUT_MS = 120000;
 
@@ -65,6 +67,20 @@ async function getUploadSignature(req, res) {
   }
 }
 
+// Notify followers who turned the bell ON for this author that they posted a
+// story. Fire-and-forget so it never slows down the upload response.
+// Stories aren't posts, so post_id stays null.
+function notifyFollowersOfStory(authorId) {
+  Follow.getNotifyFollowerIds(authorId)
+    .then(ids => Notification.createNotificationsForMany({
+      recipientIds: ids,
+      senderId: authorId,
+      type: 'new_story',
+      postId: null,
+    }))
+    .catch(err => console.error('Story notification fan-out error:', err.message));
+}
+
 async function createStory(req, res) {
   try {
     const storyType = req.body?.story_type;
@@ -83,6 +99,7 @@ async function createStory(req, res) {
         bgColor,
         // No caption for text stories — the text content is the story
       });
+      notifyFollowersOfStory(req.user.id);
       return res.status(201).json({ story });
     }
 
@@ -97,6 +114,7 @@ async function createStory(req, res) {
         storyType: 'image',
         caption,
       });
+      notifyFollowersOfStory(req.user.id);
       return res.status(201).json({ story });
     }
 
@@ -122,6 +140,7 @@ async function createStory(req, res) {
       storyType: 'image',
       caption,
     });
+    notifyFollowersOfStory(req.user.id);
     res.status(201).json({ story });
   } catch (err) {
     console.error('Create story error:', err.message);

@@ -197,6 +197,35 @@ async function search(req, res) {
   }
 }
 
+// Toggle the notification bell for someone you follow. You must already
+// follow them (the bell lives on the follow relationship).
+async function setNotifications(req, res) {
+  try {
+    const followingId = parseInt(req.params.userId, 10);
+    const { enabled } = req.body;
+    const result = await Follow.setNotifyOnPost(req.user.id, followingId, enabled);
+    if (result === null) {
+      return res.status(400).json({ message: 'Follow this person first to turn on notifications' });
+    }
+    res.json({ notify_on_post: result });
+  } catch (err) {
+    console.error('setNotifications error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// Is the bell on for this person?
+async function getNotifications(req, res) {
+  try {
+    const followingId = parseInt(req.params.userId, 10);
+    const on = await Follow.getNotifyOnPost(req.user.id, followingId);
+    res.json({ notify_on_post: on });
+  } catch (err) {
+    console.error('getNotifications error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
 module.exports = {
   follow,
   unfollow,
@@ -209,4 +238,6 @@ module.exports = {
   getSuggestions,
   discover,
   search,
+  setNotifications,
+  getNotifications,
 };

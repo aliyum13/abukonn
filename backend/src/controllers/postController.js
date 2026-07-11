@@ -2,6 +2,7 @@ const Post = require('../models/Post');
 const Comment = require('../models/Comment');
 const Reply = require('../models/Reply');
 const Notification = require('../models/Notification');
+const Follow = require('../models/Follow');
 const Hashtag = require('../models/Hashtag');
 const { isBlocked } = require('../models/ReportBlock');
 const { resolveMentions } = require('../utils/mentions');
@@ -80,6 +81,21 @@ async function createPost(req, res) {
           Notification.createNotification({ recipientId: u.id, senderId: req.user.id, type: 'mention', postId: post.id })
         )))
         .catch(err => console.error('Mention notification error:', err.message));
+    }
+
+    // Notify followers who turned the bell ON for this author. Fire-and-forget
+    // so a large follower list never slows down posting. Events get their own
+    // type so the notification can read "posted an event".
+    {
+      const activityType = (postSubtype === 'event') ? 'new_event' : 'new_post';
+      Follow.getNotifyFollowerIds(req.user.id)
+        .then(ids => Notification.createNotificationsForMany({
+          recipientIds: ids,
+          senderId: req.user.id,
+          type: activityType,
+          postId: post.id,
+        }))
+        .catch(err => console.error('Post notification fan-out error:', err.message));
     }
 
     const fullPost = await Post.getPostById(post.id);

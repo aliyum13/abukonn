@@ -12,6 +12,8 @@ const {
   getSuggestions,
   discover,
   search,
+  setNotifications,
+  getNotifications,
 } = require("../controllers/followController");
 
 const router = express.Router();
@@ -29,6 +31,8 @@ router.post('/:userId', follow);
 router.delete('/:userId', unfollow);
 router.get('/:userId/stats', getStats);
 router.get('/:userId/is-following', checkIsFollowing);
+router.get('/:userId/notifications', getNotifications);
+router.put('/:userId/notifications', setNotifications);
 router.get('/:userId/followers', getUserFollowers);
 router.get('/:userId/following', getUserFollowing);
 

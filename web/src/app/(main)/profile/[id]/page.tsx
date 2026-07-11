@@ -121,29 +121,94 @@ function FollowBtn({
   const { isFollowing, loading, toggle } = useFollow(userId, initialIsFollowing, initialFollowersCount, token);
   const [hovered, setHovered] = useState(false);
 
+  // Notification bell — opt in to be notified of this person's posts, events
+  // and stories. Only meaningful while following (the setting lives on the
+  // follow relationship), so it's hidden otherwise.
+  const [bellOn, setBellOn] = useState(false);
+  const [bellBusy, setBellBusy] = useState(false);
+
+  useEffect(() => {
+    if (!token || !isFollowing) { setBellOn(false); return; }
+    fetch(`${API_URL}/api/follows/${userId}/notifications`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then(d => setBellOn(!!d.notify_on_post))
+      .catch(() => {});
+  }, [token, userId, isFollowing]);
+
+  const toggleBell = async () => {
+    if (!token || bellBusy) return;
+    const next = !bellOn;
+    setBellOn(next); // optimistic
+    setBellBusy(true);
+    try {
+      const res = await fetch(`${API_URL}/api/follows/${userId}/notifications`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: next }),
+      });
+      if (!res.ok) setBellOn(!next); // revert
+    } catch {
+      setBellOn(!next);
+    } finally {
+      setBellBusy(false);
+    }
+  };
+
   const label = isFollowing
     ? (hovered ? 'Unfollow' : 'Following')
     : 'Follow';
 
   return (
-    <Button
-      variant={isFollowing ? 'outline' : 'primary'}
-      size="sm"
-      onClick={toggle}
-      loading={loading}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      className={cn(
-        'rounded-full px-5 min-w-[90px] transition-colors',
-        isFollowing && hovered
-          ? 'border-red-300 text-red-600 dark:border-red-700 dark:text-red-400'
-          : isFollowing
-          ? 'border-border'
-          : ''
+    <div className="flex items-center gap-2">
+      <Button
+        variant={isFollowing ? 'outline' : 'primary'}
+        size="sm"
+        onClick={toggle}
+        loading={loading}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        className={cn(
+          'rounded-full px-5 min-w-[90px] transition-colors',
+          isFollowing && hovered
+            ? 'border-red-300 text-red-600 dark:border-red-700 dark:text-red-400'
+            : isFollowing
+            ? 'border-border'
+            : ''
+        )}
+      >
+        {label}
+      </Button>
+
+      {isFollowing && (
+        <button
+          type="button"
+          onClick={toggleBell}
+          disabled={bellBusy}
+          aria-label={bellOn ? 'Turn off post notifications' : 'Turn on post notifications'}
+          title={bellOn ? 'You get notified about their posts' : 'Get notified about their posts'}
+          className={cn(
+            'flex h-9 w-9 items-center justify-center rounded-full border transition-colors disabled:opacity-60',
+            bellOn
+              ? 'border-brand-500 bg-brand-50 text-brand-600 dark:bg-brand-950 dark:text-brand-400'
+              : 'border-border text-ink-muted hover:text-ink'
+          )}
+        >
+          {bellOn ? (
+            // Bell with a check — notifications on
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2a6 6 0 00-6 6v2.6c0 .5-.2 1-.5 1.4L4 14h16l-1.5-2a2.3 2.3 0 01-.5-1.4V8a6 6 0 00-6-6zM9.5 18a2.5 2.5 0 005 0h-5z" />
+            </svg>
+          ) : (
+            // Outline bell — notifications off
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+            </svg>
+          )}
+        </button>
       )}
-    >
-      {label}
-    </Button>
+    </div>
   );
 }
 

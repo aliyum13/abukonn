@@ -13,16 +13,21 @@ CREATE TABLE IF NOT EXISTS abukonn.notifications (
 CREATE INDEX IF NOT EXISTS notifications_recipient_idx
   ON abukonn.notifications(recipient_id);
 
--- Widen type constraint to include connect notifications
+-- Widen type constraint to include connect + activity notifications.
+-- 'new_post', 'new_event', 'new_story' fire only for followers who opted in
+-- via the per-user notification bell (follows.notify_on_post).
 DO $$
 BEGIN
   ALTER TABLE abukonn.notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
   ALTER TABLE abukonn.notifications ADD CONSTRAINT notifications_type_check
-    CHECK (type IN ('like','comment','follow','connect_request','connect_accepted','mention'));
+    CHECK (type IN ('like','comment','follow','connect_request','connect_accepted','mention',
+                    'new_post','new_event','new_story'));
 EXCEPTION WHEN others THEN NULL;
 END $$;
 `;
 
+// Types that get grouped ("X and 3 others liked your post"). Activity
+// notifications are NOT grouped — each is about a distinct piece of content.
 const GROUPABLE = new Set(['like', 'comment', 'follow']);
 
 async function createNotificationsTable() {
@@ -39,6 +44,20 @@ async function createNotification({ recipientId, senderId, type, postId = null }
     [recipientId, senderId, type, postId]
   );
   return result.rows[0];
+}
+
+// Fan out one activity notification to many recipients in a single query.
+// Used when a followed user posts — notifies only followers who opted in.
+// Silently no-ops when there are no recipients.
+async function createNotificationsForMany({ recipientIds, senderId, type, postId = null }) {
+  const targets = (recipientIds || []).filter((id) => id !== senderId);
+  if (targets.length === 0) return 0;
+  const result = await pool.query(
+    `INSERT INTO abukonn.notifications (recipient_id, sender_id, type, post_id)
+     SELECT unnest($1::int[]), $2, $3, $4`,
+    [targets, senderId, type, postId]
+  );
+  return result.rowCount;
 }
 
 async function getGroupedNotifications(userId) {
@@ -149,6 +168,7 @@ async function markManyRead(ids, userId) {
 module.exports = {
   createNotificationsTable,
   createNotification,
+  createNotificationsForMany,
   getGroupedNotifications,
   getUnreadCount,
   markAllRead,

@@ -10,7 +10,8 @@ import { Avatar, Button, Card, CardContent, Skeleton } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
-type NotifType = 'like' | 'comment' | 'follow' | 'connect_request' | 'connect_accepted' | 'mention';
+type NotifType = 'like' | 'comment' | 'follow' | 'connect_request' | 'connect_accepted' | 'mention'
+  | 'new_post' | 'new_event' | 'new_story';
 
 interface Actor {
   id: number;
@@ -36,11 +37,16 @@ function notifVerb(type: NotifType): string {
   if (type === 'connect_request') return 'sent you a connect request';
   if (type === 'connect_accepted') return 'accepted your connect request';
   if (type === 'mention') return 'mentioned you';
+  if (type === 'new_post') return 'made a new post';
+  if (type === 'new_event') return 'posted an event';
+  if (type === 'new_story') return 'added to their story';
   return 'interacted with you';
 }
 
 function notifHref(n: GroupedNotification): string {
   if (n.type === 'connect_request') return '/connect/requests';
+  // Stories aren't posts — they live on the feed's story bar.
+  if (n.type === 'new_story') return '/feed';
   if (n.type === 'follow' || n.type === 'connect_accepted') return `/profile/${n.actors[0]?.id ?? ''}`;
   if (n.post_id) return `/post/${n.post_id}`;
   return '/feed';
@@ -80,6 +86,27 @@ function NotifIcon({ type }: { type: NotifType }) {
         <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zm0 0c0 1.657 1.007 3 2.25 3S21 13.657 21 12a9 9 0 10-2.636 6.364M16.5 12V8.25" />
         </svg>
+      </span>
+    );
+  }
+  // Activity notifications (from people whose bell you turned on)
+  if (type === 'new_post' || type === 'new_event' || type === 'new_story') {
+    return (
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-950 dark:text-amber-400">
+        {type === 'new_event' ? (
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+          </svg>
+        ) : type === 'new_story' ? (
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
+          </svg>
+        ) : (
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+          </svg>
+        )}
       </span>
     );
   }
