@@ -8,6 +8,7 @@ const {
   recordView, getViewersHandler,
   muteStories, unmuteStories,
   getStoryAudiencePref, setStoryAudiencePref,
+  previewLink,
 } = require('../controllers/storyController');
 
 const router = express.Router();
@@ -15,6 +16,7 @@ router.use(auth);
 
 router.get('/', getStories);
 router.get('/mine', getMyStories);
+router.get('/link-preview', previewLink);
 router.get('/audience', getStoryAudiencePref);
 router.put('/audience', setStoryAudiencePref);
 router.post('/mute/:userId', muteStories);

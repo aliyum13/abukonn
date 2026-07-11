@@ -25,7 +25,15 @@ ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS font_style VARCHAR(20);
 --   'all'    — every follower (default, existing behaviour)
 --   'except' — every follower EXCEPT the people listed in story_audience
 --   'only'   — ONLY the people listed in story_audience
-ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS audience VARCHAR(10) NOT NULL DEFAULT 'all';`;
+ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS audience VARCHAR(10) NOT NULL DEFAULT 'all';
+-- Link preview, captured when the story is posted. Snapshotted rather than
+-- re-fetched on every view: pages change, go down, or start redirecting, and we
+-- don't want to hit a third-party site once per viewer.
+ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS link_url TEXT;
+ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS link_title TEXT;
+ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS link_description TEXT;
+ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS link_image TEXT;
+ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS link_site_name TEXT;`;
 
 // The people named by a story's 'except'/'only' list. This is a SNAPSHOT taken
 // when the story is posted — deliberately not a live reference to the author's
@@ -109,11 +117,14 @@ async function createStoriesTable() {
   console.log('Stories table ready');
 }
 
-async function createStory({ userId, mediaUrl, mediaType = 'image', storyType = 'image', textContent = null, bgColor = null, caption = null, fontStyle = null, audience = 'all' }) {
+async function createStory({ userId, mediaUrl, mediaType = 'image', storyType = 'image', textContent = null, bgColor = null, caption = null, fontStyle = null, audience = 'all', link = null }) {
   const result = await pool.query(
-    `INSERT INTO abukonn.stories (user_id, media_url, media_type, story_type, text_content, bg_color, caption, font_style, audience)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-    [userId, mediaUrl, mediaType, storyType, textContent, bgColor, caption, fontStyle, audience]
+    `INSERT INTO abukonn.stories
+       (user_id, media_url, media_type, story_type, text_content, bg_color, caption, font_style, audience,
+        link_url, link_title, link_description, link_image, link_site_name)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
+    [userId, mediaUrl, mediaType, storyType, textContent, bgColor, caption, fontStyle, audience,
+     link?.url || null, link?.title || null, link?.description || null, link?.image || null, link?.site_name || null]
   );
   return result.rows[0];
 }
@@ -154,6 +165,7 @@ async function getActiveStoriesForUser(userId) {
   const result = await pool.query(
     `SELECT s.id, s.user_id, s.media_url, s.media_type, s.story_type, s.text_content, s.bg_color,
             s.caption, s.font_style, s.created_at, s.expires_at,
+            s.link_url, s.link_title, s.link_description, s.link_image, s.link_site_name,
             u.full_name AS user_name, u.profile_photo_url AS user_photo,
             CASE WHEN s.user_id = $1 THEN COUNT(sv.id)::int ELSE NULL END AS view_count,
             -- Has THIS viewer seen this story? Read from story_views (the server
@@ -225,6 +237,7 @@ async function getMyActiveStories(userId) {
   const result = await pool.query(
     `SELECT s.id, s.user_id, s.media_url, s.media_type, s.story_type, s.text_content, s.bg_color,
             s.caption, s.font_style, s.created_at, s.expires_at,
+            s.link_url, s.link_title, s.link_description, s.link_image, s.link_site_name,
             COUNT(sv.id)::int AS view_count
      FROM abukonn.stories s
      LEFT JOIN abukonn.story_views sv ON sv.story_id = s.id

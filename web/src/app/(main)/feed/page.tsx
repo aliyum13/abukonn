@@ -123,6 +123,11 @@ interface Story {
   bg_color: string | null;
   font_style: string | null;
   caption: string | null;
+  link_url: string | null;
+  link_title: string | null;
+  link_description: string | null;
+  link_image: string | null;
+  link_site_name: string | null;
   created_at: string;
   expires_at: string;
   view_count: number | null;
@@ -135,6 +140,39 @@ interface Story {
 // that flicking past someone doesn't mark them read (or tell them you looked),
 // short enough that a genuine glance still registers.
 const STORY_SEEN_DWELL_MS = 1200;
+
+// Link preview card, used both in the composer and in the story viewer.
+function LinkPreviewCard({
+  url, title, description, image, siteName, compact = false,
+}: {
+  url: string; title?: string | null; description?: string | null;
+  image?: string | null; siteName?: string | null; compact?: boolean;
+}) {
+  let host = siteName;
+  if (!host) { try { host = new URL(url).hostname; } catch { host = url; } }
+  return (
+    <div className={cn(
+      'overflow-hidden rounded-xl border border-white/20 bg-black/40 backdrop-blur',
+      compact && 'flex items-center gap-2'
+    )}>
+      {image && (
+        <img
+          src={image}
+          alt=""
+          className={cn('bg-black/30 object-cover', compact ? 'h-14 w-14 shrink-0' : 'h-32 w-full')}
+          onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+        />
+      )}
+      <div className={cn('min-w-0 p-2.5', compact && 'py-1.5')}>
+        <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-white/60">{host}</p>
+        {title && <p className="line-clamp-2 text-[13px] font-semibold leading-snug text-white">{title}</p>}
+        {description && !compact && (
+          <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-white/70">{description}</p>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // Text-story fonts. Keys must match the backend whitelist (STORY_FONTS).
 const STORY_FONTS: Record<string, { label: string; className: string }> = {
@@ -661,13 +699,33 @@ function StoryViewer({
         {story.story_type === 'text' ? (
           <div className="flex h-full w-full items-center justify-center px-8"
             style={{ backgroundColor: story.bg_color || '#16a34a' }}>
-            <p className={cn(
-              'text-center leading-tight text-white break-words w-full',
-              storyFontClass(story.font_style),
-              (story.text_content?.length ?? 0) > 100 ? 'text-xl' : (story.text_content?.length ?? 0) > 50 ? 'text-2xl' : 'text-3xl'
-            )}>
-              {story.text_content}
-            </p>
+            <div className="flex w-full flex-col items-center gap-4">
+              <p className={cn(
+                'text-center leading-tight text-white break-words w-full',
+                storyFontClass(story.font_style),
+                (story.text_content?.length ?? 0) > 100 ? 'text-xl' : (story.text_content?.length ?? 0) > 50 ? 'text-2xl' : 'text-3xl'
+              )}>
+                {story.text_content}
+              </p>
+              {story.link_url && (
+                <a
+                  href={story.link_url}
+                  target="_blank"
+                  rel="noopener noreferrer nofollow"
+                  onClick={e => e.stopPropagation()}
+                  onPointerDown={e => e.stopPropagation()}
+                  className="w-full max-w-xs"
+                >
+                  <LinkPreviewCard
+                    url={story.link_url}
+                    title={story.link_title}
+                    description={story.link_description}
+                    image={story.link_image}
+                    siteName={story.link_site_name}
+                  />
+                </a>
+              )}
+            </div>
           </div>
         ) : story.story_type === 'video' ? (
           <video
@@ -1192,6 +1250,11 @@ export default function FeedPage() {
   const [storyAudience, setStoryAudience] = useState<'all' | 'except' | 'only'>('all');
   const [storyAudienceIds, setStoryAudienceIds] = useState<number[]>([]);
   const [showAudiencePicker, setShowAudiencePicker] = useState(false);
+  // Link preview for text stories — fetched as you type, shown before posting.
+  const [linkPreview, setLinkPreview] = useState<{ url: string; title: string | null; description: string | null; image: string | null; site_name: string | null } | null>(null);
+  const [linkLoading, setLinkLoading] = useState(false);
+  const linkTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastLinkUrl = useRef<string | null>(null);
   const [audienceCandidates, setAudienceCandidates] = useState<Array<{ id: number; full_name: string; profile_photo_url: string | null }>>([]);
   const [storyCaption, setStoryCaption] = useState('');
   const [viewedStoryIds, setViewedStoryIds] = useState<Set<number>>(new Set());
@@ -1268,7 +1331,7 @@ export default function FeedPage() {
       if (e.key !== 'Escape') return;
       if (showUploadStory) {
         setShowUploadStory(false);
-        setStoryFiles([]); setStoryPreviews([]); setStoryText(''); setStoryBgColor('#16a34a'); setStoryFont('classic'); setStoryTab('media'); setStoryCaption(''); setStoryUploadError(''); setStoryUploadProgress(null);
+        setStoryFiles([]); setStoryPreviews([]); setStoryText(''); setStoryBgColor('#16a34a'); setStoryFont('classic'); setLinkPreview(null); lastLinkUrl.current = null; setStoryTab('media'); setStoryCaption(''); setStoryUploadError(''); setStoryUploadProgress(null);
       } else {
         setLightboxUrl(null); setViewingGroup(null);
       }
@@ -1294,6 +1357,74 @@ export default function FeedPage() {
       .then(d => setAudienceCandidates(d.followers || []))
       .catch(() => {});
   }, [token, showUploadStory]);
+
+  // Detect a URL in the text status and fetch its preview (debounced, so we
+  // don't hit the server on every keystroke). The server re-derives the preview
+  // when the story is actually posted, so this is purely a composer courtesy.
+  useEffect(() => {
+    if (!token || storyTab !== 'text') return;
+    const match = storyText.match(/https?:\/\/[^\s<>"']+/i);
+    const url = match ? match[0] : null;
+
+    if (!url) {
+      setLinkPreview(null);
+      lastLinkUrl.current = null;
+      return;
+    }
+    if (url === lastLinkUrl.current) return; // already previewed this exact URL
+
+    if (linkTimer.current) clearTimeout(linkTimer.current);
+    linkTimer.current = setTimeout(async () => {
+      lastLinkUrl.current = url;
+      setLinkLoading(true);
+      try {
+        const res = await fetch(`${API_URL}/api/stories/link-preview?url=${encodeURIComponent(url)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setLinkPreview(res.ok ? (await res.json()).preview : null);
+      } catch {
+        setLinkPreview(null);
+      } finally {
+        setLinkLoading(false);
+      }
+    }, 700);
+
+    return () => { if (linkTimer.current) clearTimeout(linkTimer.current); };
+  }, [storyText, storyTab, token]);
+
+  // Detect a URL in the text status and fetch its preview (debounced, so we
+  // don't hit the server on every keystroke). The server re-derives the preview
+  // when the story is actually posted, so this is purely a composer courtesy.
+  useEffect(() => {
+    if (!token || storyTab !== 'text') return;
+    const match = storyText.match(/https?:\/\/[^\s<>"']+/i);
+    const url = match ? match[0] : null;
+
+    if (!url) {
+      setLinkPreview(null);
+      lastLinkUrl.current = null;
+      return;
+    }
+    if (url === lastLinkUrl.current) return; // already previewed this exact URL
+
+    if (linkTimer.current) clearTimeout(linkTimer.current);
+    linkTimer.current = setTimeout(async () => {
+      lastLinkUrl.current = url;
+      setLinkLoading(true);
+      try {
+        const res = await fetch(`${API_URL}/api/stories/link-preview?url=${encodeURIComponent(url)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setLinkPreview(res.ok ? (await res.json()).preview : null);
+      } catch {
+        setLinkPreview(null);
+      } finally {
+        setLinkLoading(false);
+      }
+    }, 700);
+
+    return () => { if (linkTimer.current) clearTimeout(linkTimer.current); };
+  }, [storyText, storyTab, token]);
 
   // Fetch stories
   useEffect(() => {
@@ -2036,7 +2167,7 @@ export default function FeedPage() {
       setStoryPreviews([]);
       setStoryCaption('');
       setStoryText('');
-      setStoryBgColor('#16a34a'); setStoryFont('classic');
+      setStoryBgColor('#16a34a'); setStoryFont('classic'); setLinkPreview(null); lastLinkUrl.current = null;
       setStoryTab('media');
       setStoryUploadIdx(0);
     };
@@ -3738,7 +3869,7 @@ export default function FeedPage() {
       {/* Story Upload modal */}
       {showUploadStory && (() => {
         const BG_PRESETS = ['#16a34a','#1d4ed8','#7c3aed','#dc2626','#ea580c','#0891b2','#111827','#be185d'];
-        const closeModal = () => { setShowUploadStory(false); setStoryFiles([]); setStoryPreviews([]); setStoryText(''); setStoryBgColor('#16a34a'); setStoryFont('classic'); setStoryTab('media'); setStoryCaption(''); setStoryUploadError(''); setStoryUploadProgress(null); };
+        const closeModal = () => { setShowUploadStory(false); setStoryFiles([]); setStoryPreviews([]); setStoryText(''); setStoryBgColor('#16a34a'); setStoryFont('classic'); setLinkPreview(null); lastLinkUrl.current = null; setStoryTab('media'); setStoryCaption(''); setStoryUploadError(''); setStoryUploadProgress(null); };
         // 'Only…' with nobody picked would post a story visible to no one.
         const audienceOk = storyAudience !== 'only' || storyAudienceIds.length > 0;
         const canShare = (storyTab === 'text' ? storyText.trim().length > 0 : storyFiles.length > 0) && audienceOk;
@@ -3869,6 +4000,26 @@ export default function FeedPage() {
                         />
                       ))}
                     </div>
+
+                    {/* Link preview — appears when a URL is detected in the text */}
+                    {storyTab === 'text' && (linkLoading || linkPreview) && (
+                      <div className="mb-3">
+                        {linkLoading && !linkPreview ? (
+                          <p className="text-[12px] text-ink-muted">Loading link preview…</p>
+                        ) : linkPreview ? (
+                          <div className="rounded-xl bg-black/80 p-1.5">
+                            <LinkPreviewCard
+                              url={linkPreview.url}
+                              title={linkPreview.title}
+                              description={linkPreview.description}
+                              image={linkPreview.image}
+                              siteName={linkPreview.site_name}
+                              compact
+                            />
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
 
                     {/* Font picker — each option previews its own font */}
                     <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
