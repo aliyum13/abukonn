@@ -9,8 +9,8 @@ cloudinary.config({
 
 async function browse(req, res) {
   try {
-    const { type, department, level, course_code, search, page } = req.query;
-    const result = await Library.getMaterials({ type, department, level, course_code, search, page: parseInt(page) || 1 });
+    const { type, faculty, department, level, course_code, search, page } = req.query;
+    const result = await Library.getMaterials({ type, faculty, department, level, course_code, search, page: parseInt(page) || 1 });
     res.json(result);
   } catch (err) {
     console.error('browse library:', err.message);

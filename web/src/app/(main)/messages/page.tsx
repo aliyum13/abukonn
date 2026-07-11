@@ -483,6 +483,9 @@ export default function MessagesPage() {
   // Create group modal
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [createGroupName, setCreateGroupName] = useState('');
+  // Group visibility + join policy (set at creation, changeable later in settings)
+  const [createGroupPublic, setCreateGroupPublic] = useState(false);
+  const [createGroupApproval, setCreateGroupApproval] = useState(false);
   const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>([]);
   const [followers, setFollowers] = useState<Follower[]>([]);
   const [followerSearch, setFollowerSearch] = useState('');
@@ -777,6 +780,8 @@ export default function MessagesPage() {
     if (!token || !user) return;
     setShowCreateGroup(true);
     setCreateGroupName('');
+    setCreateGroupPublic(false);
+    setCreateGroupApproval(false);
     setSelectedMemberIds([]);
     setFollowerSearch('');
     fetchFollowers();
@@ -824,7 +829,12 @@ export default function MessagesPage() {
       const res = await fetch(`${API_URL}/api/groups`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ name: createGroupName.trim(), member_ids: selectedMemberIds }),
+        body: JSON.stringify({
+          name: createGroupName.trim(),
+          member_ids: selectedMemberIds,
+          is_public: createGroupPublic,
+          require_approval: createGroupPublic ? createGroupApproval : false,
+        }),
       });
       if (!res.ok) return;
       const data = await res.json();
@@ -2174,6 +2184,44 @@ export default function MessagesPage() {
               <div>
                 <label className="mb-1.5 block text-body-sm font-medium text-ink">Group Name</label>
                 <Input value={createGroupName} onChange={e => setCreateGroupName(e.target.value)} placeholder="e.g. CS Study Group 2025" />
+              </div>
+
+              {/* Visibility. Public groups are listed on /groups so anyone can find
+                  them; private groups stay invite-only and never appear there. */}
+              <div>
+                <label className="mb-1.5 block text-body-sm font-medium text-ink">Visibility</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCreateGroupPublic(false)}
+                    className={cn('rounded-xl border px-3 py-2 text-left transition',
+                      !createGroupPublic ? 'border-brand-500 bg-brand-50 dark:bg-brand-950' : 'border-border')}
+                  >
+                    <p className="text-[13px] font-semibold text-ink">Private</p>
+                    <p className="text-[11px] text-ink-muted">Invite only</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCreateGroupPublic(true)}
+                    className={cn('rounded-xl border px-3 py-2 text-left transition',
+                      createGroupPublic ? 'border-brand-500 bg-brand-50 dark:bg-brand-950' : 'border-border')}
+                  >
+                    <p className="text-[13px] font-semibold text-ink">Public</p>
+                    <p className="text-[11px] text-ink-muted">Anyone can find it</p>
+                  </button>
+                </div>
+
+                {createGroupPublic && (
+                  <label className="mt-2 flex items-center gap-2 rounded-xl border border-border px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={createGroupApproval}
+                      onChange={e => setCreateGroupApproval(e.target.checked)}
+                      className="h-4 w-4 accent-brand-600"
+                    />
+                    <span className="text-[13px] text-ink">Require my approval to join</span>
+                  </label>
+                )}
               </div>
 
               <div>

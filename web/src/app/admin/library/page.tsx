@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Button, Card, CardContent, CardHeader, CardTitle, Skeleton } from '@/components/ui';
 import { cn } from '@/lib/utils';
-import { DepartmentOptions, LEVELS } from '@/lib/departments';
+import { DepartmentOptions, LEVELS, DEPARTMENT_GROUPS } from '@/lib/departments';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 const TYPES = ['past_question','lecture_note','textbook','other'];
@@ -100,7 +100,18 @@ export default function AdminLibraryPage() {
               </select>
             </div>
             <div><label className="mb-1.5 block text-label text-ink-secondary">Department</label>
-              <select value={dept} onChange={e=>setDept(e.target.value)} className={inputCls}>
+              <select
+                value={dept}
+                onChange={e => {
+                  const d = e.target.value;
+                  setDept(d);
+                  // Faculty is implied by the department — derive it so materials
+                  // are actually filterable by faculty (it was previously saved blank).
+                  const g = DEPARTMENT_GROUPS.find(gr => gr.departments.includes(d));
+                  setFaculty(g ? g.faculty : '');
+                }}
+                className={inputCls}
+              >
                 <option value="">Select department</option>
                 <DepartmentOptions />
               </select>

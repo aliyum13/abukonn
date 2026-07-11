@@ -1,6 +1,8 @@
 const express = require('express');
 const auth = require('../middleware/auth');
 const {
+  discoverGroups,
+  joinGroup,
   createGroup, getMyGroups, getGroupMessages, sendGroupMessage,
   addGroupMember, removeGroupMember, setMemberRoleHandler, leaveGroup, deleteGroupHandler,
   getInviteLink, resetGroupInviteCode, joinByInviteCode, getGroupByInvitePreview,
@@ -14,6 +16,8 @@ router.use(auth);
 // Static routes before /:id
 router.post('/', createGroup);
 router.get('/', getMyGroups);
+router.get('/discover', discoverGroups);
+router.post('/:id/join', joinGroup);
 router.get('/join/:inviteCode', getGroupByInvitePreview);
 router.post('/join/:inviteCode', joinByInviteCode);
 

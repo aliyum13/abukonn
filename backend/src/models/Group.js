@@ -47,6 +47,10 @@ async function createGroupTables() {
   await pool.query(`ALTER TABLE abukonn.groups ADD COLUMN IF NOT EXISTS require_approval BOOLEAN DEFAULT FALSE`);
   await pool.query(`ALTER TABLE abukonn.groups ADD COLUMN IF NOT EXISTS only_admins_can_add BOOLEAN DEFAULT FALSE`);
   await pool.query(`ALTER TABLE abukonn.groups ADD COLUMN IF NOT EXISTS description TEXT`);
+  // Visibility: public groups appear in the browsable groups list and can be
+  // joined (or requested) by anyone. Private groups stay invite-only and never
+  // appear in discovery. Default FALSE so existing groups stay private.
+  await pool.query(`ALTER TABLE abukonn.groups ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT FALSE`);
   await pool.query(`ALTER TABLE abukonn.group_messages ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE`);
   await pool.query(`ALTER TABLE abukonn.group_messages ADD COLUMN IF NOT EXISTS image_url TEXT`);
   await pool.query(`ALTER TABLE abukonn.group_messages ADD COLUMN IF NOT EXISTS file_url TEXT`);
@@ -71,14 +75,14 @@ async function createGroupTables() {
   console.log('Group tables ready');
 }
 
-async function createGroup(name, createdBy, description = null) {
+async function createGroup(name, createdBy, description = null, isPublic = false, requireApproval = false) {
   for (let i = 0; i < 10; i++) {
     const inviteCode = generateInviteCode();
     try {
       const { rows } = await pool.query(
-        `INSERT INTO abukonn.groups (name, created_by, description, invite_code)
-         VALUES ($1, $2, $3, $4) RETURNING *`,
-        [name, createdBy, description, inviteCode]
+        `INSERT INTO abukonn.groups (name, created_by, description, invite_code, is_public, require_approval)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [name, createdBy, description, inviteCode, !!isPublic, !!requireApproval]
       );
       return rows[0];
     } catch (err) {
@@ -86,6 +90,55 @@ async function createGroup(name, createdBy, description = null) {
     }
   }
   throw new Error('Could not generate unique invite code');
+}
+
+// Browsable list of PUBLIC groups only. Private groups never appear here.
+// Returns each group with its member count and the viewer's relationship to it
+// ('none' | 'pending' | 'member') so the UI can show Join / Requested / Open.
+async function discoverPublicGroups(userId, query = null) {
+  const params = [userId];
+  let where = 'g.is_public = TRUE';
+  if (query && query.trim()) {
+    params.push(`%${query.trim()}%`);
+    where += ` AND (g.name ILIKE $${params.length} OR g.description ILIKE $${params.length})`;
+  }
+  const { rows } = await pool.query(
+    `SELECT g.id, g.name, g.description, g.avatar_url, g.require_approval, g.created_at,
+            (SELECT COUNT(*) FROM abukonn.group_members m
+              WHERE m.group_id = g.id AND m.status = 'active')::int AS member_count,
+            COALESCE(
+              (SELECT me.status FROM abukonn.group_members me
+                WHERE me.group_id = g.id AND me.user_id = $1),
+              'none'
+            ) AS my_status
+     FROM abukonn.groups g
+     WHERE ${where}
+     ORDER BY member_count DESC, g.created_at DESC
+     LIMIT 50`,
+    params
+  );
+  return rows;
+}
+
+// Join a public group. If the group requires approval, the member is added as
+// 'pending' and must be approved by an admin; otherwise they join immediately.
+// Private groups cannot be joined this way — they remain invite-only.
+async function joinPublicGroup(groupId, userId) {
+  const group = await getGroupById(groupId);
+  if (!group) return { ok: false, reason: 'not_found' };
+  if (!group.is_public) return { ok: false, reason: 'private' };
+
+  const { rows: existing } = await pool.query(
+    `SELECT status FROM abukonn.group_members WHERE group_id = $1 AND user_id = $2`,
+    [groupId, userId]
+  );
+  if (existing[0]) {
+    return { ok: true, status: existing[0].status, already: true };
+  }
+
+  const status = group.require_approval ? 'pending' : 'active';
+  await addMember(groupId, userId, 'member', status);
+  return { ok: true, status, already: false };
 }
 
 async function addMember(groupId, userId, role = 'member', status = 'active') {
@@ -215,7 +268,7 @@ async function resetInviteCode(groupId) {
   }
 }
 
-async function updateGroupSettings(groupId, { name, description, requireApproval, onlyAdminsCanAdd, inviteEnabled, avatarUrl }) {
+async function updateGroupSettings(groupId, { name, description, requireApproval, onlyAdminsCanAdd, inviteEnabled, avatarUrl, isPublic }) {
   const sets = [];
   const vals = [];
   let i = 1;
@@ -225,6 +278,7 @@ async function updateGroupSettings(groupId, { name, description, requireApproval
   if (onlyAdminsCanAdd !== undefined) { sets.push(`only_admins_can_add = $${i++}`); vals.push(onlyAdminsCanAdd); }
   if (inviteEnabled !== undefined) { sets.push(`invite_enabled = $${i++}`); vals.push(inviteEnabled); }
   if (avatarUrl !== undefined) { sets.push(`avatar_url = $${i++}`); vals.push(avatarUrl); }
+  if (isPublic !== undefined) { sets.push(`is_public = $${i++}`); vals.push(!!isPublic); }
   if (!sets.length) return getGroupById(groupId);
   vals.push(groupId);
   const { rows } = await pool.query(
@@ -305,6 +359,8 @@ async function getPendingMembers(groupId) {
 }
 
 module.exports = {
+  discoverPublicGroups,
+  joinPublicGroup,
   createGroupTables, createGroup, addMember, removeMember, isMember, isAdmin,
   countAdmins, setMemberRole, setMemberStatus, getMyGroups, getGroupById,
   getGroupByInviteCode, resetInviteCode, updateGroupSettings, deleteGroup,
