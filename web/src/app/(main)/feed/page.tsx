@@ -131,6 +131,11 @@ interface Story {
   viewed?: boolean;
 }
 
+// How long a story must stay on screen before it counts as seen. Long enough
+// that flicking past someone doesn't mark them read (or tell them you looked),
+// short enough that a genuine glance still registers.
+const STORY_SEEN_DWELL_MS = 1200;
+
 // Text-story fonts. Keys must match the backend whitelist (STORY_FONTS).
 const STORY_FONTS: Record<string, { label: string; className: string }> = {
   classic: { label: 'Classic', className: 'font-sans font-semibold' },
@@ -1453,38 +1458,48 @@ export default function FeedPage() {
     } catch {}
   }, []);
 
-  // Mark current story as viewed: optimistically in state + localStorage (so the
-  // ring greys out instantly), and record the view on the server, which is the
-  // authoritative seen-state read back on next load.
+  // Mark the current story as viewed — but only once it's actually been on
+  // screen for a moment. Previously this fired the instant the story rendered,
+  // so tapping quickly through someone marked their stories read (and told them
+  // you'd viewed them) without you having seen anything.
+  //
+  // The timer is cleared whenever the story changes or the viewer closes, so
+  // skipping past a story never records a view.
   useEffect(() => {
     if (!viewingGroup) return;
     const story = viewingGroup.stories[viewingIdx];
     if (!story) return;
-    setViewedStoryIds(prev => new Set([...prev, story.id]));
-    try {
-      const stored = localStorage.getItem('viewed_stories');
-      const parsed: Record<string, number> = stored ? JSON.parse(stored) : {};
-      parsed[String(story.id)] = Date.now();
-      localStorage.setItem('viewed_stories', JSON.stringify(parsed));
-    } catch {}
-    // Record view via API once per session, skip own stories
-    if (token && !viewingGroup.is_own && !viewedStoryApiCallsRef.current.has(story.id)) {
-      viewedStoryApiCallsRef.current.add(story.id);
-      const storyId = story.id;
-      fetch(`${API_URL}/api/stories/${storyId}/view`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      })
-        .then(r => {
-          if (r.ok) {
-            setViewingGroup(prev => prev ? {
-              ...prev,
-              stories: prev.stories.map(s => s.id === storyId ? { ...s, view_count: (s.view_count ?? 0) + 1 } : s),
-            } : null);
-          }
+
+    const timer = setTimeout(() => {
+      setViewedStoryIds(prev => new Set([...prev, story.id]));
+      try {
+        const stored = localStorage.getItem('viewed_stories');
+        const parsed: Record<string, number> = stored ? JSON.parse(stored) : {};
+        parsed[String(story.id)] = Date.now();
+        localStorage.setItem('viewed_stories', JSON.stringify(parsed));
+      } catch {}
+
+      // Record the view on the server, once per session, never on my own stories.
+      if (token && !viewingGroup.is_own && !viewedStoryApiCallsRef.current.has(story.id)) {
+        viewedStoryApiCallsRef.current.add(story.id);
+        const storyId = story.id;
+        fetch(`${API_URL}/api/stories/${storyId}/view`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
         })
-        .catch(() => {});
-    }
+          .then(r => {
+            if (r.ok) {
+              setViewingGroup(prev => prev ? {
+                ...prev,
+                stories: prev.stories.map(s => s.id === storyId ? { ...s, view_count: (s.view_count ?? 0) + 1 } : s),
+              } : null);
+            }
+          })
+          .catch(() => {});
+      }
+    }, STORY_SEEN_DWELL_MS);
+
+    return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewingGroup, viewingIdx]);
 
