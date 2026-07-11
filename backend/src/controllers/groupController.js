@@ -5,10 +5,12 @@ const { extractMentionedUsernames } = require('../utils/mentions');
 
 async function createGroup(req, res) {
   try {
-    const { name, member_ids = [], description } = req.body;
+    const { name, member_ids = [], description, is_public = false, require_approval = false } = req.body;
     if (!name?.trim()) return res.status(400).json({ message: 'Group name is required' });
 
-    const group = await Group.createGroup(name.trim(), req.user.id, description?.trim() || null);
+    const group = await Group.createGroup(
+      name.trim(), req.user.id, description?.trim() || null, !!is_public, !!require_approval
+    );
     await Group.addMember(group.id, req.user.id, 'admin');
 
     for (const uid of member_ids) {
@@ -303,13 +305,52 @@ async function rejectMember(req, res) {
   }
 }
 
+// Browse public groups (private groups never appear here).
+async function discoverGroups(req, res) {
+  try {
+    const groups = await Group.discoverPublicGroups(req.user.id, req.query.q || null);
+    res.json({ groups });
+  } catch (err) {
+    console.error('Discover groups error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// Join a public group. Approval-required groups create a pending request that
+// a group admin must approve; open groups join immediately.
+async function joinGroup(req, res) {
+  try {
+    const groupId = parseInt(req.params.id, 10);
+    const result = await Group.joinPublicGroup(groupId, req.user.id);
+    if (!result.ok) {
+      if (result.reason === 'not_found') return res.status(404).json({ message: 'Group not found' });
+      return res.status(403).json({ message: 'This group is private \u2014 you need an invite to join' });
+    }
+    if (result.already) {
+      return res.json({
+        status: result.status,
+        message: result.status === 'pending' ? 'Your request is already pending' : 'You are already a member',
+      });
+    }
+    res.status(201).json({
+      status: result.status,
+      message: result.status === 'pending'
+        ? 'Request sent \u2014 a group admin will review it'
+        : 'You have joined the group',
+    });
+  } catch (err) {
+    console.error('Join group error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
 async function updateGroupSettingsHandler(req, res) {
   try {
     const groupId = parseInt(req.params.id, 10);
     if (!(await Group.isAdmin(groupId, req.user.id))) {
       return res.status(403).json({ message: 'Only admins can update settings' });
     }
-    const { name, description, require_approval, only_admins_can_add, invite_enabled, avatar_url } = req.body;
+    const { name, description, require_approval, only_admins_can_add, invite_enabled, avatar_url, is_public } = req.body;
     const updated = await Group.updateGroupSettings(groupId, {
       name: name?.trim(),
       description: description !== undefined ? (description?.trim() || null) : undefined,
@@ -317,6 +358,7 @@ async function updateGroupSettingsHandler(req, res) {
       onlyAdminsCanAdd: only_admins_can_add,
       inviteEnabled: invite_enabled,
       avatarUrl: avatar_url !== undefined ? (avatar_url || null) : undefined,
+      isPublic: is_public,
     });
     res.json({ group: updated });
   } catch (err) {
@@ -359,6 +401,8 @@ async function deleteGroupMessageHandler(req, res) {
 }
 
 module.exports = {
+  discoverGroups,
+  joinGroup,
   createGroup, getMyGroups, getGroupMessages, sendGroupMessage,
   addGroupMember, removeGroupMember, setMemberRoleHandler, leaveGroup, deleteGroupHandler,
   getInviteLink, resetGroupInviteCode, joinByInviteCode, getGroupByInvitePreview,

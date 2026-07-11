@@ -17,6 +17,23 @@ const NAV_LINKS = [
   { href: '/profile', label: 'Profile' },
 ];
 
+// Full destination list for the logo menu — everything the top bar and bottom
+// tabs don't have room for.
+const MENU_LINKS = [
+  { href: '/feed', label: 'Feed', icon: '🏠' },
+  { href: '/discover', label: 'Discover People', icon: '🧭' },
+  { href: '/groups', label: 'Groups', icon: '👥' },
+  { href: '/messages', label: 'Messages', icon: '💬' },
+  { href: '/news', label: 'News', icon: '📰' },
+  { href: '/library', label: 'Library', icon: '📚' },
+  { href: '/timetable', label: 'Timetable', icon: '🗓️' },
+  { href: '/academic-calendar', label: 'Academic Calendar', icon: '📅' },
+  { href: '/notifications', label: 'Notifications', icon: '🔔' },
+  { href: '/profile', label: 'Profile', icon: '👤' },
+  { href: '/settings', label: 'Settings', icon: '⚙️' },
+  { href: '/support', label: 'Support', icon: '🛟' },
+];
+
 interface SearchUser {
   id: number;
   full_name: string;
@@ -64,6 +81,25 @@ export function AppNav() {
   const router = useRouter();
 
   const [searchOpen, setSearchOpen] = useState(false);
+
+  // Logo nav menu
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  // Close the menu on outside click or Escape.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    const onKey = (e: globalThis.KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [menuOpen]);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResults | null>(null);
   const [searching, setSearching] = useState(false);
@@ -280,17 +316,61 @@ export function AppNav() {
     <>
     <nav className="sticky top-0 z-50 border-b border-border bg-white/90 backdrop-blur-lg dark:bg-[#0a0a0a]/90 dark:border-[#222]">
       <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:px-6 lg:px-8">
-        {/* Logo — hide on mobile when search is open */}
-        <Link
-          href="/feed"
-          className={`flex shrink-0 items-center gap-2 ${searchOpen ? 'hidden sm:flex' : 'flex'}`}
-        >
-          <img src="/logo.png" alt="ABUkonn" className="h-8 w-8 object-contain sm:hidden" />
-          <span className="hidden sm:block">
-            <img src="/logo-lockup-light.png" alt="ABUkonn" className="h-7 object-contain dark:hidden" />
-            <img src="/logo-lockup-dark.png" alt="ABUkonn" className="hidden h-7 object-contain dark:block" />
-          </span>
-        </Link>
+        {/* Logo — tap to open the nav menu. Hidden on mobile when search is open. */}
+        <div ref={menuRef} className={`relative shrink-0 ${searchOpen ? 'hidden sm:block' : 'block'}`}>
+          <button
+            type="button"
+            onClick={() => setMenuOpen(o => !o)}
+            aria-label="Open menu"
+            aria-expanded={menuOpen}
+            className="flex items-center gap-2 rounded-lg px-1 py-1 transition hover:bg-surface-muted dark:hover:bg-[#1a1a1a]"
+          >
+            <img src="/logo.png" alt="ABUkonn" className="h-8 w-8 object-contain sm:hidden" />
+            <span className="hidden sm:block">
+              <img src="/logo-lockup-light.png" alt="ABUkonn" className="h-7 object-contain dark:hidden" />
+              <img src="/logo-lockup-dark.png" alt="ABUkonn" className="hidden h-7 object-contain dark:block" />
+            </span>
+            <svg
+              className={`h-3.5 w-3.5 shrink-0 text-ink-muted transition-transform ${menuOpen ? 'rotate-180' : ''}`}
+              fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+            </svg>
+          </button>
+
+          {menuOpen && (
+            <div className="absolute left-0 top-full z-50 mt-2 w-60 overflow-hidden rounded-2xl border border-border bg-white py-1.5 shadow-lg dark:border-[#222] dark:bg-[#111]">
+              {MENU_LINKS.map(link => {
+                const active = pathname === link.href;
+                return (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    onClick={() => setMenuOpen(false)}
+                    className={`flex items-center gap-3 px-4 py-2.5 text-[14px] transition ${
+                      active
+                        ? 'bg-brand-50 font-semibold text-brand-700 dark:bg-brand-950 dark:text-brand-300'
+                        : 'text-ink hover:bg-surface-muted dark:hover:bg-[#1a1a1a]'
+                    }`}
+                  >
+                    <span className="w-5 text-center">{link.icon}</span>
+                    <span>{link.label}</span>
+                  </Link>
+                );
+              })}
+
+              <div className="my-1 border-t border-border dark:border-[#222]" />
+              <button
+                type="button"
+                onClick={() => { setMenuOpen(false); handleLogout(); }}
+                className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-[14px] text-red-600 transition hover:bg-red-50 dark:hover:bg-red-950/40"
+              >
+                <span className="w-5 text-center">↩</span>
+                <span>Logout</span>
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Desktop nav links — hide when search open */}
         {!searchOpen && (

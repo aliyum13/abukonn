@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { Button, Card, CardContent, Skeleton } from '@/components/ui';
 import { cn } from '@/lib/utils';
-import { DepartmentOptions, LEVELS } from '@/lib/departments';
+import { DEPARTMENT_GROUPS, LEVELS } from '@/lib/departments';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -66,6 +66,7 @@ export default function LibraryPage() {
   const [page, setPage] = useState(1);
 
   const [typeFilter, setTypeFilter] = useState('all');
+  const [faculty, setFaculty] = useState('');
   const [department, setDepartment] = useState('');
   const [level, setLevel] = useState('');
   const [search, setSearch] = useState('');
@@ -77,6 +78,7 @@ export default function LibraryPage() {
     try {
       const params = new URLSearchParams();
       if (typeFilter !== 'all') params.set('type', typeFilter);
+      if (faculty && faculty !== '') params.set('faculty', faculty);
       if (department && department !== '') params.set('department', department);
       if (level && level !== '') params.set('level', level);
       console.log('[Library] fetching with params:', params.toString());
@@ -90,7 +92,7 @@ export default function LibraryPage() {
       setMaterials(data.materials || []);
       setTotal(data.total || 0);
     } finally { setLoading(false); }
-  }, [token, typeFilter, department, level, search, page]);
+  }, [token, typeFilter, faculty, department, level, search, page]);
 
   useEffect(() => { fetchMaterials(); }, [fetchMaterials]);
 
@@ -178,11 +180,33 @@ export default function LibraryPage() {
         ))}
       </div>
 
-      <div className="mb-5 grid grid-cols-2 gap-3">
-        <select value={department} onChange={e => { setDepartment(e.target.value); setPage(1); }} className={selectCls}>
-          <option value="">All Departments</option>
-          <DepartmentOptions />
+      {/* Faculty -> Department -> Level. Picking a faculty narrows the department
+          list to that faculty's departments (ABU portal style). Changing faculty
+          clears the department so you can't keep a department from another faculty. */}
+      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <select
+          value={faculty}
+          onChange={e => { setFaculty(e.target.value); setDepartment(''); setPage(1); }}
+          className={selectCls}
+        >
+          <option value="">All Faculties</option>
+          {DEPARTMENT_GROUPS.map(g => (
+            <option key={g.faculty} value={g.faculty}>{g.faculty}</option>
+          ))}
         </select>
+
+        <select
+          value={department}
+          onChange={e => { setDepartment(e.target.value); setPage(1); }}
+          className={selectCls}
+        >
+          <option value="">{faculty ? 'All Departments in Faculty' : 'All Departments'}</option>
+          {(faculty
+            ? (DEPARTMENT_GROUPS.find(g => g.faculty === faculty)?.departments ?? [])
+            : DEPARTMENT_GROUPS.flatMap(g => g.departments)
+          ).map(d => <option key={d} value={d}>{d}</option>)}
+        </select>
+
         <select value={level} onChange={e => { setLevel(e.target.value); setPage(1); }} className={selectCls}>
           <option value="">All Levels</option>
           {LEVELS.map(l => <option key={l} value={l}>{l}</option>)}

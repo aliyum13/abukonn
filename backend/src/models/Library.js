@@ -21,10 +21,28 @@ const createLibraryTable = async () => {
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  // Backfill: the admin upload form never had a faculty input, so faculty was
+  // saved blank on every material. Derive it from the department so the new
+  // faculty filter actually returns older uploads too.
+  try {
+    const { DEPARTMENT_GROUPS } = require('../lib/departments');
+    for (const group of DEPARTMENT_GROUPS) {
+      await pool.query(
+        `UPDATE abukonn.library_materials
+         SET faculty = $1
+         WHERE (faculty IS NULL OR faculty = '')
+           AND department = ANY($2::text[])`,
+        [group.faculty, group.departments]
+      );
+    }
+  } catch (err) {
+    console.error('[Library] faculty backfill skipped:', err.message);
+  }
+
   console.log('Library table ready');
 };
 
-const getMaterials = async ({ type, department, level, course_code, search, page = 1 }) => {
+const getMaterials = async ({ type, faculty, department, level, course_code, search, page = 1 }) => {
   console.log('[Library] getMaterials called with:', { type, department, level, course_code, search, page });
   const limit = 20;
   const offset = (page - 1) * limit;
@@ -33,6 +51,7 @@ const getMaterials = async ({ type, department, level, course_code, search, page
   let idx = 1;
 
   if (type && type !== 'all') { conditions.push(`lm.type = $${idx++}`); params.push(type); }
+  if (faculty) { conditions.push(`lm.faculty ILIKE $${idx++}`); params.push(`%${faculty}%`); }
   if (department) { conditions.push(`lm.department ILIKE $${idx++}`); params.push(`%${department}%`); }
   if (level) { conditions.push(`lm.level ILIKE $${idx++}`); params.push(`%${level.replace(' Level', '')}%`); }
   if (course_code) { conditions.push(`lm.course_code ILIKE $${idx++}`); params.push(`%${course_code}%`); }
