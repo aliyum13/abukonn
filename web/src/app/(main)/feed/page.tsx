@@ -1160,8 +1160,11 @@ export default function FeedPage() {
   const [viewingGroup, setViewingGroup] = useState<StoryGroup | null>(null);
   const [viewingIdx, setViewingIdx] = useState(0);
   const [showUploadStory, setShowUploadStory] = useState(false);
-  const [storyFile, setStoryFile] = useState<File | null>(null);
-  const [storyPreview, setStoryPreview] = useState<string | null>(null);
+  // Multiple photos can be queued and uploaded one after another (like WhatsApp).
+  const [storyFiles, setStoryFiles] = useState<File[]>([]);
+  const [storyPreviews, setStoryPreviews] = useState<string[]>([]);
+  // Which item in the queue is currently uploading (for "2 of 5" feedback).
+  const [storyUploadIdx, setStoryUploadIdx] = useState(0);
   const [uploadingStory, setUploadingStory] = useState(false);
   const [storyTab, setStoryTab] = useState<'media' | 'text'>('media');
   const [storyText, setStoryText] = useState('');
@@ -1241,7 +1244,7 @@ export default function FeedPage() {
       if (e.key !== 'Escape') return;
       if (showUploadStory) {
         setShowUploadStory(false);
-        setStoryFile(null); setStoryPreview(null); setStoryText(''); setStoryBgColor('#16a34a'); setStoryTab('media'); setStoryCaption(''); setStoryUploadError(''); setStoryUploadProgress(null);
+        setStoryFiles([]); setStoryPreviews([]); setStoryText(''); setStoryBgColor('#16a34a'); setStoryTab('media'); setStoryCaption(''); setStoryUploadError(''); setStoryUploadProgress(null);
       } else {
         setLightboxUrl(null); setViewingGroup(null);
       }
@@ -1866,20 +1869,93 @@ export default function FeedPage() {
 
   // ── Stories ─────────────────────────────────────────────────────────────────
 
+  const MAX_STORY_BATCH = 10;
+
   const handleStoryFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const picked = Array.from(e.target.files ?? []);
+    e.target.value = '';
+    if (picked.length === 0) return;
     setStoryUploadError('');
-    if (file.type.startsWith('video/')) {
-      setStoryUploadError('Video stories are coming in Phase 2. Only photo stories are supported for now.');
-      e.target.value = '';
+
+    if (picked.some(f => f.type.startsWith('video/'))) {
+      setStoryUploadError('Video stories are coming with the mobile app. Only photos for now.');
       return;
     }
-    setStoryFile(file);
-    const reader = new FileReader();
-    reader.onloadend = () => setStoryPreview(reader.result as string);
-    reader.readAsDataURL(file);
-    e.target.value = '';
+
+    const room = MAX_STORY_BATCH - storyFiles.length;
+    if (room <= 0) {
+      setStoryUploadError(`You can post up to ${MAX_STORY_BATCH} photos at once.`);
+      return;
+    }
+    const accepted = picked.slice(0, room);
+    if (picked.length > room) {
+      setStoryUploadError(`Only the first ${room} photo${room === 1 ? '' : 's'} were added (max ${MAX_STORY_BATCH}).`);
+    }
+
+    setStoryFiles(prev => [...prev, ...accepted]);
+    accepted.forEach(file => {
+      const reader = new FileReader();
+      reader.onloadend = () => setStoryPreviews(prev => [...prev, reader.result as string]);
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Remove one queued photo before posting.
+  const removeStoryAt = (idx: number) => {
+    setStoryFiles(prev => prev.filter((_, i) => i !== idx));
+    setStoryPreviews(prev => prev.filter((_, i) => i !== idx));
+    setStoryUploadError('');
+  };
+
+  // Upload a single photo direct to Cloudinary (bypassing Railway's ~30s proxy
+  // timeout), then save the story record. Returns the created story.
+  const uploadOneStoryPhoto = async (file: File, caption?: string): Promise<Story> => {
+    const sigRes = await fetch(`${API_URL}/api/stories/upload-signature`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!sigRes.ok) throw new Error('Failed to get upload signature');
+    const { signature, timestamp, api_key, cloud_name, folder } = await sigRes.json() as {
+      signature: string; timestamp: number; api_key: string; cloud_name: string; folder: string;
+    };
+
+    const cloudinaryUrl = await new Promise<string>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const tid = setTimeout(() => xhr.abort(), 300000);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) setStoryUploadProgress(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = () => {
+        clearTimeout(tid);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try { resolve((JSON.parse(xhr.responseText) as { secure_url: string }).secure_url); }
+          catch { reject(new Error('Invalid Cloudinary response')); }
+        } else {
+          try { reject(new Error((JSON.parse(xhr.responseText) as { error?: { message: string } }).error?.message || 'Cloudinary upload failed')); }
+          catch { reject(new Error('Cloudinary upload failed')); }
+        }
+      };
+      xhr.onerror = () => { clearTimeout(tid); reject(new Error('Network error — check your connection')); };
+      xhr.onabort = () => { clearTimeout(tid); reject(new Error('Upload timed out')); };
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('api_key', api_key);
+      fd.append('timestamp', String(timestamp));
+      fd.append('signature', signature);
+      fd.append('folder', folder);
+      xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloud_name}/image/upload`);
+      xhr.send(fd);
+    });
+
+    const saveRes = await fetch(`${API_URL}/api/stories`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ story_type: 'image', media_url: cloudinaryUrl, direct_upload: true, caption }),
+    });
+    if (!saveRes.ok) {
+      const d = await saveRes.json().catch(() => ({})) as { message?: string };
+      throw new Error(d.message || 'Failed to save story');
+    }
+    return ((await saveRes.json()) as { story: Story }).story;
   };
 
   const handleUploadStory = async () => {
@@ -1888,7 +1964,8 @@ export default function FeedPage() {
     setStoryUploadError('');
     setStoryUploadProgress(null);
 
-    const onSuccess = (story: Story) => {
+    // Add a freshly-posted story into my own group in the bar.
+    const appendOwnStory = (story: Story) => {
       setStoryGroups(prev => {
         const ownIdx = prev.findIndex(g => g.is_own);
         if (ownIdx >= 0) {
@@ -1899,12 +1976,22 @@ export default function FeedPage() {
         return [{ user_id: user!.id, user_name: user!.full_name, user_photo: user!.profile_photo_url, is_own: true, stories: [story] }, ...prev];
       });
       setViewingGroup(prev => prev?.is_own ? { ...prev, stories: [...prev.stories, story] } : prev);
+    };
+
+    const resetStoryComposer = () => {
       setShowUploadStory(false);
-      setStoryFile(null);
-      setStoryPreview(null);
+      setStoryFiles([]);
+      setStoryPreviews([]);
+      setStoryCaption('');
       setStoryText('');
       setStoryBgColor('#16a34a');
       setStoryTab('media');
+      setStoryUploadIdx(0);
+    };
+
+    const onSuccess = (story: Story) => {
+      appendOwnStory(story);
+      resetStoryComposer();
     };
 
     try {
@@ -1923,55 +2010,38 @@ export default function FeedPage() {
         }
         onSuccess(((await res.json()) as { story: Story }).story);
       } else {
-        if (!storyFile) return;
+        if (storyFiles.length === 0) return;
 
-        // Direct-to-Cloudinary upload for images — bypasses Railway's 30s proxy timeout
-        const sigRes = await fetch(`${API_URL}/api/stories/upload-signature`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!sigRes.ok) throw new Error('Failed to get upload signature');
-        const { signature, timestamp, api_key, cloud_name, folder } = await sigRes.json() as {
-          signature: string; timestamp: number; api_key: string; cloud_name: string; folder: string;
-        };
-
-        const cloudinaryUrl = await new Promise<string>((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          const tid = setTimeout(() => xhr.abort(), 300000);
-          xhr.upload.onprogress = (e) => {
-            if (e.lengthComputable) setStoryUploadProgress(Math.round((e.loaded / e.total) * 100));
-          };
-          xhr.onload = () => {
-            clearTimeout(tid);
-            if (xhr.status >= 200 && xhr.status < 300) {
-              try { resolve((JSON.parse(xhr.responseText) as { secure_url: string }).secure_url); }
-              catch { reject(new Error('Invalid Cloudinary response')); }
-            } else {
-              try { reject(new Error((JSON.parse(xhr.responseText) as { error?: { message: string } }).error?.message || 'Cloudinary upload failed')); }
-              catch { reject(new Error('Cloudinary upload failed')); }
-            }
-          };
-          xhr.onerror = () => { clearTimeout(tid); reject(new Error('Network error — check your connection')); };
-          xhr.onabort = () => { clearTimeout(tid); reject(new Error('Upload timed out')); };
-          const fd = new FormData();
-          fd.append('file', storyFile);
-          fd.append('api_key', api_key);
-          fd.append('timestamp', String(timestamp));
-          fd.append('signature', signature);
-          fd.append('folder', folder);
-          xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloud_name}/image/upload`);
-          xhr.send(fd);
-        });
-
-        const saveRes = await fetch(`${API_URL}/api/stories`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ story_type: 'image', media_url: cloudinaryUrl, direct_upload: true, caption: storyCaption.trim() || undefined }),
-        });
-        if (!saveRes.ok) {
-          const d = await saveRes.json().catch(() => ({})) as { message?: string };
-          throw new Error(d.message || 'Failed to save story');
+        // Upload each queued photo in turn. Sequential rather than parallel so a
+        // flaky campus connection doesn't have to carry several large uploads at
+        // once, and so progress reads clearly as "2 of 5".
+        let done = 0;
+        try {
+          for (let i = 0; i < storyFiles.length; i++) {
+            setStoryUploadIdx(i);
+            setStoryUploadProgress(0);
+            const story = await uploadOneStoryPhoto(
+              storyFiles[i],
+              // The caption applies to the first photo only — captioning each one
+              // individually would need a per-photo editor, which isn't built yet.
+              i === 0 ? (storyCaption.trim() || undefined) : undefined,
+            );
+            appendOwnStory(story);
+            done++;
+          }
+        } catch (err) {
+          // Some photos may already be posted. Drop those from the queue so that
+          // retrying doesn't post them a second time, and report what's left.
+          if (done > 0) {
+            setStoryFiles(prev => prev.slice(done));
+            setStoryPreviews(prev => prev.slice(done));
+            setStoryUploadIdx(0);
+            const msg = err instanceof Error ? err.message : 'Upload failed';
+            throw new Error(`${done} photo${done === 1 ? '' : 's'} posted, then failed: ${msg}. Tap Share to retry the rest.`);
+          }
+          throw err;
         }
-        onSuccess(((await saveRes.json()) as { story: Story }).story);
+        resetStoryComposer();
       }
     } catch (err) {
       const msg = err instanceof DOMException && err.name === 'AbortError'
@@ -3578,8 +3648,11 @@ export default function FeedPage() {
       {/* Story Upload modal */}
       {showUploadStory && (() => {
         const BG_PRESETS = ['#16a34a','#1d4ed8','#7c3aed','#dc2626','#ea580c','#0891b2','#111827','#be185d'];
-        const closeModal = () => { setShowUploadStory(false); setStoryFile(null); setStoryPreview(null); setStoryText(''); setStoryBgColor('#16a34a'); setStoryTab('media'); setStoryCaption(''); setStoryUploadError(''); setStoryUploadProgress(null); };
-        const canShare = storyTab === 'text' ? storyText.trim().length > 0 : !!storyFile;
+        const closeModal = () => { setShowUploadStory(false); setStoryFiles([]); setStoryPreviews([]); setStoryText(''); setStoryBgColor('#16a34a'); setStoryTab('media'); setStoryCaption(''); setStoryUploadError(''); setStoryUploadProgress(null); };
+        const canShare = storyTab === 'text' ? storyText.trim().length > 0 : storyFiles.length > 0;
+        const shareLabel = storyTab === 'media' && storyFiles.length > 1
+          ? `Share ${storyFiles.length} photos`
+          : 'Share';
         const textLen = storyText.length;
         const textSize = textLen > 100 ? 'text-xl' : textLen > 50 ? 'text-2xl' : 'text-3xl';
         return (
@@ -3612,19 +3685,45 @@ export default function FeedPage() {
               <div className="p-5">
                 {storyTab === 'media' ? (
                   <>
-                    {storyPreview ? (
+                    {storyPreviews.length > 0 ? (
                       <>
-                        <div className="relative mb-4">
-                          {storyFile?.type.startsWith('video') ? (
-                            <video src={storyPreview} className="max-h-64 w-full rounded-xl object-cover" controls />
-                          ) : (
-                            <img src={storyPreview} alt="Preview" className="max-h-64 w-full rounded-xl bg-black/20 object-contain" />
-                          )}
-                          <button type="button" onClick={() => { setStoryFile(null); setStoryPreview(null); setStoryCaption(''); }}
+                        {/* Main preview = first photo; the rest show as a strip below.
+                            They post in order, one after another. */}
+                        <div className="relative mb-3">
+                          <img src={storyPreviews[0]} alt="Preview" className="max-h-64 w-full rounded-xl bg-black/20 object-contain" />
+                          <button type="button" onClick={() => removeStoryAt(0)}
                             className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80">
                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                           </button>
+                          {storyPreviews.length > 1 && (
+                            <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-semibold text-white">
+                              1 of {storyPreviews.length}
+                            </span>
+                          )}
                         </div>
+
+                        {storyPreviews.length > 1 && (
+                          <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+                            {storyPreviews.slice(1).map((src, i) => (
+                              <div key={i} className="relative shrink-0">
+                                <img src={src} alt={`Photo ${i + 2}`} className="h-14 w-14 rounded-lg object-cover" />
+                                <button type="button" onClick={() => removeStoryAt(i + 1)}
+                                  className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white">
+                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Add more photos to the batch */}
+                        {storyFiles.length < MAX_STORY_BATCH && (
+                          <label className="mb-3 flex cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-dashed border-border py-2 text-[13px] font-medium text-ink-muted hover:text-ink dark:border-[#333]">
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                            Add more photos
+                            <input type="file" accept="image/*" multiple className="hidden" onChange={handleStoryFileSelect} />
+                          </label>
+                        )}
                         <div className="mt-3">
                           <textarea
                             value={storyCaption}
@@ -3646,7 +3745,7 @@ export default function FeedPage() {
                         <p className="text-caption">Story disappears after 24 hours</p>
                       </button>
                     )}
-                    <input ref={storyInputRef} type="file" accept="image/*" onChange={handleStoryFileSelect} className="hidden" />
+                    <input ref={storyInputRef} type="file" accept="image/*" multiple onChange={handleStoryFileSelect} className="hidden" />
                   </>
                 ) : (
                   <>
@@ -3688,7 +3787,11 @@ export default function FeedPage() {
                 {uploadingStory && storyUploadProgress !== null && (
                   <div className="mb-3">
                     <div className="mb-1 flex items-center justify-between text-xs text-ink-muted">
-                      <span>Uploading…</span>
+                      <span>
+                        {storyFiles.length > 1
+                          ? `Uploading photo ${storyUploadIdx + 1} of ${storyFiles.length}…`
+                          : 'Uploading…'}
+                      </span>
                       <span>{storyUploadProgress}%</span>
                     </div>
                     <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
@@ -3702,7 +3805,7 @@ export default function FeedPage() {
                 <div className="flex gap-3">
                   <Button variant="outline" className="flex-1" onClick={closeModal}>Cancel</Button>
                   <Button className="flex-1" disabled={!canShare || uploadingStory} loading={uploadingStory} onClick={handleUploadStory}>
-                    Share Story
+                    {storyTab === 'media' ? shareLabel : 'Share Story'}
                   </Button>
                 </div>
               </div>
