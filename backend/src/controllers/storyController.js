@@ -2,6 +2,10 @@ const Story = require('../models/Story');
 const { findOrCreateConversation, sendMessage } = require('../models/Message');
 const cloudinary = require('../config/cloudinary');
 const Follow = require('../models/Follow');
+
+// Allowed text-story fonts. Whitelisted rather than free-text so nothing
+// arbitrary from the client ends up driving CSS on the viewer.
+const STORY_FONTS = ['classic', 'bold', 'serif', 'mono', 'script'];
 const Notification = require('../models/Notification');
 const { emitNotificationToMany } = require('../lib/notify');
 
@@ -93,6 +97,8 @@ async function createStory(req, res) {
     if (storyType === 'text') {
       const textContent = (req.body?.text_content || '').trim();
       const bgColor = req.body?.bg_color || '#16a34a';
+      const requestedFont = req.body?.font_style;
+      const fontStyle = STORY_FONTS.includes(requestedFont) ? requestedFont : 'classic';
       if (!textContent) return res.status(400).json({ message: 'Text content is required' });
       const story = await Story.createStory({
         userId: req.user.id,
@@ -101,6 +107,7 @@ async function createStory(req, res) {
         storyType: 'text',
         textContent,
         bgColor,
+        fontStyle,
         // No caption for text stories — the text content is the story
       });
       notifyFollowersOfStory(req.app, req.user.id);
@@ -259,6 +266,7 @@ async function replyToStory(req, res) {
         media_url: story.media_url || null,
         text_content: story.text_content || null,
         bg_color: story.bg_color || null,
+        font_style: story.font_style || null,
         reply: content,
       });
       await sendMessage({ conversationId: conv.id, senderId: req.user.id, content: dmContent });

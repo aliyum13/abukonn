@@ -121,6 +121,7 @@ interface Story {
   story_type: 'image' | 'video' | 'text';
   text_content: string | null;
   bg_color: string | null;
+  font_style: string | null;
   caption: string | null;
   created_at: string;
   expires_at: string;
@@ -129,6 +130,17 @@ interface Story {
    *  story_views), so it survives switching device or clearing storage. */
   viewed?: boolean;
 }
+
+// Text-story fonts. Keys must match the backend whitelist (STORY_FONTS).
+const STORY_FONTS: Record<string, { label: string; className: string }> = {
+  classic: { label: 'Classic', className: 'font-sans font-semibold' },
+  bold:    { label: 'Bold',    className: 'font-sans font-extrabold tracking-tight' },
+  serif:   { label: 'Serif',   className: 'font-serif font-semibold' },
+  mono:    { label: 'Mono',    className: 'font-mono font-semibold tracking-tight' },
+  script:  { label: 'Script',  className: 'font-serif italic font-medium' },
+};
+const storyFontClass = (key?: string | null) =>
+  STORY_FONTS[key ?? 'classic']?.className ?? STORY_FONTS.classic.className;
 
 interface StoryGroup {
   user_id: number;
@@ -645,7 +657,8 @@ function StoryViewer({
           <div className="flex h-full w-full items-center justify-center px-8"
             style={{ backgroundColor: story.bg_color || '#16a34a' }}>
             <p className={cn(
-              'text-center font-bold leading-tight text-white break-words w-full',
+              'text-center leading-tight text-white break-words w-full',
+              storyFontClass(story.font_style),
               (story.text_content?.length ?? 0) > 100 ? 'text-xl' : (story.text_content?.length ?? 0) > 50 ? 'text-2xl' : 'text-3xl'
             )}>
               {story.text_content}
@@ -740,7 +753,7 @@ function StoryViewer({
                 )}
                 {story.story_type === 'text' && (
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg px-1" style={{ backgroundColor: story.bg_color || '#16a34a' }}>
-                    <p className="line-clamp-2 text-center text-[9px] font-semibold leading-tight text-white">{story.text_content}</p>
+                    <p className={cn('line-clamp-2 text-center text-[9px] leading-tight text-white', storyFontClass(story.font_style))}>{story.text_content}</p>
                   </div>
                 )}
                 <p className="text-xs text-white/70">Replying to story</p>
@@ -1169,6 +1182,7 @@ export default function FeedPage() {
   const [storyTab, setStoryTab] = useState<'media' | 'text'>('media');
   const [storyText, setStoryText] = useState('');
   const [storyBgColor, setStoryBgColor] = useState('#16a34a');
+  const [storyFont, setStoryFont] = useState('classic');
   const [storyCaption, setStoryCaption] = useState('');
   const [viewedStoryIds, setViewedStoryIds] = useState<Set<number>>(new Set());
   // Story reactions & replies
@@ -1244,7 +1258,7 @@ export default function FeedPage() {
       if (e.key !== 'Escape') return;
       if (showUploadStory) {
         setShowUploadStory(false);
-        setStoryFiles([]); setStoryPreviews([]); setStoryText(''); setStoryBgColor('#16a34a'); setStoryTab('media'); setStoryCaption(''); setStoryUploadError(''); setStoryUploadProgress(null);
+        setStoryFiles([]); setStoryPreviews([]); setStoryText(''); setStoryBgColor('#16a34a'); setStoryFont('classic'); setStoryTab('media'); setStoryCaption(''); setStoryUploadError(''); setStoryUploadProgress(null);
       } else {
         setLightboxUrl(null); setViewingGroup(null);
       }
@@ -1984,7 +1998,7 @@ export default function FeedPage() {
       setStoryPreviews([]);
       setStoryCaption('');
       setStoryText('');
-      setStoryBgColor('#16a34a');
+      setStoryBgColor('#16a34a'); setStoryFont('classic');
       setStoryTab('media');
       setStoryUploadIdx(0);
     };
@@ -2001,7 +2015,7 @@ export default function FeedPage() {
         const res = await fetch(`${API_URL}/api/stories`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ story_type: 'text', text_content: storyText, bg_color: storyBgColor }),
+          body: JSON.stringify({ story_type: 'text', text_content: storyText, bg_color: storyBgColor, font_style: storyFont }),
           signal: controller.signal,
         }).finally(() => clearTimeout(tid));
         if (!res.ok) {
@@ -3648,7 +3662,7 @@ export default function FeedPage() {
       {/* Story Upload modal */}
       {showUploadStory && (() => {
         const BG_PRESETS = ['#16a34a','#1d4ed8','#7c3aed','#dc2626','#ea580c','#0891b2','#111827','#be185d'];
-        const closeModal = () => { setShowUploadStory(false); setStoryFiles([]); setStoryPreviews([]); setStoryText(''); setStoryBgColor('#16a34a'); setStoryTab('media'); setStoryCaption(''); setStoryUploadError(''); setStoryUploadProgress(null); };
+        const closeModal = () => { setShowUploadStory(false); setStoryFiles([]); setStoryPreviews([]); setStoryText(''); setStoryBgColor('#16a34a'); setStoryFont('classic'); setStoryTab('media'); setStoryCaption(''); setStoryUploadError(''); setStoryUploadProgress(null); };
         const canShare = storyTab === 'text' ? storyText.trim().length > 0 : storyFiles.length > 0;
         const shareLabel = storyTab === 'media' && storyFiles.length > 1
           ? `Share ${storyFiles.length} photos`
@@ -3752,7 +3766,7 @@ export default function FeedPage() {
                     {/* Live preview */}
                     <div className="mb-4 flex h-44 w-full items-center justify-center rounded-xl px-4"
                       style={{ backgroundColor: storyBgColor }}>
-                      <p className={cn('text-center font-bold leading-tight text-white break-words w-full', textSize)}>
+                      <p className={cn('text-center leading-tight text-white break-words w-full', storyFontClass(storyFont), textSize)}>
                         {storyText || <span className="opacity-40">Your text here…</span>}
                       </p>
                     </div>
@@ -3766,7 +3780,7 @@ export default function FeedPage() {
                       className="mb-3 w-full resize-none rounded-xl border border-border bg-surface-muted px-3 py-2.5 text-sm text-ink placeholder:text-ink-muted focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:bg-[#1a1a1a] dark:border-[#333]"
                     />
                     {/* Color picker */}
-                    <div className="mb-4 flex gap-2">
+                    <div className="mb-3 flex gap-2">
                       {BG_PRESETS.map(c => (
                         <button key={c} type="button"
                           onClick={() => setStoryBgColor(c)}
@@ -3775,6 +3789,24 @@ export default function FeedPage() {
                           style={{ backgroundColor: c }}
                           aria-label={c}
                         />
+                      ))}
+                    </div>
+
+                    {/* Font picker — each option previews its own font */}
+                    <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
+                      {Object.entries(STORY_FONTS).map(([key, f]) => (
+                        <button key={key} type="button"
+                          onClick={() => setStoryFont(key)}
+                          className={cn(
+                            'shrink-0 rounded-lg border px-3 py-1.5 text-[13px] transition',
+                            f.className,
+                            storyFont === key
+                              ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300'
+                              : 'border-border text-ink-muted hover:text-ink dark:border-[#333]'
+                          )}
+                        >
+                          {f.label}
+                        </button>
                       ))}
                     </div>
                   </>

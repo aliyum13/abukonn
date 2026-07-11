@@ -19,7 +19,8 @@ const MIGRATE_STORIES_TABLE = `
 ALTER TABLE abukonn.stories ALTER COLUMN media_url DROP NOT NULL;
 ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS story_type VARCHAR(10) NOT NULL DEFAULT 'image';
 ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS text_content TEXT;
-ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS bg_color VARCHAR(20);`;
+ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS bg_color VARCHAR(20);
+ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS font_style VARCHAR(20);`;
 
 async function createStoriesTable() {
   await pool.query(CREATE_STORIES_TABLE);
@@ -28,11 +29,11 @@ async function createStoriesTable() {
   console.log('Stories table ready');
 }
 
-async function createStory({ userId, mediaUrl, mediaType = 'image', storyType = 'image', textContent = null, bgColor = null, caption = null }) {
+async function createStory({ userId, mediaUrl, mediaType = 'image', storyType = 'image', textContent = null, bgColor = null, caption = null, fontStyle = null }) {
   const result = await pool.query(
-    `INSERT INTO abukonn.stories (user_id, media_url, media_type, story_type, text_content, bg_color, caption)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-    [userId, mediaUrl, mediaType, storyType, textContent, bgColor, caption]
+    `INSERT INTO abukonn.stories (user_id, media_url, media_type, story_type, text_content, bg_color, caption, font_style)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+    [userId, mediaUrl, mediaType, storyType, textContent, bgColor, caption, fontStyle]
   );
   return result.rows[0];
 }
@@ -40,7 +41,7 @@ async function createStory({ userId, mediaUrl, mediaType = 'image', storyType = 
 async function getActiveStoriesForUser(userId) {
   const result = await pool.query(
     `SELECT s.id, s.user_id, s.media_url, s.media_type, s.story_type, s.text_content, s.bg_color,
-            s.caption, s.created_at, s.expires_at,
+            s.caption, s.font_style, s.created_at, s.expires_at,
             u.full_name AS user_name, u.profile_photo_url AS user_photo,
             CASE WHEN s.user_id = $1 THEN COUNT(sv.id)::int ELSE NULL END AS view_count,
             -- Has THIS viewer seen this story? Read from story_views (the server
@@ -83,7 +84,7 @@ async function deleteStory(storyId, userId) {
 async function getMyActiveStories(userId) {
   const result = await pool.query(
     `SELECT s.id, s.user_id, s.media_url, s.media_type, s.story_type, s.text_content, s.bg_color,
-            s.caption, s.created_at, s.expires_at,
+            s.caption, s.font_style, s.created_at, s.expires_at,
             COUNT(sv.id)::int AS view_count
      FROM abukonn.stories s
      LEFT JOIN abukonn.story_views sv ON sv.story_id = s.id
