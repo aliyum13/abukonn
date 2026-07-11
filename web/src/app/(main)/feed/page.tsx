@@ -135,6 +135,8 @@ interface StoryGroup {
   user_name: string;
   user_photo: string | null;
   is_own: boolean;
+  /** Viewer has muted this author — shown last and dimmed, never notified. */
+  muted?: boolean;
   stories: Story[];
 }
 
@@ -305,7 +307,16 @@ function StoriesBar({
   viewedStoryIds: Set<number>;
 }) {
   const ownGroup = groups.find(g => g.is_own);
-  const others = groups.filter(g => !g.is_own);
+
+  // WhatsApp-style ordering within the existing horizontal bar:
+  // unseen (Recent) first, then already-viewed, then muted last.
+  // A group counts as unseen if ANY of its stories is unseen.
+  const hasUnseen = (g: StoryGroup) => g.stories.some(st => !viewedStoryIds.has(st.id));
+  const rank = (g: StoryGroup) => (g.muted ? 2 : hasUnseen(g) ? 0 : 1);
+  const others = groups
+    .filter(g => !g.is_own)
+    .slice()
+    .sort((a, b) => rank(a) - rank(b));
   return (
     <div className="flex gap-4 overflow-x-auto scrollbar-hide px-0.5">
       {/* My Status */}
@@ -343,10 +354,21 @@ function StoriesBar({
       {/* Others */}
       {others.map(g => (
         <button key={g.user_id} type="button" onClick={() => onViewGroup(g)}
-          className="flex shrink-0 flex-col items-center gap-1.5">
-          <div className="h-14 w-14 rounded-full bg-gradient-to-tr from-brand-500 to-emerald-400 p-[2px]">
-            <div className="h-full w-full rounded-full bg-white dark:bg-[#0a0a0a] p-[2px]">
-              <Avatar src={g.user_photo} name={g.user_name} size="xl" className="h-full w-full" />
+          className={cn(
+            'flex shrink-0 flex-col items-center gap-1.5 transition',
+            // Muted authors are dimmed and sit at the end — still reachable,
+            // just out of the way. They are never told they've been muted.
+            g.muted && 'opacity-40'
+          )}>
+          <div className="relative h-14 w-14 rounded-full">
+            {/* Segmented ring: green for unseen, grey once viewed — the same
+                treatment as your own story. Previously everyone else had a
+                fixed gradient, so you couldn't tell what you'd already seen. */}
+            <SegmentedRing stories={g.stories} viewedIds={viewedStoryIds} />
+            <div className="h-full w-full rounded-full p-[3px]">
+              <div className="h-full w-full rounded-full bg-white p-[1px] dark:bg-[#0a0a0a]">
+                <Avatar src={g.user_photo} name={g.user_name} size="xl" className="h-full w-full" />
+              </div>
             </div>
           </div>
           <span className="max-w-[54px] truncate text-[11px] font-medium text-ink-muted">
@@ -380,7 +402,7 @@ function storyFormatTime(secs: number) {
 }
 
 function StoryViewer({
-  group, index, onClose, onPrev, onNext, onNextPerson, onPrevPerson, onDelete, onAddStory,
+  group, index, onClose, onPrev, onNext, onNextPerson, onPrevPerson, onDelete, onAddStory, onToggleMute,
   reactions, onReact, showReplyInput, onToggleReply, replyText, onReplyChange, onSendReply, replySending,
   likers, viewCount, isPaused, onPauseToggle,
 }: {
@@ -392,6 +414,7 @@ function StoryViewer({
   onNextPerson?: () => void;
   onPrevPerson?: () => void;
   onDelete?: (storyId: number) => void;
+  onToggleMute?: (userId: number, muted: boolean) => void;
   onAddStory?: () => void;
   reactions?: { count: number; is_liked: boolean };
   onReact?: () => void;
@@ -590,6 +613,25 @@ function StoryViewer({
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
               </svg>
+            </button>
+          )}
+          {!group.is_own && onToggleMute && (
+            <button
+              type="button"
+              onClick={() => onToggleMute(group.user_id, !group.muted)}
+              className="rounded-full bg-black/30 p-1.5 text-white hover:bg-black/50"
+              title={group.muted ? 'Unmute their stories' : 'Mute their stories'}
+            >
+              {group.muted ? (
+                // Muted — bell with a slash
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.143 17.082a24.248 24.248 0 003.844.148m-3.844-.148a23.856 23.856 0 01-5.455-1.31 8.964 8.964 0 002.3-5.542m3.155 6.852a3 3 0 005.667 1.97m1.965-2.277L21 21m-4.225-4.225a23.81 23.81 0 003.536-1.003A8.967 8.967 0 0118 9.75V9A6 6 0 006.53 6.53m10.245 10.245L6.53 6.53M3 3l3.53 3.53" />
+                </svg>
+              ) : (
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                </svg>
+              )}
             </button>
           )}
           <button type="button" onClick={onClose} className="rounded-full bg-black/30 p-1.5 text-white hover:bg-black/50">
@@ -1323,16 +1365,37 @@ export default function FeedPage() {
   }, [viewingGroup, viewingIdx, showUploadStory, showStoryReply, storyPaused]);
 
   // Move to the next person's stories, or close if this is the last person.
+  // Mute / unmute someone's stories. Optimistic; the muted person is never told.
+  const handleToggleMute = async (userId: number, muted: boolean) => {
+    if (!token) return;
+    setStoryGroups(prev => prev.map(g => g.user_id === userId ? { ...g, muted } : g));
+    setViewingGroup(prev => prev && prev.user_id === userId ? { ...prev, muted } : prev);
+    try {
+      const res = await fetch(`${API_URL}/api/stories/mute/${userId}`, {
+        method: muted ? 'POST' : 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      // revert on failure
+      setStoryGroups(prev => prev.map(g => g.user_id === userId ? { ...g, muted: !muted } : g));
+      setViewingGroup(prev => prev && prev.user_id === userId ? { ...prev, muted: !muted } : prev);
+    }
+  };
+
   const goToNextPerson = () => {
     if (!viewingGroup) return;
     const idx = storyGroups.findIndex(g => g.user_id === viewingGroup.user_id);
-    if (idx >= 0 && idx < storyGroups.length - 1) {
-      const next = storyGroups[idx + 1];
+    // Skip muted people when auto-advancing — muting exists precisely so their
+    // stories don't get played. They're still openable deliberately from the bar.
+    const nextIdx = storyGroups.findIndex((g, i) => i > idx && !g.muted);
+    if (idx >= 0 && nextIdx > -1) {
+      const next = storyGroups[nextIdx];
       setViewingGroup(next);
       const firstUnseen = next.stories.findIndex(s => !viewedStoryIds.has(s.id));
       setViewingIdx(firstUnseen >= 0 ? firstUnseen : 0);
     } else {
-      setViewingGroup(null); // last person — close the viewer
+      setViewingGroup(null); // no one left — close the viewer
     }
   };
 
@@ -3493,6 +3556,7 @@ export default function FeedPage() {
           onPrev={() => viewingIdx > 0 ? setViewingIdx(i => i - 1) : goToPrevPerson()}
           onNext={() => viewingIdx < viewingGroup.stories.length - 1 ? setViewingIdx(i => i + 1) : goToNextPerson()}
           onNextPerson={goToNextPerson}
+          onToggleMute={handleToggleMute}
           onPrevPerson={goToPrevPerson}
           onDelete={handleDeleteStory}
           onAddStory={() => setShowUploadStory(true)}

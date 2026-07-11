@@ -164,6 +164,7 @@ async function getStories(req, res) {
           user_name: s.user_name,
           user_photo: s.user_photo,
           is_own: s.user_id === req.user.id,
+          muted: !!s.muted,
           stories: [],
         });
       }
@@ -296,4 +297,33 @@ async function recordView(req, res) {
   }
 }
 
-module.exports = { getUploadSignature, createStory, getStories, getMyStories, deleteStory, reactToStory, getReactionsHandler, replyToStory, getStoryRepliesHandler, recordView, getViewersHandler };
+// Mute / unmute someone's stories. Silent — the muted user is never notified,
+// and it does not affect following.
+async function muteStories(req, res) {
+  try {
+    const targetId = parseInt(req.params.userId, 10);
+    if (targetId === req.user.id) {
+      return res.status(400).json({ message: 'You cannot mute yourself' });
+    }
+    await Story.muteUserStories(req.user.id, targetId);
+    res.json({ muted: true });
+  } catch (err) {
+    console.error('Mute stories error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function unmuteStories(req, res) {
+  try {
+    const targetId = parseInt(req.params.userId, 10);
+    await Story.unmuteUserStories(req.user.id, targetId);
+    res.json({ muted: false });
+  } catch (err) {
+    console.error('Unmute stories error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+module.exports = {
+  muteStories,
+  unmuteStories, getUploadSignature, createStory, getStories, getMyStories, deleteStory, reactToStory, getReactionsHandler, replyToStory, getStoryRepliesHandler, recordView, getViewersHandler };

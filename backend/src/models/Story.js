@@ -49,7 +49,14 @@ async function getActiveStoriesForUser(userId) {
             EXISTS (
               SELECT 1 FROM abukonn.story_views v
               WHERE v.story_id = s.id AND v.viewer_id = $1
-            ) AS viewed
+            ) AS viewed,
+            -- Has this viewer muted the author? Muted authors are returned but
+            -- flagged, so the UI can move them to a separate Muted section
+            -- rather than dropping them entirely.
+            EXISTS (
+              SELECT 1 FROM abukonn.story_mutes m
+              WHERE m.muter_id = $1 AND m.muted_id = s.user_id
+            ) AS muted
      FROM abukonn.stories s
      JOIN abukonn.users u ON s.user_id = u.id
      LEFT JOIN abukonn.story_views sv ON sv.story_id = s.id
@@ -104,6 +111,40 @@ CREATE TABLE IF NOT EXISTS abukonn.story_views (
   UNIQUE(story_id, viewer_id)
 );
 CREATE INDEX IF NOT EXISTS idx_story_views_story ON abukonn.story_views(story_id);`;
+
+// Muting is one-directional and silent: the muted person is never told, and it
+// doesn't affect following. Their stories still load (so they can be shown in a
+// separate Muted section) — they're just flagged, not hidden from the API.
+const CREATE_STORY_MUTES_TABLE = `
+CREATE TABLE IF NOT EXISTS abukonn.story_mutes (
+  muter_id INTEGER NOT NULL REFERENCES abukonn.users(id) ON DELETE CASCADE,
+  muted_id INTEGER NOT NULL REFERENCES abukonn.users(id) ON DELETE CASCADE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (muter_id, muted_id)
+);`;
+
+async function createStoryMutesTable() {
+  await pool.query(CREATE_STORY_MUTES_TABLE);
+  console.log('Story mutes table ready');
+}
+
+async function muteUserStories(muterId, mutedId) {
+  if (muterId === mutedId) return false;
+  await pool.query(
+    `INSERT INTO abukonn.story_mutes (muter_id, muted_id) VALUES ($1, $2)
+     ON CONFLICT DO NOTHING`,
+    [muterId, mutedId]
+  );
+  return true;
+}
+
+async function unmuteUserStories(muterId, mutedId) {
+  await pool.query(
+    `DELETE FROM abukonn.story_mutes WHERE muter_id = $1 AND muted_id = $2`,
+    [muterId, mutedId]
+  );
+  return true;
+}
 
 async function createStoryViewsTable() {
   await pool.query(CREATE_STORY_VIEWS_TABLE);
@@ -234,6 +275,9 @@ async function getStoryReplies(storyId) {
 }
 
 module.exports = {
+  createStoryMutesTable,
+  muteUserStories,
+  unmuteUserStories,
   createStoriesTable,
   createStory,
   getActiveStoriesForUser,
