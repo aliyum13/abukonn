@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Avatar, VerifiedBadge, ContentCreatorBadge, RoleBadge, Button } from '@/components/ui';
 import { useFollow } from '@/hooks/useFollow';
 import { useAuth } from '@/context/AuthContext';
+import { formatLevel } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
@@ -205,7 +206,7 @@ function PersonRow({ person, token }: { person: Person; token: string | null }) 
           <ContentCreatorBadge isCreator={person.is_content_creator} iconOnly />
         </div>
         <p className="truncate text-[12px] text-ink-muted">
-          {person.department}{person.level ? ` · ${person.level} level` : ''}
+          {person.department}{person.level ? ` · ${formatLevel(person.level)}` : ''}
           {person.followers_count > 0 ? ` · ${person.followers_count} follower${person.followers_count === 1 ? '' : 's'}` : ''}
         </p>
       </Link>

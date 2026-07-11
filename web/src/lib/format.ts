@@ -32,3 +32,22 @@ export function excerpt(content: string, max = 120) {
   if (content.length <= max) return content;
   return `${content.slice(0, max).trim()}...`;
 }
+
+/**
+ * Format an academic level for display.
+ *
+ * Levels are stored WITH the word already in them ("300 Level", "Postgraduate"),
+ * so appending " level" in the UI produces "300 Level level". This normalises
+ * the value whether or not it already contains the word, and leaves
+ * non-numeric levels like "Postgraduate" alone.
+ */
+export function formatLevel(level: string | null | undefined): string {
+  if (!level) return '';
+  const trimmed = level.trim();
+  // Already contains the word (e.g. "300 Level") — use as-is.
+  if (/level/i.test(trimmed)) return trimmed;
+  // Bare number (e.g. "300") — add the word.
+  if (/^\d+$/.test(trimmed)) return `${trimmed} Level`;
+  // Anything else (e.g. "Postgraduate") — leave alone.
+  return trimmed;
+}
