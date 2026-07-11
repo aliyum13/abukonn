@@ -32,7 +32,7 @@ async function getTodayClasses(req, res) {
       return res.json({ classes: [], day: null, no_profile: true });
     }
     console.log('[timetable] fetching for:', user.department, '|', user.level);
-    const result = await Timetable.getTodayClasses(user.department, user.level);
+    const result = await Timetable.getTodayClassesWithOverrides(user.department, user.level);
     console.log('[timetable] found', result.classes.length, 'classes for day:', result.day);
     res.json(result);
   } catch (err) {

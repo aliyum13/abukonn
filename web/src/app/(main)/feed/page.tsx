@@ -121,17 +121,39 @@ interface Story {
   story_type: 'image' | 'video' | 'text';
   text_content: string | null;
   bg_color: string | null;
+  font_style: string | null;
   caption: string | null;
   created_at: string;
   expires_at: string;
   view_count: number | null;
+  /** Whether the current viewer has seen this story. Server-provided (from
+   *  story_views), so it survives switching device or clearing storage. */
+  viewed?: boolean;
 }
+
+// How long a story must stay on screen before it counts as seen. Long enough
+// that flicking past someone doesn't mark them read (or tell them you looked),
+// short enough that a genuine glance still registers.
+const STORY_SEEN_DWELL_MS = 1200;
+
+// Text-story fonts. Keys must match the backend whitelist (STORY_FONTS).
+const STORY_FONTS: Record<string, { label: string; className: string }> = {
+  classic: { label: 'Classic', className: 'font-sans font-semibold' },
+  bold:    { label: 'Bold',    className: 'font-sans font-extrabold tracking-tight' },
+  serif:   { label: 'Serif',   className: 'font-serif font-semibold' },
+  mono:    { label: 'Mono',    className: 'font-mono font-semibold tracking-tight' },
+  script:  { label: 'Script',  className: 'font-serif italic font-medium' },
+};
+const storyFontClass = (key?: string | null) =>
+  STORY_FONTS[key ?? 'classic']?.className ?? STORY_FONTS.classic.className;
 
 interface StoryGroup {
   user_id: number;
   user_name: string;
   user_photo: string | null;
   is_own: boolean;
+  /** Viewer has muted this author — shown last and dimmed, never notified. */
+  muted?: boolean;
   stories: Story[];
 }
 
@@ -302,7 +324,16 @@ function StoriesBar({
   viewedStoryIds: Set<number>;
 }) {
   const ownGroup = groups.find(g => g.is_own);
-  const others = groups.filter(g => !g.is_own);
+
+  // WhatsApp-style ordering within the existing horizontal bar:
+  // unseen (Recent) first, then already-viewed, then muted last.
+  // A group counts as unseen if ANY of its stories is unseen.
+  const hasUnseen = (g: StoryGroup) => g.stories.some(st => !viewedStoryIds.has(st.id));
+  const rank = (g: StoryGroup) => (g.muted ? 2 : hasUnseen(g) ? 0 : 1);
+  const others = groups
+    .filter(g => !g.is_own)
+    .slice()
+    .sort((a, b) => rank(a) - rank(b));
   return (
     <div className="flex gap-4 overflow-x-auto scrollbar-hide px-0.5">
       {/* My Status */}
@@ -340,10 +371,21 @@ function StoriesBar({
       {/* Others */}
       {others.map(g => (
         <button key={g.user_id} type="button" onClick={() => onViewGroup(g)}
-          className="flex shrink-0 flex-col items-center gap-1.5">
-          <div className="h-14 w-14 rounded-full bg-gradient-to-tr from-brand-500 to-emerald-400 p-[2px]">
-            <div className="h-full w-full rounded-full bg-white dark:bg-[#0a0a0a] p-[2px]">
-              <Avatar src={g.user_photo} name={g.user_name} size="xl" className="h-full w-full" />
+          className={cn(
+            'flex shrink-0 flex-col items-center gap-1.5 transition',
+            // Muted authors are dimmed and sit at the end — still reachable,
+            // just out of the way. They are never told they've been muted.
+            g.muted && 'opacity-40'
+          )}>
+          <div className="relative h-14 w-14 rounded-full">
+            {/* Segmented ring: green for unseen, grey once viewed — the same
+                treatment as your own story. Previously everyone else had a
+                fixed gradient, so you couldn't tell what you'd already seen. */}
+            <SegmentedRing stories={g.stories} viewedIds={viewedStoryIds} />
+            <div className="h-full w-full rounded-full p-[3px]">
+              <div className="h-full w-full rounded-full bg-white p-[1px] dark:bg-[#0a0a0a]">
+                <Avatar src={g.user_photo} name={g.user_name} size="xl" className="h-full w-full" />
+              </div>
             </div>
           </div>
           <span className="max-w-[54px] truncate text-[11px] font-medium text-ink-muted">
@@ -377,7 +419,7 @@ function storyFormatTime(secs: number) {
 }
 
 function StoryViewer({
-  group, index, onClose, onPrev, onNext, onNextPerson, onPrevPerson, onDelete, onAddStory,
+  group, index, onClose, onPrev, onNext, onNextPerson, onPrevPerson, onDelete, onAddStory, onToggleMute,
   reactions, onReact, showReplyInput, onToggleReply, replyText, onReplyChange, onSendReply, replySending,
   likers, viewCount, isPaused, onPauseToggle,
 }: {
@@ -389,6 +431,7 @@ function StoryViewer({
   onNextPerson?: () => void;
   onPrevPerson?: () => void;
   onDelete?: (storyId: number) => void;
+  onToggleMute?: (userId: number, muted: boolean) => void;
   onAddStory?: () => void;
   reactions?: { count: number; is_liked: boolean };
   onReact?: () => void;
@@ -589,6 +632,25 @@ function StoryViewer({
               </svg>
             </button>
           )}
+          {!group.is_own && onToggleMute && (
+            <button
+              type="button"
+              onClick={() => onToggleMute(group.user_id, !group.muted)}
+              className="rounded-full bg-black/30 p-1.5 text-white hover:bg-black/50"
+              title={group.muted ? 'Unmute their stories' : 'Mute their stories'}
+            >
+              {group.muted ? (
+                // Muted — bell with a slash
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.143 17.082a24.248 24.248 0 003.844.148m-3.844-.148a23.856 23.856 0 01-5.455-1.31 8.964 8.964 0 002.3-5.542m3.155 6.852a3 3 0 005.667 1.97m1.965-2.277L21 21m-4.225-4.225a23.81 23.81 0 003.536-1.003A8.967 8.967 0 0118 9.75V9A6 6 0 006.53 6.53m10.245 10.245L6.53 6.53M3 3l3.53 3.53" />
+                </svg>
+              ) : (
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                </svg>
+              )}
+            </button>
+          )}
           <button type="button" onClick={onClose} className="rounded-full bg-black/30 p-1.5 text-white hover:bg-black/50">
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
@@ -600,7 +662,8 @@ function StoryViewer({
           <div className="flex h-full w-full items-center justify-center px-8"
             style={{ backgroundColor: story.bg_color || '#16a34a' }}>
             <p className={cn(
-              'text-center font-bold leading-tight text-white break-words w-full',
+              'text-center leading-tight text-white break-words w-full',
+              storyFontClass(story.font_style),
               (story.text_content?.length ?? 0) > 100 ? 'text-xl' : (story.text_content?.length ?? 0) > 50 ? 'text-2xl' : 'text-3xl'
             )}>
               {story.text_content}
@@ -695,7 +758,7 @@ function StoryViewer({
                 )}
                 {story.story_type === 'text' && (
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg px-1" style={{ backgroundColor: story.bg_color || '#16a34a' }}>
-                    <p className="line-clamp-2 text-center text-[9px] font-semibold leading-tight text-white">{story.text_content}</p>
+                    <p className={cn('line-clamp-2 text-center text-[9px] leading-tight text-white', storyFontClass(story.font_style))}>{story.text_content}</p>
                   </div>
                 )}
                 <p className="text-xs text-white/70">Replying to story</p>
@@ -1115,12 +1178,21 @@ export default function FeedPage() {
   const [viewingGroup, setViewingGroup] = useState<StoryGroup | null>(null);
   const [viewingIdx, setViewingIdx] = useState(0);
   const [showUploadStory, setShowUploadStory] = useState(false);
-  const [storyFile, setStoryFile] = useState<File | null>(null);
-  const [storyPreview, setStoryPreview] = useState<string | null>(null);
+  // Multiple photos can be queued and uploaded one after another (like WhatsApp).
+  const [storyFiles, setStoryFiles] = useState<File[]>([]);
+  const [storyPreviews, setStoryPreviews] = useState<string[]>([]);
+  // Which item in the queue is currently uploading (for "2 of 5" feedback).
+  const [storyUploadIdx, setStoryUploadIdx] = useState(0);
   const [uploadingStory, setUploadingStory] = useState(false);
   const [storyTab, setStoryTab] = useState<'media' | 'text'>('media');
   const [storyText, setStoryText] = useState('');
   const [storyBgColor, setStoryBgColor] = useState('#16a34a');
+  const [storyFont, setStoryFont] = useState('classic');
+  // Story privacy audience: 'all' | 'except' | 'only'. Remembered between posts.
+  const [storyAudience, setStoryAudience] = useState<'all' | 'except' | 'only'>('all');
+  const [storyAudienceIds, setStoryAudienceIds] = useState<number[]>([]);
+  const [showAudiencePicker, setShowAudiencePicker] = useState(false);
+  const [audienceCandidates, setAudienceCandidates] = useState<Array<{ id: number; full_name: string; profile_photo_url: string | null }>>([]);
   const [storyCaption, setStoryCaption] = useState('');
   const [viewedStoryIds, setViewedStoryIds] = useState<Set<number>>(new Set());
   // Story reactions & replies
@@ -1142,7 +1214,7 @@ export default function FeedPage() {
   const [isMyBirthday, setIsMyBirthday] = useState(false);
 
   // Today's classes
-  interface TodayClass { id: number; course_code: string | null; course_title: string; start_time: string; end_time: string; venue: string | null; lecturer: string | null; status?: 'holding' | 'cancelled'; }
+  interface TodayClass { id: number | string; course_code: string | null; course_title: string; start_time: string; end_time: string; venue: string | null; lecturer: string | null; status?: 'holding' | 'cancelled'; override?: { kind: 'add' | 'edit' | 'cancel'; override_id: number; note?: string | null; new?: { start_time: string | null; end_time: string | null; course_code: string | null; course_title: string | null; venue: string | null; lecturer: string | null } } | null; }
   const [todayClasses, setTodayClasses] = useState<TodayClass[]>([]);
   const [noTimetableProfile, setNoTimetableProfile] = useState(false);
 
@@ -1196,7 +1268,7 @@ export default function FeedPage() {
       if (e.key !== 'Escape') return;
       if (showUploadStory) {
         setShowUploadStory(false);
-        setStoryFile(null); setStoryPreview(null); setStoryText(''); setStoryBgColor('#16a34a'); setStoryTab('media'); setStoryCaption(''); setStoryUploadError(''); setStoryUploadProgress(null);
+        setStoryFiles([]); setStoryPreviews([]); setStoryText(''); setStoryBgColor('#16a34a'); setStoryFont('classic'); setStoryTab('media'); setStoryCaption(''); setStoryUploadError(''); setStoryUploadProgress(null);
       } else {
         setLightboxUrl(null); setViewingGroup(null);
       }
@@ -1205,12 +1277,48 @@ export default function FeedPage() {
     return () => document.removeEventListener('keydown', handler);
   }, [showUploadStory]);
 
+  // Load the saved story audience preference, and the followers we can pick from.
+  useEffect(() => {
+    if (!token || !showUploadStory) return;
+    fetch(`${API_URL}/api/stories/audience`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => {
+        setStoryAudience((d.audience as 'all' | 'except' | 'only') || 'all');
+        setStoryAudienceIds(d.user_ids || []);
+      })
+      .catch(() => {});
+    // The audience list is chosen from your followers — they're the only people
+    // who could see the story in the first place.
+    fetch(`${API_URL}/api/follows/followers`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => setAudienceCandidates(d.followers || []))
+      .catch(() => {});
+  }, [token, showUploadStory]);
+
   // Fetch stories
   useEffect(() => {
     if (!token) return;
     fetch(`${API_URL}/api/stories`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
-      .then(d => { setStoryGroups(d.groups || []); setStoriesLoaded(true); })
+      .then(d => {
+        const groups = d.groups || [];
+        setStoryGroups(groups);
+        // Seed seen-state from the server, which is the source of truth. Merge
+        // rather than replace so stories viewed moments ago in this session
+        // (already optimistically marked) don't flash back to unseen if the
+        // view POST hasn't landed yet.
+        const seen = new Set<number>();
+        for (const g of groups) {
+          for (const st of (g.stories || [])) {
+            // Own stories never record a view (you can't "view" yourself), so
+            // treat them as seen — otherwise your own ring would always look
+            // unread. Everyone else's comes from the server's viewed flag.
+            if (g.is_own || st.viewed) seen.add(st.id);
+          }
+        }
+        setViewedStoryIds(prev => new Set([...prev, ...seen]));
+        setStoriesLoaded(true);
+      })
       .catch(() => setStoriesLoaded(true));
   }, [token]);
 
@@ -1302,16 +1410,37 @@ export default function FeedPage() {
   }, [viewingGroup, viewingIdx, showUploadStory, showStoryReply, storyPaused]);
 
   // Move to the next person's stories, or close if this is the last person.
+  // Mute / unmute someone's stories. Optimistic; the muted person is never told.
+  const handleToggleMute = async (userId: number, muted: boolean) => {
+    if (!token) return;
+    setStoryGroups(prev => prev.map(g => g.user_id === userId ? { ...g, muted } : g));
+    setViewingGroup(prev => prev && prev.user_id === userId ? { ...prev, muted } : prev);
+    try {
+      const res = await fetch(`${API_URL}/api/stories/mute/${userId}`, {
+        method: muted ? 'POST' : 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      // revert on failure
+      setStoryGroups(prev => prev.map(g => g.user_id === userId ? { ...g, muted: !muted } : g));
+      setViewingGroup(prev => prev && prev.user_id === userId ? { ...prev, muted: !muted } : prev);
+    }
+  };
+
   const goToNextPerson = () => {
     if (!viewingGroup) return;
     const idx = storyGroups.findIndex(g => g.user_id === viewingGroup.user_id);
-    if (idx >= 0 && idx < storyGroups.length - 1) {
-      const next = storyGroups[idx + 1];
+    // Skip muted people when auto-advancing — muting exists precisely so their
+    // stories don't get played. They're still openable deliberately from the bar.
+    const nextIdx = storyGroups.findIndex((g, i) => i > idx && !g.muted);
+    if (idx >= 0 && nextIdx > -1) {
+      const next = storyGroups[nextIdx];
       setViewingGroup(next);
       const firstUnseen = next.stories.findIndex(s => !viewedStoryIds.has(s.id));
       setViewingIdx(firstUnseen >= 0 ? firstUnseen : 0);
     } else {
-      setViewingGroup(null); // last person — close the viewer
+      setViewingGroup(null); // no one left — close the viewer
     }
   };
 
@@ -1346,40 +1475,54 @@ export default function FeedPage() {
         if (ts > cutoff) { valid[id] = ts; ids.add(Number(id)); }
       }
       localStorage.setItem('viewed_stories', JSON.stringify(valid));
-      setViewedStoryIds(ids);
+      // Merge, never replace — the server seed (authoritative) may already have
+      // landed, and replacing would wipe it.
+      setViewedStoryIds(prev => new Set([...prev, ...ids]));
     } catch {}
   }, []);
 
-  // Mark current story as viewed (localStorage) and record view via API
+  // Mark the current story as viewed — but only once it's actually been on
+  // screen for a moment. Previously this fired the instant the story rendered,
+  // so tapping quickly through someone marked their stories read (and told them
+  // you'd viewed them) without you having seen anything.
+  //
+  // The timer is cleared whenever the story changes or the viewer closes, so
+  // skipping past a story never records a view.
   useEffect(() => {
     if (!viewingGroup) return;
     const story = viewingGroup.stories[viewingIdx];
     if (!story) return;
-    setViewedStoryIds(prev => new Set([...prev, story.id]));
-    try {
-      const stored = localStorage.getItem('viewed_stories');
-      const parsed: Record<string, number> = stored ? JSON.parse(stored) : {};
-      parsed[String(story.id)] = Date.now();
-      localStorage.setItem('viewed_stories', JSON.stringify(parsed));
-    } catch {}
-    // Record view via API once per session, skip own stories
-    if (token && !viewingGroup.is_own && !viewedStoryApiCallsRef.current.has(story.id)) {
-      viewedStoryApiCallsRef.current.add(story.id);
-      const storyId = story.id;
-      fetch(`${API_URL}/api/stories/${storyId}/view`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      })
-        .then(r => {
-          if (r.ok) {
-            setViewingGroup(prev => prev ? {
-              ...prev,
-              stories: prev.stories.map(s => s.id === storyId ? { ...s, view_count: (s.view_count ?? 0) + 1 } : s),
-            } : null);
-          }
+
+    const timer = setTimeout(() => {
+      setViewedStoryIds(prev => new Set([...prev, story.id]));
+      try {
+        const stored = localStorage.getItem('viewed_stories');
+        const parsed: Record<string, number> = stored ? JSON.parse(stored) : {};
+        parsed[String(story.id)] = Date.now();
+        localStorage.setItem('viewed_stories', JSON.stringify(parsed));
+      } catch {}
+
+      // Record the view on the server, once per session, never on my own stories.
+      if (token && !viewingGroup.is_own && !viewedStoryApiCallsRef.current.has(story.id)) {
+        viewedStoryApiCallsRef.current.add(story.id);
+        const storyId = story.id;
+        fetch(`${API_URL}/api/stories/${storyId}/view`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
         })
-        .catch(() => {});
-    }
+          .then(r => {
+            if (r.ok) {
+              setViewingGroup(prev => prev ? {
+                ...prev,
+                stories: prev.stories.map(s => s.id === storyId ? { ...s, view_count: (s.view_count ?? 0) + 1 } : s),
+              } : null);
+            }
+          })
+          .catch(() => {});
+      }
+    }, STORY_SEEN_DWELL_MS);
+
+    return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewingGroup, viewingIdx]);
 
@@ -1778,20 +1921,93 @@ export default function FeedPage() {
 
   // ── Stories ─────────────────────────────────────────────────────────────────
 
+  const MAX_STORY_BATCH = 10;
+
   const handleStoryFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const picked = Array.from(e.target.files ?? []);
+    e.target.value = '';
+    if (picked.length === 0) return;
     setStoryUploadError('');
-    if (file.type.startsWith('video/')) {
-      setStoryUploadError('Video stories are coming in Phase 2. Only photo stories are supported for now.');
-      e.target.value = '';
+
+    if (picked.some(f => f.type.startsWith('video/'))) {
+      setStoryUploadError('Video stories are coming with the mobile app. Only photos for now.');
       return;
     }
-    setStoryFile(file);
-    const reader = new FileReader();
-    reader.onloadend = () => setStoryPreview(reader.result as string);
-    reader.readAsDataURL(file);
-    e.target.value = '';
+
+    const room = MAX_STORY_BATCH - storyFiles.length;
+    if (room <= 0) {
+      setStoryUploadError(`You can post up to ${MAX_STORY_BATCH} photos at once.`);
+      return;
+    }
+    const accepted = picked.slice(0, room);
+    if (picked.length > room) {
+      setStoryUploadError(`Only the first ${room} photo${room === 1 ? '' : 's'} were added (max ${MAX_STORY_BATCH}).`);
+    }
+
+    setStoryFiles(prev => [...prev, ...accepted]);
+    accepted.forEach(file => {
+      const reader = new FileReader();
+      reader.onloadend = () => setStoryPreviews(prev => [...prev, reader.result as string]);
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Remove one queued photo before posting.
+  const removeStoryAt = (idx: number) => {
+    setStoryFiles(prev => prev.filter((_, i) => i !== idx));
+    setStoryPreviews(prev => prev.filter((_, i) => i !== idx));
+    setStoryUploadError('');
+  };
+
+  // Upload a single photo direct to Cloudinary (bypassing Railway's ~30s proxy
+  // timeout), then save the story record. Returns the created story.
+  const uploadOneStoryPhoto = async (file: File, caption?: string): Promise<Story> => {
+    const sigRes = await fetch(`${API_URL}/api/stories/upload-signature`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!sigRes.ok) throw new Error('Failed to get upload signature');
+    const { signature, timestamp, api_key, cloud_name, folder } = await sigRes.json() as {
+      signature: string; timestamp: number; api_key: string; cloud_name: string; folder: string;
+    };
+
+    const cloudinaryUrl = await new Promise<string>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const tid = setTimeout(() => xhr.abort(), 300000);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) setStoryUploadProgress(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = () => {
+        clearTimeout(tid);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try { resolve((JSON.parse(xhr.responseText) as { secure_url: string }).secure_url); }
+          catch { reject(new Error('Invalid Cloudinary response')); }
+        } else {
+          try { reject(new Error((JSON.parse(xhr.responseText) as { error?: { message: string } }).error?.message || 'Cloudinary upload failed')); }
+          catch { reject(new Error('Cloudinary upload failed')); }
+        }
+      };
+      xhr.onerror = () => { clearTimeout(tid); reject(new Error('Network error — check your connection')); };
+      xhr.onabort = () => { clearTimeout(tid); reject(new Error('Upload timed out')); };
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('api_key', api_key);
+      fd.append('timestamp', String(timestamp));
+      fd.append('signature', signature);
+      fd.append('folder', folder);
+      xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloud_name}/image/upload`);
+      xhr.send(fd);
+    });
+
+    const saveRes = await fetch(`${API_URL}/api/stories`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ story_type: 'image', media_url: cloudinaryUrl, direct_upload: true, caption, audience: storyAudience, audience_user_ids: storyAudienceIds }),
+    });
+    if (!saveRes.ok) {
+      const d = await saveRes.json().catch(() => ({})) as { message?: string };
+      throw new Error(d.message || 'Failed to save story');
+    }
+    return ((await saveRes.json()) as { story: Story }).story;
   };
 
   const handleUploadStory = async () => {
@@ -1800,7 +2016,8 @@ export default function FeedPage() {
     setStoryUploadError('');
     setStoryUploadProgress(null);
 
-    const onSuccess = (story: Story) => {
+    // Add a freshly-posted story into my own group in the bar.
+    const appendOwnStory = (story: Story) => {
       setStoryGroups(prev => {
         const ownIdx = prev.findIndex(g => g.is_own);
         if (ownIdx >= 0) {
@@ -1811,12 +2028,22 @@ export default function FeedPage() {
         return [{ user_id: user!.id, user_name: user!.full_name, user_photo: user!.profile_photo_url, is_own: true, stories: [story] }, ...prev];
       });
       setViewingGroup(prev => prev?.is_own ? { ...prev, stories: [...prev.stories, story] } : prev);
+    };
+
+    const resetStoryComposer = () => {
       setShowUploadStory(false);
-      setStoryFile(null);
-      setStoryPreview(null);
+      setStoryFiles([]);
+      setStoryPreviews([]);
+      setStoryCaption('');
       setStoryText('');
-      setStoryBgColor('#16a34a');
+      setStoryBgColor('#16a34a'); setStoryFont('classic');
       setStoryTab('media');
+      setStoryUploadIdx(0);
+    };
+
+    const onSuccess = (story: Story) => {
+      appendOwnStory(story);
+      resetStoryComposer();
     };
 
     try {
@@ -1826,7 +2053,7 @@ export default function FeedPage() {
         const res = await fetch(`${API_URL}/api/stories`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ story_type: 'text', text_content: storyText, bg_color: storyBgColor }),
+          body: JSON.stringify({ story_type: 'text', text_content: storyText, bg_color: storyBgColor, font_style: storyFont, audience: storyAudience, audience_user_ids: storyAudienceIds }),
           signal: controller.signal,
         }).finally(() => clearTimeout(tid));
         if (!res.ok) {
@@ -1835,55 +2062,38 @@ export default function FeedPage() {
         }
         onSuccess(((await res.json()) as { story: Story }).story);
       } else {
-        if (!storyFile) return;
+        if (storyFiles.length === 0) return;
 
-        // Direct-to-Cloudinary upload for images — bypasses Railway's 30s proxy timeout
-        const sigRes = await fetch(`${API_URL}/api/stories/upload-signature`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!sigRes.ok) throw new Error('Failed to get upload signature');
-        const { signature, timestamp, api_key, cloud_name, folder } = await sigRes.json() as {
-          signature: string; timestamp: number; api_key: string; cloud_name: string; folder: string;
-        };
-
-        const cloudinaryUrl = await new Promise<string>((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          const tid = setTimeout(() => xhr.abort(), 300000);
-          xhr.upload.onprogress = (e) => {
-            if (e.lengthComputable) setStoryUploadProgress(Math.round((e.loaded / e.total) * 100));
-          };
-          xhr.onload = () => {
-            clearTimeout(tid);
-            if (xhr.status >= 200 && xhr.status < 300) {
-              try { resolve((JSON.parse(xhr.responseText) as { secure_url: string }).secure_url); }
-              catch { reject(new Error('Invalid Cloudinary response')); }
-            } else {
-              try { reject(new Error((JSON.parse(xhr.responseText) as { error?: { message: string } }).error?.message || 'Cloudinary upload failed')); }
-              catch { reject(new Error('Cloudinary upload failed')); }
-            }
-          };
-          xhr.onerror = () => { clearTimeout(tid); reject(new Error('Network error — check your connection')); };
-          xhr.onabort = () => { clearTimeout(tid); reject(new Error('Upload timed out')); };
-          const fd = new FormData();
-          fd.append('file', storyFile);
-          fd.append('api_key', api_key);
-          fd.append('timestamp', String(timestamp));
-          fd.append('signature', signature);
-          fd.append('folder', folder);
-          xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloud_name}/image/upload`);
-          xhr.send(fd);
-        });
-
-        const saveRes = await fetch(`${API_URL}/api/stories`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ story_type: 'image', media_url: cloudinaryUrl, direct_upload: true, caption: storyCaption.trim() || undefined }),
-        });
-        if (!saveRes.ok) {
-          const d = await saveRes.json().catch(() => ({})) as { message?: string };
-          throw new Error(d.message || 'Failed to save story');
+        // Upload each queued photo in turn. Sequential rather than parallel so a
+        // flaky campus connection doesn't have to carry several large uploads at
+        // once, and so progress reads clearly as "2 of 5".
+        let done = 0;
+        try {
+          for (let i = 0; i < storyFiles.length; i++) {
+            setStoryUploadIdx(i);
+            setStoryUploadProgress(0);
+            const story = await uploadOneStoryPhoto(
+              storyFiles[i],
+              // The caption applies to the first photo only — captioning each one
+              // individually would need a per-photo editor, which isn't built yet.
+              i === 0 ? (storyCaption.trim() || undefined) : undefined,
+            );
+            appendOwnStory(story);
+            done++;
+          }
+        } catch (err) {
+          // Some photos may already be posted. Drop those from the queue so that
+          // retrying doesn't post them a second time, and report what's left.
+          if (done > 0) {
+            setStoryFiles(prev => prev.slice(done));
+            setStoryPreviews(prev => prev.slice(done));
+            setStoryUploadIdx(0);
+            const msg = err instanceof Error ? err.message : 'Upload failed';
+            throw new Error(`${done} photo${done === 1 ? '' : 's'} posted, then failed: ${msg}. Tap Share to retry the rest.`);
+          }
+          throw err;
         }
-        onSuccess(((await saveRes.json()) as { story: Story }).story);
+        resetStoryComposer();
       }
     } catch (err) {
       const msg = err instanceof DOMException && err.name === 'AbortError'
@@ -2379,11 +2589,19 @@ export default function FeedPage() {
               ) : (
                 <div className="flex gap-3 overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none' }}>
                   {todayClasses.map(cls => {
-                    const isCancelled = cls.status === 'cancelled';
+                    const ov = cls.override;
+                    const isCancelled = cls.status === 'cancelled' || ov?.kind === 'cancel';
+                    const isAdded = ov?.kind === 'add';
+                    const isEdited = ov?.kind === 'edit';
+                    // For an edit, the new values to show highlighted
+                    const nv = isEdited ? ov?.new : null;
                     return (
                       <div key={cls.id} className={cn(
-                        'flex min-w-[200px] max-w-[240px] shrink-0 flex-col gap-1.5 rounded-2xl p-3.5',
-                        isCancelled ? 'bg-red-50 dark:bg-red-950/30' : 'bg-indigo-50 dark:bg-indigo-950/40'
+                        'flex min-w-[200px] max-w-[260px] shrink-0 flex-col gap-1.5 rounded-2xl p-3.5',
+                        isCancelled ? 'bg-red-50 dark:bg-red-950/30'
+                          : isAdded ? 'bg-amber-50 dark:bg-amber-950/30'
+                          : isEdited ? 'bg-amber-50 dark:bg-amber-950/30'
+                          : 'bg-indigo-50 dark:bg-indigo-950/40'
                       )}>
                         <div className="flex items-center justify-between gap-2">
                           <p className={cn(
@@ -2394,18 +2612,48 @@ export default function FeedPage() {
                           </p>
                           <span className={cn(
                             'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold',
-                            isCancelled
-                              ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
+                            isCancelled ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
+                              : isAdded ? 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
                               : 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
                           )}>
-                            {isCancelled ? 'Cancelled' : 'Holding'}
+                            {isCancelled ? 'Cancelled' : isAdded ? 'Extra class' : 'Holding'}
                           </span>
                         </div>
-                        <p className={cn('text-[11px] font-semibold', isCancelled ? 'text-red-600 dark:text-red-400' : 'text-indigo-600 dark:text-indigo-400')}>
-                          {cls.start_time} – {cls.end_time}
-                        </p>
-                        {cls.venue && <p className={cn('text-[11px]', isCancelled ? 'text-red-500 dark:text-red-400' : 'text-indigo-500 dark:text-indigo-400')}>📍 {cls.venue}</p>}
-                        {cls.lecturer && <p className={cn('text-[11px]', isCancelled ? 'text-red-500 dark:text-red-400' : 'text-indigo-500 dark:text-indigo-400')}>👨‍🏫 {cls.lecturer}</p>}
+
+                        {/* Time — for edits, show original struck through + the new time */}
+                        {isEdited && nv ? (
+                          <div className="flex flex-col gap-0.5">
+                            <p className="text-[11px] font-semibold text-ink-muted line-through">{cls.start_time} – {cls.end_time}</p>
+                            <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">{nv.start_time} – {nv.end_time}</p>
+                          </div>
+                        ) : (
+                          <p className={cn('text-[11px] font-semibold', isCancelled ? 'text-red-600 dark:text-red-400' : isAdded ? 'text-amber-600 dark:text-amber-400' : 'text-indigo-600 dark:text-indigo-400')}>
+                            {cls.start_time} – {cls.end_time}
+                          </p>
+                        )}
+
+                        {/* Venue — show edited value highlighted if changed */}
+                        {isEdited && nv?.venue ? (
+                          <p className="text-[11px] text-amber-700 dark:text-amber-300">📍 {nv.venue}
+                            {cls.venue && cls.venue !== nv.venue && <span className="ml-1 text-ink-muted line-through">{cls.venue}</span>}
+                          </p>
+                        ) : cls.venue ? (
+                          <p className={cn('text-[11px]', isCancelled ? 'text-red-500 dark:text-red-400' : isAdded ? 'text-amber-500 dark:text-amber-400' : 'text-indigo-500 dark:text-indigo-400')}>📍 {cls.venue}</p>
+                        ) : null}
+
+                        {cls.lecturer && !isEdited && (
+                          <p className={cn('text-[11px]', isCancelled ? 'text-red-500 dark:text-red-400' : isAdded ? 'text-amber-500 dark:text-amber-400' : 'text-indigo-500 dark:text-indigo-400')}>👨‍🏫 {cls.lecturer}</p>
+                        )}
+
+                        {/* "Updated by class rep" note */}
+                        {ov && (
+                          <div className="mt-0.5 flex items-center gap-1 border-t border-black/5 pt-1.5 dark:border-white/10">
+                            <span className="text-[10px]">✎</span>
+                            <p className="text-[10px] font-medium text-ink-muted">
+                              {ov.note ? ov.note : 'Updated by class rep'}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -3468,6 +3716,7 @@ export default function FeedPage() {
           onPrev={() => viewingIdx > 0 ? setViewingIdx(i => i - 1) : goToPrevPerson()}
           onNext={() => viewingIdx < viewingGroup.stories.length - 1 ? setViewingIdx(i => i + 1) : goToNextPerson()}
           onNextPerson={goToNextPerson}
+          onToggleMute={handleToggleMute}
           onPrevPerson={goToPrevPerson}
           onDelete={handleDeleteStory}
           onAddStory={() => setShowUploadStory(true)}
@@ -3489,8 +3738,13 @@ export default function FeedPage() {
       {/* Story Upload modal */}
       {showUploadStory && (() => {
         const BG_PRESETS = ['#16a34a','#1d4ed8','#7c3aed','#dc2626','#ea580c','#0891b2','#111827','#be185d'];
-        const closeModal = () => { setShowUploadStory(false); setStoryFile(null); setStoryPreview(null); setStoryText(''); setStoryBgColor('#16a34a'); setStoryTab('media'); setStoryCaption(''); setStoryUploadError(''); setStoryUploadProgress(null); };
-        const canShare = storyTab === 'text' ? storyText.trim().length > 0 : !!storyFile;
+        const closeModal = () => { setShowUploadStory(false); setStoryFiles([]); setStoryPreviews([]); setStoryText(''); setStoryBgColor('#16a34a'); setStoryFont('classic'); setStoryTab('media'); setStoryCaption(''); setStoryUploadError(''); setStoryUploadProgress(null); };
+        // 'Only…' with nobody picked would post a story visible to no one.
+        const audienceOk = storyAudience !== 'only' || storyAudienceIds.length > 0;
+        const canShare = (storyTab === 'text' ? storyText.trim().length > 0 : storyFiles.length > 0) && audienceOk;
+        const shareLabel = storyTab === 'media' && storyFiles.length > 1
+          ? `Share ${storyFiles.length} photos`
+          : 'Share';
         const textLen = storyText.length;
         const textSize = textLen > 100 ? 'text-xl' : textLen > 50 ? 'text-2xl' : 'text-3xl';
         return (
@@ -3523,19 +3777,45 @@ export default function FeedPage() {
               <div className="p-5">
                 {storyTab === 'media' ? (
                   <>
-                    {storyPreview ? (
+                    {storyPreviews.length > 0 ? (
                       <>
-                        <div className="relative mb-4">
-                          {storyFile?.type.startsWith('video') ? (
-                            <video src={storyPreview} className="max-h-64 w-full rounded-xl object-cover" controls />
-                          ) : (
-                            <img src={storyPreview} alt="Preview" className="max-h-64 w-full rounded-xl bg-black/20 object-contain" />
-                          )}
-                          <button type="button" onClick={() => { setStoryFile(null); setStoryPreview(null); setStoryCaption(''); }}
+                        {/* Main preview = first photo; the rest show as a strip below.
+                            They post in order, one after another. */}
+                        <div className="relative mb-3">
+                          <img src={storyPreviews[0]} alt="Preview" className="max-h-64 w-full rounded-xl bg-black/20 object-contain" />
+                          <button type="button" onClick={() => removeStoryAt(0)}
                             className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80">
                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                           </button>
+                          {storyPreviews.length > 1 && (
+                            <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-semibold text-white">
+                              1 of {storyPreviews.length}
+                            </span>
+                          )}
                         </div>
+
+                        {storyPreviews.length > 1 && (
+                          <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+                            {storyPreviews.slice(1).map((src, i) => (
+                              <div key={i} className="relative shrink-0">
+                                <img src={src} alt={`Photo ${i + 2}`} className="h-14 w-14 rounded-lg object-cover" />
+                                <button type="button" onClick={() => removeStoryAt(i + 1)}
+                                  className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white">
+                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Add more photos to the batch */}
+                        {storyFiles.length < MAX_STORY_BATCH && (
+                          <label className="mb-3 flex cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-dashed border-border py-2 text-[13px] font-medium text-ink-muted hover:text-ink dark:border-[#333]">
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                            Add more photos
+                            <input type="file" accept="image/*" multiple className="hidden" onChange={handleStoryFileSelect} />
+                          </label>
+                        )}
                         <div className="mt-3">
                           <textarea
                             value={storyCaption}
@@ -3557,14 +3837,14 @@ export default function FeedPage() {
                         <p className="text-caption">Story disappears after 24 hours</p>
                       </button>
                     )}
-                    <input ref={storyInputRef} type="file" accept="image/*" onChange={handleStoryFileSelect} className="hidden" />
+                    <input ref={storyInputRef} type="file" accept="image/*" multiple onChange={handleStoryFileSelect} className="hidden" />
                   </>
                 ) : (
                   <>
                     {/* Live preview */}
                     <div className="mb-4 flex h-44 w-full items-center justify-center rounded-xl px-4"
                       style={{ backgroundColor: storyBgColor }}>
-                      <p className={cn('text-center font-bold leading-tight text-white break-words w-full', textSize)}>
+                      <p className={cn('text-center leading-tight text-white break-words w-full', storyFontClass(storyFont), textSize)}>
                         {storyText || <span className="opacity-40">Your text here…</span>}
                       </p>
                     </div>
@@ -3578,7 +3858,7 @@ export default function FeedPage() {
                       className="mb-3 w-full resize-none rounded-xl border border-border bg-surface-muted px-3 py-2.5 text-sm text-ink placeholder:text-ink-muted focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:bg-[#1a1a1a] dark:border-[#333]"
                     />
                     {/* Color picker */}
-                    <div className="mb-4 flex gap-2">
+                    <div className="mb-3 flex gap-2">
                       {BG_PRESETS.map(c => (
                         <button key={c} type="button"
                           onClick={() => setStoryBgColor(c)}
@@ -3587,6 +3867,24 @@ export default function FeedPage() {
                           style={{ backgroundColor: c }}
                           aria-label={c}
                         />
+                      ))}
+                    </div>
+
+                    {/* Font picker — each option previews its own font */}
+                    <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
+                      {Object.entries(STORY_FONTS).map(([key, f]) => (
+                        <button key={key} type="button"
+                          onClick={() => setStoryFont(key)}
+                          className={cn(
+                            'shrink-0 rounded-lg border px-3 py-1.5 text-[13px] transition',
+                            f.className,
+                            storyFont === key
+                              ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300'
+                              : 'border-border text-ink-muted hover:text-ink dark:border-[#333]'
+                          )}
+                        >
+                          {f.label}
+                        </button>
                       ))}
                     </div>
                   </>
@@ -3599,7 +3897,11 @@ export default function FeedPage() {
                 {uploadingStory && storyUploadProgress !== null && (
                   <div className="mb-3">
                     <div className="mb-1 flex items-center justify-between text-xs text-ink-muted">
-                      <span>Uploading…</span>
+                      <span>
+                        {storyFiles.length > 1
+                          ? `Uploading photo ${storyUploadIdx + 1} of ${storyFiles.length}…`
+                          : 'Uploading…'}
+                      </span>
                       <span>{storyUploadProgress}%</span>
                     </div>
                     <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
@@ -3610,10 +3912,67 @@ export default function FeedPage() {
                     </div>
                   </div>
                 )}
+                {/* Privacy — who can see this story. Applies to future stories too. */}
+                <div className="mb-3 rounded-xl border border-border p-3 dark:border-[#222]">
+                  <p className="mb-2 text-[12px] font-semibold text-ink">Who can see this</p>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {([
+                      { key: 'all', label: 'Followers' },
+                      { key: 'except', label: 'Except…' },
+                      { key: 'only', label: 'Only…' },
+                    ] as const).map(opt => (
+                      <button key={opt.key} type="button"
+                        onClick={() => {
+                          setStoryAudience(opt.key);
+                          if (opt.key === 'all') setStoryAudienceIds([]);
+                          else setShowAudiencePicker(true);
+                        }}
+                        className={cn('rounded-lg border px-2 py-1.5 text-[12px] font-medium transition',
+                          storyAudience === opt.key
+                            ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300'
+                            : 'border-border text-ink-muted hover:text-ink dark:border-[#333]')}>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {storyAudience !== 'all' && (
+                    <button type="button" onClick={() => setShowAudiencePicker(true)}
+                      className="mt-2 w-full text-left text-[11px] text-ink-muted hover:text-ink">
+                      {storyAudienceIds.length === 0
+                        ? 'No one selected — tap to choose people'
+                        : `${storyAudienceIds.length} ${storyAudience === 'only' ? 'person' : 'person'}${storyAudienceIds.length === 1 ? '' : 's'} selected — tap to change`}
+                    </button>
+                  )}
+
+                  {/* Inline person picker */}
+                  {showAudiencePicker && storyAudience !== 'all' && (
+                    <div className="mt-2 max-h-44 overflow-y-auto rounded-lg border border-border dark:border-[#333]">
+                      {audienceCandidates.length === 0 ? (
+                        <p className="px-3 py-3 text-[12px] text-ink-muted">
+                          No followers yet — only followers can see your stories.
+                        </p>
+                      ) : audienceCandidates.map(p => {
+                        const picked = storyAudienceIds.includes(p.id);
+                        return (
+                          <button key={p.id} type="button"
+                            onClick={() => setStoryAudienceIds(prev =>
+                              picked ? prev.filter(id => id !== p.id) : [...prev, p.id])}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left transition hover:bg-surface-muted dark:hover:bg-[#1a1a1a]">
+                            <input type="checkbox" readOnly checked={picked} className="h-3.5 w-3.5 accent-brand-600" />
+                            <Avatar src={p.profile_photo_url} name={p.full_name} size="xs" />
+                            <span className="truncate text-[12px] text-ink">{p.full_name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex gap-3">
                   <Button variant="outline" className="flex-1" onClick={closeModal}>Cancel</Button>
                   <Button className="flex-1" disabled={!canShare || uploadingStory} loading={uploadingStory} onClick={handleUploadStory}>
-                    Share Story
+                    {storyTab === 'media' ? shareLabel : 'Share Story'}
                   </Button>
                 </div>
               </div>

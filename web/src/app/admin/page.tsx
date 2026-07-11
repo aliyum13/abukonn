@@ -148,6 +148,19 @@ export default function AdminDashboard() {
 
       {/* Quick actions */}
       <div className="grid gap-4 sm:grid-cols-3">
+        <Link href="/admin/class-reps">
+          <Card className="cursor-pointer transition hover:border-brand-200 hover:shadow-card">
+            <CardContent className="flex items-center gap-4 p-5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+                <span className="text-lg">🎓</span>
+              </div>
+              <div>
+                <p className="font-semibold text-ink">Class Reps</p>
+                <p className="text-caption text-ink-muted">Assign timetable managers</p>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
         <Link href="/admin/users">
           <Card className="cursor-pointer transition hover:border-brand-200 hover:shadow-card">
             <CardContent className="flex items-center gap-4 p-5">
