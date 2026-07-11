@@ -125,6 +125,9 @@ interface Story {
   created_at: string;
   expires_at: string;
   view_count: number | null;
+  /** Whether the current viewer has seen this story. Server-provided (from
+   *  story_views), so it survives switching device or clearing storage. */
+  viewed?: boolean;
 }
 
 interface StoryGroup {
@@ -1210,7 +1213,25 @@ export default function FeedPage() {
     if (!token) return;
     fetch(`${API_URL}/api/stories`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
-      .then(d => { setStoryGroups(d.groups || []); setStoriesLoaded(true); })
+      .then(d => {
+        const groups = d.groups || [];
+        setStoryGroups(groups);
+        // Seed seen-state from the server, which is the source of truth. Merge
+        // rather than replace so stories viewed moments ago in this session
+        // (already optimistically marked) don't flash back to unseen if the
+        // view POST hasn't landed yet.
+        const seen = new Set<number>();
+        for (const g of groups) {
+          for (const st of (g.stories || [])) {
+            // Own stories never record a view (you can't "view" yourself), so
+            // treat them as seen — otherwise your own ring would always look
+            // unread. Everyone else's comes from the server's viewed flag.
+            if (g.is_own || st.viewed) seen.add(st.id);
+          }
+        }
+        setViewedStoryIds(prev => new Set([...prev, ...seen]));
+        setStoriesLoaded(true);
+      })
       .catch(() => setStoriesLoaded(true));
   }, [token]);
 
@@ -1346,11 +1367,15 @@ export default function FeedPage() {
         if (ts > cutoff) { valid[id] = ts; ids.add(Number(id)); }
       }
       localStorage.setItem('viewed_stories', JSON.stringify(valid));
-      setViewedStoryIds(ids);
+      // Merge, never replace — the server seed (authoritative) may already have
+      // landed, and replacing would wipe it.
+      setViewedStoryIds(prev => new Set([...prev, ...ids]));
     } catch {}
   }, []);
 
-  // Mark current story as viewed (localStorage) and record view via API
+  // Mark current story as viewed: optimistically in state + localStorage (so the
+  // ring greys out instantly), and record the view on the server, which is the
+  // authoritative seen-state read back on next load.
   useEffect(() => {
     if (!viewingGroup) return;
     const story = viewingGroup.stories[viewingIdx];

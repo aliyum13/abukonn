@@ -42,7 +42,14 @@ async function getActiveStoriesForUser(userId) {
     `SELECT s.id, s.user_id, s.media_url, s.media_type, s.story_type, s.text_content, s.bg_color,
             s.caption, s.created_at, s.expires_at,
             u.full_name AS user_name, u.profile_photo_url AS user_photo,
-            CASE WHEN s.user_id = $1 THEN COUNT(sv.id)::int ELSE NULL END AS view_count
+            CASE WHEN s.user_id = $1 THEN COUNT(sv.id)::int ELSE NULL END AS view_count,
+            -- Has THIS viewer seen this story? Read from story_views (the server
+            -- is the source of truth), so seen state survives switching device
+            -- or clearing browser storage.
+            EXISTS (
+              SELECT 1 FROM abukonn.story_views v
+              WHERE v.story_id = s.id AND v.viewer_id = $1
+            ) AS viewed
      FROM abukonn.stories s
      JOIN abukonn.users u ON s.user_id = u.id
      LEFT JOIN abukonn.story_views sv ON sv.story_id = s.id
