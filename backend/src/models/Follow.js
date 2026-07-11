@@ -12,7 +12,51 @@ CREATE TABLE IF NOT EXISTS abukonn.follows (
 
 async function createFollowsTable() {
   await pool.query(CREATE_FOLLOWS_TABLE);
+  // Per-user notification bell: when true, this follower gets notified about
+  // the followed user's new posts/events/stories. Opt-in, so feeds stay quiet
+  // by default and notifications keep their signal.
+  await pool.query(
+    `ALTER TABLE abukonn.follows
+     ADD COLUMN IF NOT EXISTS notify_on_post BOOLEAN NOT NULL DEFAULT FALSE`
+  );
   console.log('Follows table ready');
+}
+
+// Turn the notification bell on/off for a follow relationship.
+// Only works if the follow exists. Returns the new state, or null if not following.
+async function setNotifyOnPost(followerId, followingId, enabled) {
+  const { rows } = await pool.query(
+    `UPDATE abukonn.follows SET notify_on_post = $3
+     WHERE follower_id = $1 AND following_id = $2
+     RETURNING notify_on_post`,
+    [followerId, followingId, !!enabled]
+  );
+  return rows[0] ? rows[0].notify_on_post : null;
+}
+
+// Is the bell on for this follow?
+async function getNotifyOnPost(followerId, followingId) {
+  const { rows } = await pool.query(
+    `SELECT COALESCE(notify_on_post, FALSE) AS on
+     FROM abukonn.follows WHERE follower_id = $1 AND following_id = $2`,
+    [followerId, followingId]
+  );
+  return rows[0] ? rows[0].on : false;
+}
+
+// Everyone who has the bell ON for this user — the recipients of an activity
+// notification. Excludes anyone who has blocked (or been blocked by) them.
+async function getNotifyFollowerIds(userId) {
+  const { rows } = await pool.query(
+    `SELECT f.follower_id
+     FROM abukonn.follows f
+     WHERE f.following_id = $1
+       AND COALESCE(f.notify_on_post, FALSE) = TRUE
+       AND f.follower_id NOT IN (SELECT blocked_id FROM abukonn.blocks WHERE blocker_id = $1)
+       AND f.follower_id NOT IN (SELECT blocker_id FROM abukonn.blocks WHERE blocked_id = $1)`,
+    [userId]
+  );
+  return rows.map((r) => r.follower_id);
 }
 
 async function followUser(followerId, followingId) {
@@ -146,6 +190,9 @@ async function searchPeople(currentUserId, query, limit = 30) {
 
 module.exports = {
   createFollowsTable,
+  setNotifyOnPost,
+  getNotifyOnPost,
+  getNotifyFollowerIds,
   followUser,
   unfollowUser,
   getStats,

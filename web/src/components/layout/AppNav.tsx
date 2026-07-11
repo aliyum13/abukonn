@@ -6,6 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Avatar, Button } from '@/components/ui';
 import { excerpt, timeAgo } from '@/lib/format';
 import { useEffect, useRef, useState, useCallback, KeyboardEvent } from 'react';
+import { io } from 'socket.io-client';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -154,6 +155,26 @@ export function AppNav() {
     fetchUnreadCount();
     const id = setInterval(fetchUnreadCount, 30_000);
     return () => clearInterval(id);
+  }, [token, fetchUnreadCount, pathname]);
+
+  // Real-time notifications. The server pushes a 'new_notification' signal to
+  // this user's private socket room the moment a notification is created, so
+  // the bell badge updates instantly instead of waiting for the next poll.
+  //
+  // The signal carries no payload on purpose — we just refetch the count,
+  // keeping the server as the single source of truth. The 30s poll above stays
+  // as a safety net for a dropped socket.
+  useEffect(() => {
+    if (!token) return;
+    const socket = io(API_URL, { autoConnect: true, auth: { token } });
+
+    socket.on('new_notification', () => {
+      // Don't badge while they're already looking at the notifications page.
+      if (pathname === '/notifications') return;
+      fetchUnreadCount();
+    });
+
+    return () => { socket.disconnect(); };
   }, [token, fetchUnreadCount, pathname]);
 
   // Listen for mark-all-read event from notifications page — reset bell immediately
