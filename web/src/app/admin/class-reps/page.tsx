@@ -4,10 +4,10 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { Avatar, Button, Input, Card, CardContent } from '@/components/ui';
-import { DEPARTMENTS_ALPHABETICAL } from '@/lib/departments';
+import { DEPARTMENTS_ALPHABETICAL, LEVELS } from '@/lib/departments';
+import { formatLevel } from '@/lib/format';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-const LEVELS = ['100', '200', '300', '400', '500', '600'];
 
 interface Rep { id: number; user_id: number; full_name: string; profile_photo_url: string | null; department: string; level: string }
 interface FoundUser { id: number; full_name: string; department: string | null; profile_photo_url: string | null }
@@ -23,7 +23,7 @@ export default function AdminClassRepsPage() {
   const [results, setResults] = useState<FoundUser[]>([]);
   const [picked, setPicked] = useState<FoundUser | null>(null);
   const [dept, setDept] = useState('');
-  const [level, setLevel] = useState('300');
+  const [level, setLevel] = useState<string>('300 Level');
   const [assigning, setAssigning] = useState(false);
 
   const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(''), 3000); };
@@ -132,7 +132,7 @@ export default function AdminClassRepsPage() {
                   <label className="mb-1 block text-[12px] text-ink-muted">Level</label>
                   <select value={level} onChange={e => setLevel(e.target.value)}
                     className="w-full rounded-xl border border-border bg-transparent px-2 py-2 text-[13px] text-ink dark:border-[#333]">
-                    {LEVELS.map(l => <option key={l} value={l}>{l} level</option>)}
+                    {LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
                   </select>
                 </div>
               </div>
@@ -158,7 +158,7 @@ export default function AdminClassRepsPage() {
                 <Avatar src={r.profile_photo_url} name={r.full_name} size="sm" />
                 <div className="min-w-0">
                   <p className="truncate text-[13px] font-medium text-ink">{r.full_name}</p>
-                  <p className="truncate text-[12px] text-ink-muted">{r.department} · {r.level} level</p>
+                  <p className="truncate text-[12px] text-ink-muted">{r.department} · {formatLevel(r.level)}</p>
                 </div>
               </div>
               <button onClick={() => remove(r.id)} className="shrink-0 text-[12px] font-medium text-red-600 hover:text-red-700">Remove</button>

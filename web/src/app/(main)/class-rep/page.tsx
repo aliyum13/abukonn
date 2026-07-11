@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { Button, Input } from '@/components/ui';
 import { cn } from '@/lib/utils';
+import { formatLevel } from '@/lib/format';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -195,7 +196,7 @@ export default function ClassRepPage() {
         {active && (
           <div className="mb-4 rounded-xl bg-brand-50 px-4 py-2.5 dark:bg-brand-950/40">
             <p className="text-[13px] font-semibold text-brand-700 dark:text-brand-300">
-              Managing: {active.department} · {active.level} level
+              Managing: {active.department} · {formatLevel(active.level)}
             </p>
           </div>
         )}
