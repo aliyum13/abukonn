@@ -3,6 +3,7 @@ const cloudinary = require('../config/cloudinary');
 const News = require('../models/News');
 const Whitelist = require('../models/Whitelist');
 const { updateRole, setVerified, setContentCreator } = require('../models/User');
+const ClassRep = require('../models/ClassRep');
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
 
@@ -382,6 +383,44 @@ async function setUserContentCreator(req, res) {
   }
 }
 
+// ── Class representatives (admin management) ────────────────────────────────
+
+async function listClassReps(req, res) {
+  try {
+    const reps = await ClassRep.getAllClassReps();
+    res.json({ reps });
+  } catch (err) {
+    console.error('listClassReps:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function assignClassRep(req, res) {
+  try {
+    const { user_id, department, level } = req.body;
+    if (!user_id || !department || !level) {
+      return res.status(400).json({ message: 'user_id, department and level are required' });
+    }
+    const rep = await ClassRep.assignClassRep(user_id, department, level, req.user.id);
+    if (!rep) return res.status(409).json({ message: 'Already a class rep for this class' });
+    res.status(201).json({ rep });
+  } catch (err) {
+    console.error('assignClassRep:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+async function removeClassRep(req, res) {
+  try {
+    const removed = await ClassRep.removeClassRep(parseInt(req.params.id, 10));
+    if (!removed) return res.status(404).json({ message: 'Assignment not found' });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('removeClassRep:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
 module.exports = {
   getStats,
   getUsers,
@@ -398,4 +437,7 @@ module.exports = {
   getWhitelist,
   uploadWhitelist,
   clearWhitelist,
+  listClassReps,
+  assignClassRep,
+  removeClassRep,
 };

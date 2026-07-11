@@ -23,12 +23,14 @@ async function getProfile(req, res) {
 
     const posts = await Post.getPostsByUserId(req.user.id, req.user.id);
     const replies = await Comment.getCommentsByUser(req.user.id);
+    const classRepFor = await require('../models/ClassRep').getClassRepsForUser(req.user.id);
 
     // Own profile — include matric_number
     res.json({
       user: User.toPrivateUser(user),
       posts,
       replies,
+      class_rep_for: classRepFor,
     });
   } catch (err) {
     console.error('Get profile error:', err.message);
@@ -55,11 +57,12 @@ async function getUserById(req, res) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    const [posts, stats, following, replies] = await Promise.all([
+    const [posts, stats, following, replies, classRepFor] = await Promise.all([
       Post.getPostsByUserId(userId, req.user.id),
       Follow.getStats(userId),
       Follow.isFollowing(req.user.id, userId),
       Comment.getCommentsByUser(userId),
+      require('../models/ClassRep').getClassRepsForUser(userId),
     ]);
 
     const publicUser = User.toPublicUser(user);
@@ -73,6 +76,7 @@ async function getUserById(req, res) {
       },
       posts,
       replies,
+      class_rep_for: classRepFor,
     });
   } catch (err) {
     console.error('Get user error:', err.message);

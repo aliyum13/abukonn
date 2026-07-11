@@ -12,6 +12,9 @@ const {
   setUserRole,
   setUserVerified,
   setUserContentCreator,
+  listClassReps,
+  assignClassRep,
+  removeClassRep,
   adminGetAllNews,
   adminCreateNews,
   adminUpdateNews,
@@ -36,6 +39,9 @@ router.patch('/users/:id/toggle-admin', toggleAdmin);
 router.patch('/users/:id/role', setUserRole);
 router.patch('/users/:id/verified', setUserVerified);
 router.patch('/users/:id/content-creator', setUserContentCreator);
+router.get('/class-reps', listClassReps);
+router.post('/class-reps', assignClassRep);
+router.delete('/class-reps/:id', removeClassRep);
 
 // News
 router.get('/news', adminGetAllNews);
