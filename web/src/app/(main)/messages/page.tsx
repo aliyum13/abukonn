@@ -846,6 +846,35 @@ export default function MessagesPage() {
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
+  // Tap-vs-scroll detection for conversation rows.
+  //
+  // These rows can't just open on click: an incoming message triggers a
+  // conversation-list refetch which re-sorts the list, so a row can move out
+  // from under the finger mid-tap and the click lands elsewhere. But opening on
+  // pointerdown alone breaks scrolling (touching a row to scroll opens it).
+  //
+  // So: remember the row + position on pointer-down, and only open it on
+  // pointer-up if the finger stayed within a small threshold (a real tap).
+  // A drag/scroll moves further than that and is ignored.
+  const tapRef = useRef<{ id: number; kind: 'dm' | 'group'; x: number; y: number } | null>(null);
+  const TAP_SLOP = 10; // px of movement still counted as a tap
+
+  const onRowPointerDown = (kind: 'dm' | 'group', id: number) => (e: React.PointerEvent) => {
+    tapRef.current = { id, kind, x: e.clientX, y: e.clientY };
+  };
+
+  const onRowPointerUp = (kind: 'dm' | 'group', id: number) => (e: React.PointerEvent) => {
+    const start = tapRef.current;
+    tapRef.current = null;
+    if (!start || start.id !== id || start.kind !== kind) return;
+    const moved = Math.hypot(e.clientX - start.x, e.clientY - start.y);
+    if (moved > TAP_SLOP) return; // was a scroll, not a tap
+    if (kind === 'dm') selectDM(id);
+    else selectGroup(id);
+  };
+
+  const onRowPointerCancel = () => { tapRef.current = null; };
+
   const selectDM = (id: number) => {
     setActiveId(id);
     setActiveGroupId(null);
@@ -1330,8 +1359,9 @@ export default function MessagesPage() {
                     const isActive = activeId === conv.id;
                     return (
                       <button key={`dm-${conv.id}`} type="button"
-                        onPointerDown={() => selectDM(conv.id)}
-                        onClick={() => selectDM(conv.id)}
+                        onPointerDown={onRowPointerDown('dm', conv.id)}
+                        onPointerUp={onRowPointerUp('dm', conv.id)}
+                        onPointerCancel={onRowPointerCancel}
                         className={cn('flex w-full items-center gap-3 px-4 py-3 text-left transition', isActive ? 'border-r-2 border-brand-600 bg-brand-50 dark:bg-brand-950/40' : 'hover:bg-surface-muted dark:hover:bg-[#1a1a1a]')}>
                         <div className="relative shrink-0">
                           <Avatar src={conv.other_user_photo} name={conv.other_user_name || 'User'} size="md" />
@@ -1356,8 +1386,9 @@ export default function MessagesPage() {
                     const isActive = activeGroupId === grp.id;
                     return (
                       <button key={`group-${grp.id}`} type="button"
-                        onPointerDown={() => selectGroup(grp.id)}
-                        onClick={() => selectGroup(grp.id)}
+                        onPointerDown={onRowPointerDown('group', grp.id)}
+                        onPointerUp={onRowPointerUp('group', grp.id)}
+                        onPointerCancel={onRowPointerCancel}
                         className={cn('flex w-full items-center gap-3 px-4 py-3 text-left transition', isActive ? 'border-r-2 border-brand-600 bg-brand-50 dark:bg-brand-950/40' : 'hover:bg-surface-muted dark:hover:bg-[#1a1a1a]')}>
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-100">
                           {grp.avatar_url ? (
