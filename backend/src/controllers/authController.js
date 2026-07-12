@@ -1,4 +1,5 @@
 const bcrypt = require('bcryptjs');
+const { BCRYPT_ROUNDS } = require('../config/security');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const UserSettings = require('../models/UserSettings');
@@ -38,7 +39,7 @@ async function register(req, res) {
       return res.status(409).json({ message: 'An account with this email already exists' });
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
     const baseUsername = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '_');
     const taken = await User.findByUsername(baseUsername);

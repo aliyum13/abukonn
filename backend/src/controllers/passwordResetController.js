@@ -1,4 +1,5 @@
 const bcrypt = require('bcryptjs');
+const { BCRYPT_ROUNDS } = require('../config/security');
 const jwt = require('jsonwebtoken');
 const { Resend } = require('resend');
 const User = require('../models/User');
@@ -98,7 +99,7 @@ async function resetPassword(req, res) {
       return res.status(400).json({ message: 'This reset link has already been used.' });
     }
 
-    const hash = await bcrypt.hash(new_password, 10);
+    const hash = await bcrypt.hash(new_password, BCRYPT_ROUNDS);
     await User.updatePassword(
       (await User.findByEmail(payload.email)).id,
       hash

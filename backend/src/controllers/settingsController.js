@@ -1,4 +1,5 @@
 const bcrypt = require('bcryptjs');
+const { BCRYPT_ROUNDS } = require('../config/security');
 const User = require('../models/User');
 const UserSettings = require('../models/UserSettings');
 
@@ -58,7 +59,7 @@ async function changePassword(req, res) {
       return res.status(401).json({ message: 'Current password is incorrect' });
     }
 
-    const hash = await bcrypt.hash(new_password, 10);
+    const hash = await bcrypt.hash(new_password, BCRYPT_ROUNDS);
     await User.updatePassword(req.user.id, hash);
 
     res.json({ message: 'Password updated successfully' });

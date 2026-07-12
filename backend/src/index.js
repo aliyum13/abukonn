@@ -49,6 +49,17 @@ const highlightRoutes = require('./routes/highlights');
 const { createReportBlockTables } = require('./models/ReportBlock');
 
 const app = express();
+
+// Railway terminates TLS and proxies to us, so every request arrives from the
+// proxy's IP. Without this, req.ip is the PROXY for everyone — which means the
+// rate limiters below bucket all users together: one attacker hammering /login
+// would exhaust the limit for every student on the platform, and per-user
+// brute-force protection wouldn't exist at all.
+//
+// '1' = trust exactly one proxy hop (Railway's). Deliberately NOT `true`, which
+// trusts any number of hops and would let a client forge X-Forwarded-For to
+// spoof their IP and slip past the limiter entirely.
+app.set('trust proxy', 1);
 const server = http.createServer(app);
 
 // Initialise error monitoring as early as possible. No-op if SENTRY_DSN unset.
@@ -218,8 +229,25 @@ const authLimiter = rateLimit({
   message: { message: 'Too many attempts. Please try again in a few minutes.' },
 });
 
+// Login specifically gets a much tighter limit. 60 attempts per 15 minutes is
+// generous for a human but comfortable for a password-guessing script; 10 is
+// far more than any real student needs.
+//
+// skipSuccessfulRequests means only FAILED logins count. Someone legitimately
+// signing in and out repeatedly is never penalised — only repeated failures,
+// which is exactly the brute-force signal we care about.
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many failed login attempts. Please try again in a few minutes.' },
+});
+
 app.use('/api', apiLimiter);
 app.use('/api/auth', authLimiter);
+app.use('/api/auth/login', loginLimiter);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
