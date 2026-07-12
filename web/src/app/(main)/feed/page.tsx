@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, FormEvent } from 'react';
+import { useEffect, useState, useRef, useMemo, FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -361,17 +361,12 @@ function StoriesBar({
   onViewGroup: (g: StoryGroup) => void;
   viewedStoryIds: Set<number>;
 }) {
+  // `groups` arrives ALREADY ORDERED from the parent (see orderedStoryGroups).
+  // The bar must not re-sort: the viewer navigates people using that same
+  // order, and if the two disagree, swiping lands on the wrong person — or
+  // thinks it's reached the end and closes.
   const ownGroup = groups.find(g => g.is_own);
-
-  // WhatsApp-style ordering within the existing horizontal bar:
-  // unseen (Recent) first, then already-viewed, then muted last.
-  // A group counts as unseen if ANY of its stories is unseen.
-  const hasUnseen = (g: StoryGroup) => g.stories.some(st => !viewedStoryIds.has(st.id));
-  const rank = (g: StoryGroup) => (g.muted ? 2 : hasUnseen(g) ? 0 : 1);
-  const others = groups
-    .filter(g => !g.is_own)
-    .slice()
-    .sort((a, b) => rank(a) - rank(b));
+  const others = groups.filter(g => !g.is_own);
   return (
     <div className="flex gap-4 overflow-x-auto scrollbar-hide px-0.5">
       {/* My Status */}
@@ -1232,6 +1227,7 @@ export default function FeedPage() {
 
   // Stories
   const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);
+
   const [storiesLoaded, setStoriesLoaded] = useState(false);
   const [viewingGroup, setViewingGroup] = useState<StoryGroup | null>(null);
   const [viewingIdx, setViewingIdx] = useState(0);
@@ -1258,6 +1254,24 @@ export default function FeedPage() {
   const [audienceCandidates, setAudienceCandidates] = useState<Array<{ id: number; full_name: string; profile_photo_url: string | null }>>([]);
   const [storyCaption, setStoryCaption] = useState('');
   const [viewedStoryIds, setViewedStoryIds] = useState<Set<number>>(new Set());
+
+  // The person-order in effect for the CURRENT viewing session. Snapshotted when
+  // the viewer opens, because watching stories marks them seen, which re-ranks
+  // orderedStoryGroups — and re-ranking mid-session would make "next person"
+  // jump unpredictably as you swipe.
+  const viewOrderRef = useRef<StoryGroup[]>([]);
+
+  const orderedStoryGroups = useMemo(() => {
+    const hasUnseen = (g: StoryGroup) => g.stories.some(st => !viewedStoryIds.has(st.id));
+    const rank = (g: StoryGroup) => (g.muted ? 2 : hasUnseen(g) ? 0 : 1);
+    const own = storyGroups.filter(g => g.is_own);
+    const others = storyGroups
+      .filter(g => !g.is_own)
+      .slice()
+      .sort((a, b) => rank(a) - rank(b));
+    return [...own, ...others];
+  }, [storyGroups, viewedStoryIds]);
+
   // Story reactions & replies
   const [storyReactions, setStoryReactions] = useState<Record<number, { count: number; is_liked: boolean }>>({});
   const [storyLikers, setStoryLikers] = useState<Array<{ user_id: number; user_name: string; user_photo: string | null }>>([]);
@@ -1559,29 +1573,41 @@ export default function FeedPage() {
     }
   };
 
+  // Next/previous person, walking the SAME ordered list the story bar displays.
+  //
+  // The order is snapshotted when the viewer opens (viewOrderRef) rather than
+  // read live: watching stories marks them seen, which re-ranks the list, and
+  // re-ranking mid-session would make "next person" jump unpredictably.
   const goToNextPerson = () => {
     if (!viewingGroup) return;
-    const idx = storyGroups.findIndex(g => g.user_id === viewingGroup.user_id);
-    // Skip muted people when auto-advancing — muting exists precisely so their
-    // stories don't get played. They're still openable deliberately from the bar.
-    const nextIdx = storyGroups.findIndex((g, i) => i > idx && !g.muted);
-    if (idx >= 0 && nextIdx > -1) {
-      const next = storyGroups[nextIdx];
+    const order = viewOrderRef.current;
+    const idx = order.findIndex(g => g.user_id === viewingGroup.user_id);
+    if (idx === -1) { setViewingGroup(null); return; }
+    // Skip muted people — muting exists precisely so their stories don't play.
+    // They remain openable deliberately from the bar.
+    const nextIdx = order.findIndex((g, i) => i > idx && !g.muted);
+    if (nextIdx > -1) {
+      const next = order[nextIdx];
       setViewingGroup(next);
       const firstUnseen = next.stories.findIndex(s => !viewedStoryIds.has(s.id));
       setViewingIdx(firstUnseen >= 0 ? firstUnseen : 0);
     } else {
-      setViewingGroup(null); // no one left — close the viewer
+      setViewingGroup(null); // genuinely the last person — close
     }
   };
 
   // Move to the previous person's stories, or restart if already first.
   const goToPrevPerson = () => {
     if (!viewingGroup) return;
-    const idx = storyGroups.findIndex(g => g.user_id === viewingGroup.user_id);
-    if (idx > 0) {
-      const prev = storyGroups[idx - 1];
-      setViewingGroup(prev);
+    const order = viewOrderRef.current;
+    const idx = order.findIndex(g => g.user_id === viewingGroup.user_id);
+    // Walk back past muted people too, so prev and next stay symmetrical.
+    let prevIdx = -1;
+    for (let i = idx - 1; i >= 0; i--) {
+      if (!order[i].muted) { prevIdx = i; break; }
+    }
+    if (idx > 0 && prevIdx > -1) {
+      setViewingGroup(order[prevIdx]);
       setViewingIdx(0); // going back — start at their first story
     } else {
       setViewingIdx(0); // first person — just restart their first story
@@ -2686,11 +2712,14 @@ export default function FeedPage() {
           {/* Stories bar */}
           <div className="border-b border-border px-4 py-3">
             <StoriesBar
-              groups={storyGroups}
+              groups={orderedStoryGroups}
               storiesLoaded={storiesLoaded}
               user={user}
               onAddStory={() => setShowUploadStory(true)}
               onViewGroup={(g) => {
+                // Freeze the person-order for this viewing session so swiping
+                // through people stays stable even as stories become seen.
+                viewOrderRef.current = orderedStoryGroups;
                 setViewingGroup(g);
                 // Start at the first unseen story (WhatsApp behaviour); if all seen,
                 // start at the beginning.
