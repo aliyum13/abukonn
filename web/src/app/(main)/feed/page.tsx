@@ -2747,10 +2747,16 @@ export default function FeedPage() {
 
                     {/* Content with show more/less */}
                     <div className="mt-2 cursor-pointer" onClick={() => router.push(`/post/${post.id}`)}>
-                      {post.post_subtype === 'discussion' && post.discussion_title && (
+                      {/* Questions store their title in discussion_title too, and the
+                          composer only REQUIRES a title for them (body is optional).
+                          This used to check 'discussion' alone, so a question's title
+                          was never rendered — and with no body, the card came out
+                          completely blank. It looked like the post had vanished when
+                          it had actually saved fine. */}
+                      {(post.post_subtype === 'discussion' || post.post_subtype === 'question') && post.discussion_title && (
                         <p className="mb-1 text-[16px] font-bold text-ink leading-snug">{post.discussion_title}</p>
                       )}
-                      <p className={cn('text-[15px] text-ink leading-[1.6]', !isExpanded && longContent && 'line-clamp-3', post.post_subtype === 'discussion' && !post.content && 'hidden')}>
+                      <p className={cn('text-[15px] text-ink leading-[1.6]', !isExpanded && longContent && 'line-clamp-3', (post.post_subtype === 'discussion' || post.post_subtype === 'question') && !post.content && 'hidden')}>
                         <PostContent content={post.content} />
                       </p>
                       {longContent && (
