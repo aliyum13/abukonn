@@ -62,6 +62,8 @@ interface Post {
   author_photo: string | null;
   author_matric: string;
   author_role?: string;
+  post_subtype?: string | null;
+  discussion_title?: string | null;
   engagement_score?: number;
   is_trending?: boolean;
   is_hot?: boolean;
@@ -546,9 +548,14 @@ export default function PostDetailPage() {
 
             {/* Full content — no truncation */}
             <div className="mt-2">
-              <p className="text-[15px] text-ink leading-[1.6]">
-                <PostContent content={post.content} />
-              </p>
+              {(post.post_subtype === 'discussion' || post.post_subtype === 'question') && post.discussion_title && (
+                <p className="mb-1.5 text-[18px] font-bold text-ink leading-snug">{post.discussion_title}</p>
+              )}
+              {post.content && (
+                <p className="text-[15px] text-ink leading-[1.6]">
+                  <PostContent content={post.content} />
+                </p>
+              )}
             </div>
 
             {/* Post image */}
