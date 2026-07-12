@@ -454,8 +454,9 @@ function storyFormatTime(secs: number) {
 function StoryViewer({
   group, index, onClose, onPrev, onNext, onNextPerson, onPrevPerson, onDelete, onAddStory, onToggleMute,
   reactions, onReact, showReplyInput, onToggleReply, replyText, onReplyChange, onSendReply, replySending,
-  likers, viewCount, isPaused, onPauseToggle,
+  likers, viewCount, isPaused, onPauseToggle, token,
 }: {
+  token: string | null;
   group: StoryGroup;
   index: number;
   onClose: () => void;
@@ -498,9 +499,15 @@ function StoryViewer({
     setShowViewers(true);
     setViewersLoading(true);
     try {
+      // Use the token from auth context. This previously read
+      // localStorage.getItem('token'), but the app stores it under
+      // 'abukonn_token' — so it sent 'Bearer null', the request was rejected,
+      // and the list always came back empty ("No views yet") even when the
+      // header showed a view count.
       const res = await fetch(`${API_URL}/api/stories/${story.id}/viewers`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
+      if (!res.ok) { setViewers([]); return; }
       const data = await res.json();
       setViewers(data.viewers || []);
     } catch { setViewers([]); }
@@ -3892,6 +3899,7 @@ export default function FeedPage() {
           onNext={() => viewingIdx < viewingGroup.stories.length - 1 ? setViewingIdx(i => i + 1) : goToNextPerson()}
           onNextPerson={goToNextPerson}
           onToggleMute={handleToggleMute}
+          token={token}
           onPrevPerson={goToPrevPerson}
           onDelete={handleDeleteStory}
           onAddStory={() => setShowUploadStory(true)}
