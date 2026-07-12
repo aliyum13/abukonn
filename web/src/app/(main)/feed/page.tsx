@@ -150,6 +150,7 @@ function LinkPreviewCard({
 }) {
   let host = siteName;
   if (!host) { try { host = new URL(url).hostname; } catch { host = url; } }
+
   return (
     <div className={cn(
       'overflow-hidden rounded-xl border border-white/20 bg-black/40 backdrop-blur',
@@ -1206,6 +1207,19 @@ export default function FeedPage() {
   const [feedTab, setFeedTab] = useState<'for_you' | 'following' | 'messages'>('for_you');
   const [posts, setPosts] = useState<Post[]>([]);
   const [followingPosts, setFollowingPosts] = useState<Post[]>([]);
+
+  // Apply an update to EVERY list a post can appear in.
+  //
+  // The feed keeps two arrays — For You (`posts`) and Following
+  // (`followingPosts`) — and the same post can sit in both. Handlers used to
+  // call setPosts only, so liking/commenting/voting from the Following tab
+  // mutated an array that wasn't on screen: the action fired, the server was
+  // updated, but nothing visibly changed. Route all post mutations through here.
+  const mutatePosts = (updater: (prev: Post[]) => Post[]) => {
+    setPosts(updater);
+    setFollowingPosts(updater);
+  };
+
   const [followingLoading, setFollowingLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [newPost, setNewPost] = useState('');
@@ -1529,7 +1543,7 @@ export default function FeedPage() {
           if (id && !viewedPostsRef.current.has(id)) {
             viewedPostsRef.current.add(id);
             fetch(`${API_URL}/api/posts/${id}/view`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
-            setPosts(prev => prev.map(p => p.id === id ? { ...p, view_count: p.view_count + 1 } : p));
+            mutatePosts(prev => prev.map(p => p.id === id ? { ...p, view_count: p.view_count + 1 } : p));
             observer.unobserve(entry.target);
           }
         }
@@ -1932,7 +1946,7 @@ export default function FeedPage() {
 
   const handleVote = async (postId: number, optionId: number) => {
     if (!token) return;
-    setPosts(prev => prev.map(p => p.id !== postId ? p : {
+    mutatePosts(prev => prev.map(p => p.id !== postId ? p : {
       ...p,
       voted_option_id: optionId,
       poll_options: p.poll_options?.map(o => o.id === optionId ? { ...o, vote_count: o.vote_count + 1 } : o) ?? null,
@@ -1946,7 +1960,7 @@ export default function FeedPage() {
 
   const handleRSVP = async (postId: number) => {
     if (!token) return;
-    setPosts(prev => prev.map(p => p.id !== postId ? p : {
+    mutatePosts(prev => prev.map(p => p.id !== postId ? p : {
       ...p,
       is_attending: !p.is_attending,
       event_rsvp_count: p.is_attending ? p.event_rsvp_count - 1 : p.event_rsvp_count + 1,
@@ -1990,7 +2004,7 @@ export default function FeedPage() {
   const handleLike = async (postId: number) => {
     if (!token) return;
     // Optimistic toggle
-    setPosts((prev) =>
+    mutatePosts((prev) =>
       prev.map((p) =>
         p.id === postId
           ? { ...p, is_liked: !p.is_liked, likes_count: p.is_liked ? p.likes_count - 1 : p.likes_count + 1 }
@@ -2004,14 +2018,14 @@ export default function FeedPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setPosts((prev) =>
+        mutatePosts((prev) =>
           prev.map((p) =>
             p.id === postId ? { ...p, likes_count: data.post.likes_count, is_liked: data.is_liked } : p
           )
         );
       } else {
         // Revert on server error
-        setPosts((prev) =>
+        mutatePosts((prev) =>
           prev.map((p) =>
             p.id === postId
               ? { ...p, is_liked: !p.is_liked, likes_count: p.is_liked ? p.likes_count - 1 : p.likes_count + 1 }
@@ -2021,7 +2035,7 @@ export default function FeedPage() {
       }
     } catch {
       // Revert on network error
-      setPosts((prev) =>
+      mutatePosts((prev) =>
         prev.map((p) =>
           p.id === postId
             ? { ...p, is_liked: !p.is_liked, likes_count: p.is_liked ? p.likes_count - 1 : p.likes_count + 1 }
@@ -2057,7 +2071,7 @@ export default function FeedPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setPosts((prev) =>
+        mutatePosts((prev) =>
           prev.map((p) => p.id === postId ? { ...p, comments_count: data.post.comments_count } : p)
         );
         // Replace temp with real comment from server
@@ -2092,7 +2106,7 @@ export default function FeedPage() {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.ok) setPosts((prev) => prev.filter((p) => p.id !== postId));
+      if (res.ok) mutatePosts((prev) => prev.filter((p) => p.id !== postId));
     } catch {
       setError('Failed to delete post');
     }
@@ -2370,14 +2384,14 @@ export default function FeedPage() {
   const handleFollowFromCard = async (authorId: number) => {
     if (!token) return;
     // Optimistic: flip is_following_author on all posts by this author
-    setPosts(prev => prev.map(p => p.user_id === authorId ? { ...p, is_following_author: true } : p));
+    mutatePosts(prev => prev.map(p => p.user_id === authorId ? { ...p, is_following_author: true } : p));
     try {
       await fetch(`${API_URL}/api/follows/${authorId}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
     } catch {
-      setPosts(prev => prev.map(p => p.user_id === authorId ? { ...p, is_following_author: false } : p));
+      mutatePosts(prev => prev.map(p => p.user_id === authorId ? { ...p, is_following_author: false } : p));
     }
   };
 
@@ -2585,6 +2599,533 @@ export default function FeedPage() {
     );
   }
 
+
+  // ONE post card, used by BOTH the For You and Following tabs.
+  //
+  // These were previously two separate JSX blocks. The Following copy had
+  // drifted badly: no comment box, no repost, no polls, no RSVP, no link
+  // previews — and its like button called a handler that updated the For You
+  // array, so it did nothing visible. Sharing one card means the two can never
+  // drift apart again.
+  const renderPostCard = (post: Post) => {
+                const isExpanded = expandedPosts.has(post.id);
+                const longContent = post.content.length > 280;
+                // For reposts, show the original post's engagement so it doesn't
+                // look like it's starting from zero.
+                const displayLikes = post.is_repost && post.original_likes_count !== undefined ? post.original_likes_count : post.likes_count;
+                const displayComments = post.is_repost && post.original_comments_count !== undefined ? post.original_comments_count : post.comments_count;
+                const displayReposts = post.is_repost && post.original_repost_count !== undefined ? post.original_repost_count : post.repost_count;
+              return (
+              /* ── Post Card (flat, Twitter-style) ── */
+              <article key={post.id} id={`post-${post.id}`} data-post-id={post.id}
+                className="border-b border-border px-4 py-4 scroll-mt-20 hover:bg-gray-50/40 dark:hover:bg-white/[0.03] transition-colors dark:border-[#222]">
+
+                {/* Repost label */}
+                {post.is_repost && (
+                  <div className="mb-2 ml-11 flex items-center gap-1.5 text-[12px] text-ink-muted">
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" />
+                    </svg>
+                    <Link href={`/profile/${post.user_id}`} className="hover:underline">{post.author_name}</Link> reposted
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  {/* Avatar — original author for reposts, else the poster */}
+                  <Link href={`/profile/${post.is_repost && post.original_author_id ? post.original_author_id : post.user_id}`} className="shrink-0">
+                    <Avatar
+                      src={post.is_repost && post.original_author_photo !== undefined ? post.original_author_photo : post.author_photo}
+                      name={post.is_repost && post.original_author_full_name ? post.original_author_full_name : post.author_name}
+                      size="md" className="mt-0.5"
+                    />
+                  </Link>
+
+                  {/* Post body */}
+                  <div className="min-w-0 flex-1">
+                    {/* Author row */}
+                    <div className="flex items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <Link href={`/profile/${post.is_repost && post.original_author_id ? post.original_author_id : post.user_id}`}
+                            className="font-semibold text-[15px] text-ink hover:underline">
+                            {post.is_repost && post.original_author_full_name ? post.original_author_full_name : post.author_name}
+                          </Link>
+                          <RoleBadge role={post.author_role || 'user'} iconOnly />
+                          <VerifiedBadge verified={post.author_is_verified} />
+                          <ContentCreatorBadge isCreator={post.author_is_content_creator} iconOnly />
+                          {post.category && post.category !== 'GENERAL' && (
+                            <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold', CATEGORY_COLORS[post.category] ?? 'bg-gray-100 text-gray-600')}>
+                              {POST_CATEGORIES.find(c => c.value === post.category)?.label}
+                            </span>
+                          )}
+                          {post.post_subtype === 'discussion' && (
+                            <span className="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-semibold text-purple-700 dark:bg-purple-950 dark:text-purple-300">
+                              💬 Discussion
+                            </span>
+                          )}
+                          {post.post_subtype === 'question' && (
+                            <span className="rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-semibold text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300">
+                              ❓ Question
+                            </span>
+                          )}
+                          {post.post_subtype === 'poll' && (
+                            <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                              📊 Poll
+                            </span>
+                          )}
+                          {post.post_subtype === 'event' && (
+                            <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700 dark:bg-green-950 dark:text-green-300">
+                              📅 Event
+                            </span>
+                          )}
+                          {post.is_hot ? (
+                            <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700 dark:bg-red-950 dark:text-red-300">
+                              ⚡ Hot
+                            </span>
+                          ) : post.is_trending ? (
+                            <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-700 dark:bg-orange-950 dark:text-orange-300">
+                              🔥 Trending
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="text-[13px] text-ink-muted">
+                          {post.author_department} · {timeAgo(post.created_at)}
+                        </p>
+                      </div>
+
+                      {/* Follow button */}
+                      {post.user_id !== user.id && !post.is_following_author && (
+                        <button type="button" onClick={() => handleFollowFromCard(post.user_id)}
+                          className="shrink-0 rounded-full border border-brand-500 px-3 py-0.5 text-[12px] font-semibold text-brand-600 transition hover:bg-brand-50 dark:hover:bg-brand-950">
+                          Follow
+                        </button>
+                      )}
+
+                      {/* ⋮ menu */}
+                      <div className="relative shrink-0" ref={postMenuId === post.id ? postMenuRef : undefined}>
+                        <button type="button"
+                          onClick={() => setPostMenuId(postMenuId === post.id ? null : post.id)}
+                          className="flex h-7 w-7 items-center justify-center rounded-full text-ink-muted transition hover:bg-surface-muted hover:text-ink">
+                          <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+                            <circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
+                          </svg>
+                        </button>
+                        {postMenuId === post.id && (
+                          <div className="absolute right-0 top-8 z-30 w-44 overflow-hidden rounded-xl border border-border bg-white shadow-lg dark:bg-[#111] dark:border-[#222]">
+                            {post.user_id === user.id && (
+                              <button type="button"
+                                onClick={() => { handleDelete(post.id); setPostMenuId(null); }}
+                                className="flex w-full items-center gap-2 px-4 py-2.5 text-[13px] text-red-600 hover:bg-red-50 transition">
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                                Delete post
+                              </button>
+                            )}
+                            {post.user_id !== user.id && (<>
+                              <button type="button"
+                                onClick={() => { setPostMenuId(null); setReportTarget({ type: 'post', id: post.id, name: post.author_name }); }}
+                                className="flex w-full items-center gap-2 px-4 py-2.5 text-[13px] text-ink-secondary hover:bg-surface-muted transition">
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 3l1.664 1.664M21 21l-1.5-1.5m-5.485-1.242L12 17.25 4.5 21V8.742m.164-4.078a2.15 2.15 0 011.743-1.342 48.507 48.507 0 0111.186 0c1.1.128 1.907 1.077 1.907 2.185V19.5M4.664 4.664L19.5 19.5" /></svg>
+                                Report post
+                              </button>
+                              <button type="button"
+                                onClick={() => { setPostMenuId(null); setReportTarget({ type: 'user', id: post.user_id, name: post.author_name }); }}
+                                className="flex w-full items-center gap-2 px-4 py-2.5 text-[13px] text-ink-secondary hover:bg-surface-muted transition">
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
+                                Report user
+                              </button>
+                              <button type="button"
+                                onClick={() => { setPostMenuId(null); setBlockTarget({ id: post.user_id, name: post.author_name }); }}
+                                className="flex w-full items-center gap-2 px-4 py-2.5 text-[13px] text-red-600 hover:bg-red-50 transition">
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                                Block user
+                              </button>
+                            </>)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Content with show more/less */}
+                    <div className="mt-2 cursor-pointer" onClick={() => router.push(`/post/${post.id}`)}>
+                      {post.post_subtype === 'discussion' && post.discussion_title && (
+                        <p className="mb-1 text-[16px] font-bold text-ink leading-snug">{post.discussion_title}</p>
+                      )}
+                      <p className={cn('text-[15px] text-ink leading-[1.6]', !isExpanded && longContent && 'line-clamp-3', post.post_subtype === 'discussion' && !post.content && 'hidden')}>
+                        <PostContent content={post.content} />
+                      </p>
+                      {longContent && (
+                        <button type="button"
+                          onClick={(e) => { e.stopPropagation(); setExpandedPosts(prev => { const n = new Set(prev); if (isExpanded) n.delete(post.id); else n.add(post.id); return n; }); }}
+                          className="mt-0.5 text-[14px] font-medium text-brand-600 hover:text-brand-700">
+                          {isExpanded ? 'Show less' : 'Show more'}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Post image */}
+                    {post.image_url && (
+                      <button type="button" onClick={e => { e.stopPropagation(); setLightboxUrl(post.image_url); }}
+                        className="mt-3 block w-full overflow-hidden rounded-2xl border border-border/60">
+                        <img src={optimizedImage(post.image_url)} alt="Post" className="max-h-[500px] w-full rounded-2xl bg-black/5 object-contain transition hover:opacity-95 dark:bg-white/5" loading="lazy" />
+                      </button>
+                    )}
+
+                    {/* Poll */}
+                    {post.post_subtype === 'poll' && post.poll_options && (() => {
+                      const totalVotes = post.poll_options.reduce((s, o) => s + o.vote_count, 0);
+                      const hasVoted = !!post.voted_option_id;
+                      const isExpiredPoll = post.poll_ends_at ? new Date(post.poll_ends_at) < new Date() : false;
+                      return (
+                        <div className="mt-3 space-y-2">
+                          {post.poll_options.map(opt => {
+                            const pct = totalVotes > 0 ? Math.round((opt.vote_count / totalVotes) * 100) : 0;
+                            const isChosen = post.voted_option_id === opt.id;
+                            return (
+                              <button key={opt.id} type="button"
+                                disabled={hasVoted || isExpiredPoll}
+                                onClick={e => { e.stopPropagation(); if (!hasVoted && !isExpiredPoll) handleVote(post.id, opt.id); }}
+                                className={cn('relative w-full overflow-hidden rounded-xl border px-3 py-2.5 text-left text-[14px] transition',
+                                  isChosen ? 'border-brand-500 bg-brand-50 dark:bg-brand-950/40' : 'border-border dark:border-[#333]',
+                                  !hasVoted && !isExpiredPoll && 'hover:border-brand-400 cursor-pointer',
+                                  (hasVoted || isExpiredPoll) && 'cursor-default'
+                                )}>
+                                {(hasVoted || isExpiredPoll) && (
+                                  <div className="absolute inset-y-0 left-0 rounded-xl bg-brand-100/60 dark:bg-brand-950/30" style={{ width: `${pct}%` }} />
+                                )}
+                                <div className="relative flex items-center justify-between">
+                                  <span className={cn('font-medium', isChosen ? 'text-brand-700 dark:text-brand-300' : 'text-ink')}>{opt.option_text}</span>
+                                  {(hasVoted || isExpiredPoll) && <span className="text-[13px] text-ink-muted">{pct}%</span>}
+                                </div>
+                              </button>
+                            );
+                          })}
+                          <p className="text-[12px] text-ink-muted">
+                            {totalVotes} vote{totalVotes !== 1 ? 's' : ''}
+                            {post.poll_ends_at && <> · {new Date(post.poll_ends_at) > new Date() ? `ends ${timeAgo(post.poll_ends_at)}` : 'Poll ended'}</>}
+                          </p>
+                          {post.user_id === user.id && totalVotes > 0 && (
+                            <button
+                              type="button"
+                              onClick={e => { e.stopPropagation(); openPollVoters(post.id); }}
+                              className="mt-1 flex items-center gap-1 text-[12px] font-semibold text-brand-600 transition hover:text-brand-700 dark:text-brand-400"
+                            >
+                              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+                              </svg>
+                              See who voted
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Event card */}
+                    {post.post_subtype === 'event' && post.event_title && (
+                      <div className="mt-3 rounded-2xl border border-green-200 bg-green-50 p-3.5 dark:border-green-900/40 dark:bg-green-950/30">
+                        <p className="font-bold text-[15px] text-ink">{post.event_title}</p>
+                        {post.event_date && (
+                          <p className="mt-1.5 flex items-center gap-1.5 text-[13px] text-ink-muted">
+                            <span>📅</span>
+                            {new Date(post.event_date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                          </p>
+                        )}
+                        {post.event_location && (
+                          <p className="mt-0.5 flex items-center gap-1.5 text-[13px] text-ink-muted">
+                            <span>📍</span>{post.event_location}
+                          </p>
+                        )}
+                        <button type="button" onClick={e => { e.stopPropagation(); handleRSVP(post.id); }}
+                          className={cn('mt-3 rounded-full px-4 py-1.5 text-[13px] font-semibold transition',
+                            post.is_attending
+                              ? 'bg-green-600 text-white hover:bg-green-700'
+                              : 'border border-green-600 text-green-700 hover:bg-green-50 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-950/40'
+                          )}>
+                          {post.is_attending ? `✅ Attending (${post.event_rsvp_count})` : `RSVP${post.event_rsvp_count > 0 ? ` · ${post.event_rsvp_count}` : ''}`}
+                        </button>
+                      </div>
+                    )}
+
+                    {(post.comment_velocity ?? 0) > 3 && (
+                      <div className="mt-2.5">
+                        <span className="inline-flex animate-pulse items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-1 text-[11px] font-semibold text-green-700 dark:bg-green-950/60 dark:text-green-400">
+                          💬 Active discussion
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Action row — icon-only buttons, evenly spaced.
+                        This sits INSIDE the tap-to-open wrapper above, so every
+                        click here must be stopped from bubbling: otherwise Like
+                        fires and then the parent immediately navigates to the
+                        post page, throwing the update away and making the button
+                        look dead. */}
+                    <div
+                      className="mt-3 flex items-center justify-between"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      {/* Like */}
+                      <button type="button" onClick={() => handleLike(post.id)}
+                        className={cn('group flex items-center gap-1 text-[13px] transition',
+                          post.is_liked ? 'text-rose-500' : 'text-ink-muted hover:text-rose-500')}>
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full transition group-hover:bg-rose-50">
+                          <svg className="h-[18px] w-[18px]" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}
+                            fill={post.is_liked ? 'currentColor' : 'none'}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
+                          </svg>
+                        </span>
+                        {displayLikes > 0 && <span>{displayLikes}</span>}
+                      </button>
+
+                      {/* Comment */}
+                      <button type="button" onClick={() => setCommentingId(commentingId === post.id ? null : post.id)}
+                        className={cn('group flex items-center gap-1 text-[13px] transition',
+                          commentingId === post.id ? 'text-brand-600' : 'text-ink-muted hover:text-brand-600')}>
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full transition group-hover:bg-brand-50">
+                          <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.74 1.676v2.954a.75.75 0 01-1.088.67L6.19 21.1a.75.75 0 01-.365-.633v-1.44C3.512 17.962 3 15.075 3 12z" />
+                          </svg>
+                        </span>
+                        {displayComments > 0 && (
+                          <span>
+                            {displayComments}
+                            {post.post_subtype === 'discussion' && <span className="ml-0.5 text-[11px]"> replies</span>}
+                            {post.post_subtype === 'question' && <span className="ml-0.5 text-[11px]"> answers</span>}
+                          </span>
+                        )}
+                      </button>
+
+                      {/* Repost */}
+                      {post.user_id !== user.id ? (
+                        <button type="button" onClick={() => handleRepost(post.id)} disabled={repostingId === post.id}
+                          className="group flex items-center gap-1 text-[13px] text-ink-muted transition hover:text-brand-600 disabled:opacity-40">
+                          <span className="flex h-8 w-8 items-center justify-center rounded-full transition group-hover:bg-brand-50">
+                            <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" />
+                            </svg>
+                          </span>
+                          {displayReposts > 0 && <span>{displayReposts}</span>}
+                        </button>
+                      ) : <span className="w-9" />}
+
+                      {/* Share */}
+                      <button type="button" onClick={() => openShareModal(post)}
+                        className="group flex items-center gap-1 text-[13px] text-ink-muted transition hover:text-brand-600">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full transition group-hover:bg-brand-50">
+                          <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
+                          </svg>
+                        </span>
+                      </button>
+
+                      {/* Views */}
+                      <span className="flex items-center gap-1 text-[13px] text-ink-muted">
+                        <span className="flex h-8 w-8 items-center justify-center">
+                          <svg className="h-[16px] w-[16px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+                          </svg>
+                        </span>
+                        {formatCount(post.view_count)}
+                      </span>
+                    </div>
+                    {(post.engagement_score ?? 0) > 0 && (
+                      <div className="mt-2 h-[3px] overflow-hidden rounded-full bg-border/50">
+                        <div
+                          className={cn('h-full rounded-full transition-all duration-500',
+                            (post.engagement_score ?? 0) > 50
+                              ? 'bg-red-400 dark:bg-red-500'
+                              : (post.engagement_score ?? 0) > 20
+                              ? 'bg-amber-400 dark:bg-amber-500'
+                              : 'bg-green-400 dark:bg-green-500'
+                          )}
+                          style={{ width: `${Math.min(100, Math.max(3, ((post.engagement_score ?? 0) / maxEngagementScore) * 100))}%` }}
+                        />
+                      </div>
+                    )}
+
+                      {/* Comments section */}
+                      {commentingId === post.id && (
+                        <div className="mt-4 border-t border-border pt-4">
+                          {/* Existing comments */}
+                          {commentsLoading[post.id] ? (
+                            <div className="mb-3 space-y-3">
+                              {[1, 2].map((i) => (
+                                <div key={i} className="flex gap-2.5">
+                                  <Skeleton className="h-8 w-8 shrink-0" rounded="full" />
+                                  <div className="flex-1 space-y-1.5">
+                                    <Skeleton className="h-3 w-24" />
+                                    <Skeleton className="h-3 w-full" />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (comments[post.id] ?? []).length > 0 ? (
+                            <div className="mb-4 space-y-4">
+                              {(comments[post.id] ?? []).map((c) => (
+                                <div key={c.id}>
+                                  <div className="flex gap-2.5">
+                                    <Avatar src={c.author_photo} name={c.author_name} size="sm" className="mt-0.5 shrink-0" />
+                                    <div className="min-w-0 flex-1">
+                                      <div className="rounded-xl bg-surface-muted px-3 py-2">
+                                        <div className="flex items-baseline gap-2">
+                                          <span className="text-body-sm font-semibold text-ink">{c.author_name}</span>
+                                          <span className="text-caption text-ink-muted">{timeAgo(c.created_at)}</span>
+                                        </div>
+                                        <p className="mt-0.5 text-body-sm text-ink leading-relaxed"><PostContent content={c.content} /></p>
+                                        {c.is_best_answer && (
+                                          <div className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-semibold text-green-700 dark:bg-green-950 dark:text-green-400">
+                                            ✓ Best Answer
+                                          </div>
+                                        )}
+                                      </div>
+                                      {/* Reply button + view replies */}
+                                      <div className="ml-2 mt-1 flex items-center gap-3">
+                                        <button type="button"
+                                          onClick={() => {
+                                            if (replyingTo?.commentId === c.id) { setReplyingTo(null); }
+                                            else { setReplyingTo({ postId: post.id, commentId: c.id }); setReplyText(''); }
+                                          }}
+                                          className="text-caption font-medium text-ink-secondary transition hover:text-brand-600">
+                                          Reply
+                                        </button>
+                                        {post.post_subtype === 'question' && post.user_id === user.id && !c.is_best_answer && (
+                                          <button type="button"
+                                            onClick={() => handleMarkBestAnswer(post.id, c.id)}
+                                            className="text-caption font-medium text-green-600 transition hover:text-green-700">
+                                            ✓ Best Answer
+                                          </button>
+                                        )}
+                                        {(c.reply_count > 0 || (replies[c.id]?.length ?? 0) > 0) && (
+                                          <button type="button"
+                                            onClick={() => toggleReplies(post.id, c.id)}
+                                            className="text-caption text-ink-muted transition hover:text-brand-600">
+                                            {expandedReplies.has(c.id)
+                                              ? 'Hide replies'
+                                              : `View ${c.reply_count > 0 ? c.reply_count : replies[c.id]?.length} ${(c.reply_count === 1 || replies[c.id]?.length === 1) ? 'reply' : 'replies'}`}
+                                          </button>
+                                        )}
+                                      </div>
+                                      {/* Reply input */}
+                                      {replyingTo?.commentId === c.id && (
+                                        <div className="ml-2 mt-2 flex gap-2">
+                                          <Avatar src={user.profile_photo_url} name={user.full_name} size="sm" className="shrink-0" />
+                                          <div className="flex min-w-0 flex-1 gap-2">
+                                            <Input
+                                              value={replyText}
+                                              onChange={(e) => setReplyText(e.target.value)}
+                                              placeholder={`Reply to ${c.author_name}…`}
+                                              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleReply(post.id, c.id); } }}
+                                              className="flex-1 text-sm"
+                                            />
+                                            <Button onClick={() => handleReply(post.id, c.id)} size="sm" disabled={!replyText.trim()}>Post</Button>
+                                          </div>
+                                        </div>
+                                      )}
+                                      {/* Expanded replies */}
+                                      {expandedReplies.has(c.id) && (
+                                        <div className="ml-6 mt-2 space-y-2 border-l-2 border-border pl-3">
+                                          {repliesLoading[c.id] ? (
+                                            <div className="space-y-2 py-1">
+                                              {[1, 2].map((i) => (
+                                                <div key={i} className="flex gap-2">
+                                                  <Skeleton className="h-6 w-6 shrink-0" rounded="full" />
+                                                  <div className="flex-1 space-y-1"><Skeleton className="h-3 w-20" /><Skeleton className="h-3 w-full" /></div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          ) : (replies[c.id] ?? []).length === 0 ? (
+                                            <p className="py-1 text-caption text-ink-muted">No replies yet.</p>
+                                          ) : (
+                                            (replies[c.id] ?? []).map((r) => (
+                                              <div key={r.id} className="flex gap-2">
+                                                <Avatar src={r.author_photo} name={r.author_name} size="sm" className="h-6 w-6 shrink-0" />
+                                                <div className="rounded-lg bg-surface-subtle px-2.5 py-1.5">
+                                                  <div className="flex items-baseline gap-1.5">
+                                                    <span className="text-caption font-semibold text-ink">{r.author_name}</span>
+                                                    <span className="text-[10px] text-ink-muted">{timeAgo(r.created_at)}</span>
+                                                  </div>
+                                                  <p className="mt-0.5 text-caption text-ink leading-relaxed"><PostContent content={r.content} /></p>
+                                                </div>
+                                              </div>
+                                            ))
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="mb-3 text-center text-caption text-ink-muted">No comments yet — be the first!</p>
+                          )}
+
+                          {/* New comment input */}
+                          <div className="flex gap-2">
+                            <Avatar src={user.profile_photo_url} name={user.full_name} size="sm" className="shrink-0" />
+                            <div className="relative flex min-w-0 flex-1 gap-2">
+                              <Input
+                                ref={commentInputRef}
+                                value={commentText}
+                                onChange={(e) => {
+                                  setCommentText(e.target.value);
+                                  commentMention.handleChange(e.target.value, e.target.selectionStart ?? e.target.value.length);
+                                }}
+                                placeholder="Write a comment…"
+                                onKeyDown={(e) => {
+                                  if (commentMention.isOpen) {
+                                    if (e.key === 'ArrowDown') { e.preventDefault(); commentMention.setActiveIndex(i => Math.min(i + 1, commentMention.results.length - 1)); return; }
+                                    if (e.key === 'ArrowUp') { e.preventDefault(); commentMention.setActiveIndex(i => Math.max(i - 1, 0)); return; }
+                                    if (e.key === 'Enter' || e.key === 'Tab') {
+                                      e.preventDefault();
+                                      const picked = commentMention.results[commentMention.activeIndex];
+                                      if (picked) {
+                                        const input = commentInputRef.current;
+                                        const cursor = input?.selectionStart ?? commentText.length;
+                                        const { text, cursorPos } = commentMention.applyMention(commentText, cursor, picked);
+                                        setCommentText(text);
+                                        requestAnimationFrame(() => input?.setSelectionRange(cursorPos, cursorPos));
+                                      }
+                                      return;
+                                    }
+                                    if (e.key === 'Escape') { commentMention.close(); return; }
+                                  }
+                                  if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    handleComment(post.id);
+                                  }
+                                }}
+                                className="flex-1"
+                              />
+                              {commentMention.isOpen && (
+                                <MentionDropdown
+                                  results={commentMention.results}
+                                  activeIndex={commentMention.activeIndex}
+                                  onPick={(pickedUser) => {
+                                    const input = commentInputRef.current;
+                                    const cursor = input?.selectionStart ?? commentText.length;
+                                    const { text, cursorPos } = commentMention.applyMention(commentText, cursor, pickedUser);
+                                    setCommentText(text);
+                                    requestAnimationFrame(() => { input?.focus(); input?.setSelectionRange(cursorPos, cursorPos); });
+                                  }}
+                                />
+                              )}
+                              <Button
+                                onClick={() => handleComment(post.id)}
+                                size="sm"
+                                disabled={!commentText.trim()}
+                              >
+                                Post
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+              </article>
+              );
+  };
+
   return (
     <div className="mx-auto max-w-7xl">
       <div className="grid grid-cols-1 lg:grid-cols-12">
@@ -2662,68 +3203,7 @@ export default function FeedPage() {
               ) : (
                 followingPosts
                   .filter(post => categoryFilter === 'ALL' || post.category === categoryFilter)
-                  .map((post) => {
-                    const isExpanded = expandedPosts.has(post.id);
-                    const longContent = post.content.length > 280;
-                    return (
-                      <article key={post.id} id={`post-${post.id}`} data-post-id={post.id}
-                        className="border-b border-border px-4 py-4 transition-colors hover:bg-surface-muted/30 dark:border-[#222] dark:hover:bg-white/[0.02]">
-                        <div className="flex gap-3">
-                          <Link href={`/profile/${post.user_id}`} className="shrink-0">
-                            <div className="h-10 w-10 rounded-full overflow-hidden bg-brand-100 dark:bg-brand-950">
-                              {post.author_photo ? (
-                                <img src={post.author_photo} alt={post.author_name} className="h-full w-full object-cover" />
-                              ) : (
-                                <span className="flex h-full w-full items-center justify-center text-[13px] font-bold text-brand-700 dark:text-brand-400">
-                                  {post.author_name?.charAt(0).toUpperCase()}
-                                </span>
-                              )}
-                            </div>
-                          </Link>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <Link href={`/profile/${post.user_id}`} className="font-semibold text-[14px] text-ink hover:underline">{post.author_name}</Link>
-                              <span className="text-[12px] text-ink-muted">· {timeAgo(post.created_at)}</span>
-                            </div>
-                            <p className="text-[12px] text-ink-muted">{post.author_department}</p>
-                            <div className="mt-2">
-                              <PostContent
-                                content={isExpanded || !longContent ? post.content : post.content.slice(0, 280) + '…'}
-                              />
-                              {longContent && (
-                                <button type="button" onClick={() => setExpandedPosts(s => { const n = new Set(s); isExpanded ? n.delete(post.id) : n.add(post.id); return n; })}
-                                  className="mt-1 text-[13px] font-medium text-brand-600 hover:text-brand-700">
-                                  {isExpanded ? 'show less' : 'show more'}
-                                </button>
-                              )}
-                            </div>
-                            {post.image_url && (
-                              <button type="button" onClick={() => setLightboxUrl(post.image_url!)} className="mt-2 block w-full">
-                                <img src={optimizedImage(post.image_url)} alt="Post image" className="rounded-2xl max-h-[500px] w-full bg-black/5 object-contain dark:bg-white/5" loading="lazy" />
-                              </button>
-                            )}
-                            {/* Actions */}
-                            <div className="mt-3 flex items-center gap-5 text-ink-muted">
-                              <button type="button" onClick={() => handleLike(post.id)}
-                                className={cn('flex items-center gap-1.5 text-[13px] transition', post.is_liked ? 'text-red-500' : 'hover:text-red-400')}>
-                                <svg className="h-4 w-4" fill={post.is_liked ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
-                                </svg>
-                                {post.likes_count > 0 && post.likes_count}
-                              </button>
-                              <button type="button" onClick={() => setCommentingId(post.id === commentingId ? null : post.id)}
-                                className="flex items-center gap-1.5 text-[13px] hover:text-brand-600 transition">
-                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 9.75a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375m-13.5 3.01c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 01.778-.332 48.294 48.294 0 005.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
-                                </svg>
-                                {post.comments_count > 0 && post.comments_count}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </article>
-                    );
-                  })
+                  .map((post) => renderPostCard(post))
               )}
             </>
           )}
@@ -3278,524 +3758,7 @@ export default function FeedPage() {
           ) : (
             posts
               .filter(post => categoryFilter === 'ALL' || post.category === categoryFilter)
-              .map((post) => {
-                const isExpanded = expandedPosts.has(post.id);
-                const longContent = post.content.length > 280;
-                // For reposts, show the original post's engagement so it doesn't
-                // look like it's starting from zero.
-                const displayLikes = post.is_repost && post.original_likes_count !== undefined ? post.original_likes_count : post.likes_count;
-                const displayComments = post.is_repost && post.original_comments_count !== undefined ? post.original_comments_count : post.comments_count;
-                const displayReposts = post.is_repost && post.original_repost_count !== undefined ? post.original_repost_count : post.repost_count;
-              return (
-              /* ── Post Card (flat, Twitter-style) ── */
-              <article key={post.id} id={`post-${post.id}`} data-post-id={post.id}
-                className="border-b border-border px-4 py-4 scroll-mt-20 hover:bg-gray-50/40 dark:hover:bg-white/[0.03] transition-colors dark:border-[#222]">
-
-                {/* Repost label */}
-                {post.is_repost && (
-                  <div className="mb-2 ml-11 flex items-center gap-1.5 text-[12px] text-ink-muted">
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" />
-                    </svg>
-                    <Link href={`/profile/${post.user_id}`} className="hover:underline">{post.author_name}</Link> reposted
-                  </div>
-                )}
-
-                <div className="flex gap-3">
-                  {/* Avatar — original author for reposts, else the poster */}
-                  <Link href={`/profile/${post.is_repost && post.original_author_id ? post.original_author_id : post.user_id}`} className="shrink-0">
-                    <Avatar
-                      src={post.is_repost && post.original_author_photo !== undefined ? post.original_author_photo : post.author_photo}
-                      name={post.is_repost && post.original_author_full_name ? post.original_author_full_name : post.author_name}
-                      size="md" className="mt-0.5"
-                    />
-                  </Link>
-
-                  {/* Post body */}
-                  <div className="min-w-0 flex-1">
-                    {/* Author row */}
-                    <div className="flex items-start gap-2">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                          <Link href={`/profile/${post.is_repost && post.original_author_id ? post.original_author_id : post.user_id}`}
-                            className="font-semibold text-[15px] text-ink hover:underline">
-                            {post.is_repost && post.original_author_full_name ? post.original_author_full_name : post.author_name}
-                          </Link>
-                          <RoleBadge role={post.author_role || 'user'} iconOnly />
-                          <VerifiedBadge verified={post.author_is_verified} />
-                          <ContentCreatorBadge isCreator={post.author_is_content_creator} iconOnly />
-                          {post.category && post.category !== 'GENERAL' && (
-                            <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold', CATEGORY_COLORS[post.category] ?? 'bg-gray-100 text-gray-600')}>
-                              {POST_CATEGORIES.find(c => c.value === post.category)?.label}
-                            </span>
-                          )}
-                          {post.post_subtype === 'discussion' && (
-                            <span className="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-semibold text-purple-700 dark:bg-purple-950 dark:text-purple-300">
-                              💬 Discussion
-                            </span>
-                          )}
-                          {post.post_subtype === 'question' && (
-                            <span className="rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-semibold text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300">
-                              ❓ Question
-                            </span>
-                          )}
-                          {post.post_subtype === 'poll' && (
-                            <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
-                              📊 Poll
-                            </span>
-                          )}
-                          {post.post_subtype === 'event' && (
-                            <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700 dark:bg-green-950 dark:text-green-300">
-                              📅 Event
-                            </span>
-                          )}
-                          {post.is_hot ? (
-                            <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700 dark:bg-red-950 dark:text-red-300">
-                              ⚡ Hot
-                            </span>
-                          ) : post.is_trending ? (
-                            <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-700 dark:bg-orange-950 dark:text-orange-300">
-                              🔥 Trending
-                            </span>
-                          ) : null}
-                        </div>
-                        <p className="text-[13px] text-ink-muted">
-                          {post.author_department} · {timeAgo(post.created_at)}
-                        </p>
-                      </div>
-
-                      {/* Follow button */}
-                      {post.user_id !== user.id && !post.is_following_author && (
-                        <button type="button" onClick={() => handleFollowFromCard(post.user_id)}
-                          className="shrink-0 rounded-full border border-brand-500 px-3 py-0.5 text-[12px] font-semibold text-brand-600 transition hover:bg-brand-50 dark:hover:bg-brand-950">
-                          Follow
-                        </button>
-                      )}
-
-                      {/* ⋮ menu */}
-                      <div className="relative shrink-0" ref={postMenuId === post.id ? postMenuRef : undefined}>
-                        <button type="button"
-                          onClick={() => setPostMenuId(postMenuId === post.id ? null : post.id)}
-                          className="flex h-7 w-7 items-center justify-center rounded-full text-ink-muted transition hover:bg-surface-muted hover:text-ink">
-                          <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-                            <circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
-                          </svg>
-                        </button>
-                        {postMenuId === post.id && (
-                          <div className="absolute right-0 top-8 z-30 w-44 overflow-hidden rounded-xl border border-border bg-white shadow-lg dark:bg-[#111] dark:border-[#222]">
-                            {post.user_id === user.id && (
-                              <button type="button"
-                                onClick={() => { handleDelete(post.id); setPostMenuId(null); }}
-                                className="flex w-full items-center gap-2 px-4 py-2.5 text-[13px] text-red-600 hover:bg-red-50 transition">
-                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
-                                Delete post
-                              </button>
-                            )}
-                            {post.user_id !== user.id && (<>
-                              <button type="button"
-                                onClick={() => { setPostMenuId(null); setReportTarget({ type: 'post', id: post.id, name: post.author_name }); }}
-                                className="flex w-full items-center gap-2 px-4 py-2.5 text-[13px] text-ink-secondary hover:bg-surface-muted transition">
-                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 3l1.664 1.664M21 21l-1.5-1.5m-5.485-1.242L12 17.25 4.5 21V8.742m.164-4.078a2.15 2.15 0 011.743-1.342 48.507 48.507 0 0111.186 0c1.1.128 1.907 1.077 1.907 2.185V19.5M4.664 4.664L19.5 19.5" /></svg>
-                                Report post
-                              </button>
-                              <button type="button"
-                                onClick={() => { setPostMenuId(null); setReportTarget({ type: 'user', id: post.user_id, name: post.author_name }); }}
-                                className="flex w-full items-center gap-2 px-4 py-2.5 text-[13px] text-ink-secondary hover:bg-surface-muted transition">
-                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
-                                Report user
-                              </button>
-                              <button type="button"
-                                onClick={() => { setPostMenuId(null); setBlockTarget({ id: post.user_id, name: post.author_name }); }}
-                                className="flex w-full items-center gap-2 px-4 py-2.5 text-[13px] text-red-600 hover:bg-red-50 transition">
-                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
-                                Block user
-                              </button>
-                            </>)}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Content with show more/less */}
-                    <div className="mt-2 cursor-pointer" onClick={() => router.push(`/post/${post.id}`)}>
-                      {post.post_subtype === 'discussion' && post.discussion_title && (
-                        <p className="mb-1 text-[16px] font-bold text-ink leading-snug">{post.discussion_title}</p>
-                      )}
-                      <p className={cn('text-[15px] text-ink leading-[1.6]', !isExpanded && longContent && 'line-clamp-3', post.post_subtype === 'discussion' && !post.content && 'hidden')}>
-                        <PostContent content={post.content} />
-                      </p>
-                      {longContent && (
-                        <button type="button"
-                          onClick={(e) => { e.stopPropagation(); setExpandedPosts(prev => { const n = new Set(prev); if (isExpanded) n.delete(post.id); else n.add(post.id); return n; }); }}
-                          className="mt-0.5 text-[14px] font-medium text-brand-600 hover:text-brand-700">
-                          {isExpanded ? 'Show less' : 'Show more'}
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Post image */}
-                    {post.image_url && (
-                      <button type="button" onClick={e => { e.stopPropagation(); setLightboxUrl(post.image_url); }}
-                        className="mt-3 block w-full overflow-hidden rounded-2xl border border-border/60">
-                        <img src={optimizedImage(post.image_url)} alt="Post" className="max-h-[500px] w-full rounded-2xl bg-black/5 object-contain transition hover:opacity-95 dark:bg-white/5" loading="lazy" />
-                      </button>
-                    )}
-
-                    {/* Poll */}
-                    {post.post_subtype === 'poll' && post.poll_options && (() => {
-                      const totalVotes = post.poll_options.reduce((s, o) => s + o.vote_count, 0);
-                      const hasVoted = !!post.voted_option_id;
-                      const isExpiredPoll = post.poll_ends_at ? new Date(post.poll_ends_at) < new Date() : false;
-                      return (
-                        <div className="mt-3 space-y-2">
-                          {post.poll_options.map(opt => {
-                            const pct = totalVotes > 0 ? Math.round((opt.vote_count / totalVotes) * 100) : 0;
-                            const isChosen = post.voted_option_id === opt.id;
-                            return (
-                              <button key={opt.id} type="button"
-                                disabled={hasVoted || isExpiredPoll}
-                                onClick={e => { e.stopPropagation(); if (!hasVoted && !isExpiredPoll) handleVote(post.id, opt.id); }}
-                                className={cn('relative w-full overflow-hidden rounded-xl border px-3 py-2.5 text-left text-[14px] transition',
-                                  isChosen ? 'border-brand-500 bg-brand-50 dark:bg-brand-950/40' : 'border-border dark:border-[#333]',
-                                  !hasVoted && !isExpiredPoll && 'hover:border-brand-400 cursor-pointer',
-                                  (hasVoted || isExpiredPoll) && 'cursor-default'
-                                )}>
-                                {(hasVoted || isExpiredPoll) && (
-                                  <div className="absolute inset-y-0 left-0 rounded-xl bg-brand-100/60 dark:bg-brand-950/30" style={{ width: `${pct}%` }} />
-                                )}
-                                <div className="relative flex items-center justify-between">
-                                  <span className={cn('font-medium', isChosen ? 'text-brand-700 dark:text-brand-300' : 'text-ink')}>{opt.option_text}</span>
-                                  {(hasVoted || isExpiredPoll) && <span className="text-[13px] text-ink-muted">{pct}%</span>}
-                                </div>
-                              </button>
-                            );
-                          })}
-                          <p className="text-[12px] text-ink-muted">
-                            {totalVotes} vote{totalVotes !== 1 ? 's' : ''}
-                            {post.poll_ends_at && <> · {new Date(post.poll_ends_at) > new Date() ? `ends ${timeAgo(post.poll_ends_at)}` : 'Poll ended'}</>}
-                          </p>
-                          {post.user_id === user.id && totalVotes > 0 && (
-                            <button
-                              type="button"
-                              onClick={e => { e.stopPropagation(); openPollVoters(post.id); }}
-                              className="mt-1 flex items-center gap-1 text-[12px] font-semibold text-brand-600 transition hover:text-brand-700 dark:text-brand-400"
-                            >
-                              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
-                              </svg>
-                              See who voted
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })()}
-
-                    {/* Event card */}
-                    {post.post_subtype === 'event' && post.event_title && (
-                      <div className="mt-3 rounded-2xl border border-green-200 bg-green-50 p-3.5 dark:border-green-900/40 dark:bg-green-950/30">
-                        <p className="font-bold text-[15px] text-ink">{post.event_title}</p>
-                        {post.event_date && (
-                          <p className="mt-1.5 flex items-center gap-1.5 text-[13px] text-ink-muted">
-                            <span>📅</span>
-                            {new Date(post.event_date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
-                          </p>
-                        )}
-                        {post.event_location && (
-                          <p className="mt-0.5 flex items-center gap-1.5 text-[13px] text-ink-muted">
-                            <span>📍</span>{post.event_location}
-                          </p>
-                        )}
-                        <button type="button" onClick={e => { e.stopPropagation(); handleRSVP(post.id); }}
-                          className={cn('mt-3 rounded-full px-4 py-1.5 text-[13px] font-semibold transition',
-                            post.is_attending
-                              ? 'bg-green-600 text-white hover:bg-green-700'
-                              : 'border border-green-600 text-green-700 hover:bg-green-50 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-950/40'
-                          )}>
-                          {post.is_attending ? `✅ Attending (${post.event_rsvp_count})` : `RSVP${post.event_rsvp_count > 0 ? ` · ${post.event_rsvp_count}` : ''}`}
-                        </button>
-                      </div>
-                    )}
-
-                    {(post.comment_velocity ?? 0) > 3 && (
-                      <div className="mt-2.5">
-                        <span className="inline-flex animate-pulse items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-1 text-[11px] font-semibold text-green-700 dark:bg-green-950/60 dark:text-green-400">
-                          💬 Active discussion
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Action row — icon-only buttons, evenly spaced.
-                        This sits INSIDE the tap-to-open wrapper above, so every
-                        click here must be stopped from bubbling: otherwise Like
-                        fires and then the parent immediately navigates to the
-                        post page, throwing the update away and making the button
-                        look dead. */}
-                    <div
-                      className="mt-3 flex items-center justify-between"
-                      onClick={e => e.stopPropagation()}
-                    >
-                      {/* Like */}
-                      <button type="button" onClick={() => handleLike(post.id)}
-                        className={cn('group flex items-center gap-1 text-[13px] transition',
-                          post.is_liked ? 'text-rose-500' : 'text-ink-muted hover:text-rose-500')}>
-                        <span className="flex h-8 w-8 items-center justify-center rounded-full transition group-hover:bg-rose-50">
-                          <svg className="h-[18px] w-[18px]" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}
-                            fill={post.is_liked ? 'currentColor' : 'none'}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
-                          </svg>
-                        </span>
-                        {displayLikes > 0 && <span>{displayLikes}</span>}
-                      </button>
-
-                      {/* Comment */}
-                      <button type="button" onClick={() => setCommentingId(commentingId === post.id ? null : post.id)}
-                        className={cn('group flex items-center gap-1 text-[13px] transition',
-                          commentingId === post.id ? 'text-brand-600' : 'text-ink-muted hover:text-brand-600')}>
-                        <span className="flex h-8 w-8 items-center justify-center rounded-full transition group-hover:bg-brand-50">
-                          <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.74 1.676v2.954a.75.75 0 01-1.088.67L6.19 21.1a.75.75 0 01-.365-.633v-1.44C3.512 17.962 3 15.075 3 12z" />
-                          </svg>
-                        </span>
-                        {displayComments > 0 && (
-                          <span>
-                            {displayComments}
-                            {post.post_subtype === 'discussion' && <span className="ml-0.5 text-[11px]"> replies</span>}
-                            {post.post_subtype === 'question' && <span className="ml-0.5 text-[11px]"> answers</span>}
-                          </span>
-                        )}
-                      </button>
-
-                      {/* Repost */}
-                      {post.user_id !== user.id ? (
-                        <button type="button" onClick={() => handleRepost(post.id)} disabled={repostingId === post.id}
-                          className="group flex items-center gap-1 text-[13px] text-ink-muted transition hover:text-brand-600 disabled:opacity-40">
-                          <span className="flex h-8 w-8 items-center justify-center rounded-full transition group-hover:bg-brand-50">
-                            <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" />
-                            </svg>
-                          </span>
-                          {displayReposts > 0 && <span>{displayReposts}</span>}
-                        </button>
-                      ) : <span className="w-9" />}
-
-                      {/* Share */}
-                      <button type="button" onClick={() => openShareModal(post)}
-                        className="group flex items-center gap-1 text-[13px] text-ink-muted transition hover:text-brand-600">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-full transition group-hover:bg-brand-50">
-                          <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
-                          </svg>
-                        </span>
-                      </button>
-
-                      {/* Views */}
-                      <span className="flex items-center gap-1 text-[13px] text-ink-muted">
-                        <span className="flex h-8 w-8 items-center justify-center">
-                          <svg className="h-[16px] w-[16px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
-                          </svg>
-                        </span>
-                        {formatCount(post.view_count)}
-                      </span>
-                    </div>
-                    {(post.engagement_score ?? 0) > 0 && (
-                      <div className="mt-2 h-[3px] overflow-hidden rounded-full bg-border/50">
-                        <div
-                          className={cn('h-full rounded-full transition-all duration-500',
-                            (post.engagement_score ?? 0) > 50
-                              ? 'bg-red-400 dark:bg-red-500'
-                              : (post.engagement_score ?? 0) > 20
-                              ? 'bg-amber-400 dark:bg-amber-500'
-                              : 'bg-green-400 dark:bg-green-500'
-                          )}
-                          style={{ width: `${Math.min(100, Math.max(3, ((post.engagement_score ?? 0) / maxEngagementScore) * 100))}%` }}
-                        />
-                      </div>
-                    )}
-
-                      {/* Comments section */}
-                      {commentingId === post.id && (
-                        <div className="mt-4 border-t border-border pt-4">
-                          {/* Existing comments */}
-                          {commentsLoading[post.id] ? (
-                            <div className="mb-3 space-y-3">
-                              {[1, 2].map((i) => (
-                                <div key={i} className="flex gap-2.5">
-                                  <Skeleton className="h-8 w-8 shrink-0" rounded="full" />
-                                  <div className="flex-1 space-y-1.5">
-                                    <Skeleton className="h-3 w-24" />
-                                    <Skeleton className="h-3 w-full" />
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (comments[post.id] ?? []).length > 0 ? (
-                            <div className="mb-4 space-y-4">
-                              {(comments[post.id] ?? []).map((c) => (
-                                <div key={c.id}>
-                                  <div className="flex gap-2.5">
-                                    <Avatar src={c.author_photo} name={c.author_name} size="sm" className="mt-0.5 shrink-0" />
-                                    <div className="min-w-0 flex-1">
-                                      <div className="rounded-xl bg-surface-muted px-3 py-2">
-                                        <div className="flex items-baseline gap-2">
-                                          <span className="text-body-sm font-semibold text-ink">{c.author_name}</span>
-                                          <span className="text-caption text-ink-muted">{timeAgo(c.created_at)}</span>
-                                        </div>
-                                        <p className="mt-0.5 text-body-sm text-ink leading-relaxed"><PostContent content={c.content} /></p>
-                                        {c.is_best_answer && (
-                                          <div className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-semibold text-green-700 dark:bg-green-950 dark:text-green-400">
-                                            ✓ Best Answer
-                                          </div>
-                                        )}
-                                      </div>
-                                      {/* Reply button + view replies */}
-                                      <div className="ml-2 mt-1 flex items-center gap-3">
-                                        <button type="button"
-                                          onClick={() => {
-                                            if (replyingTo?.commentId === c.id) { setReplyingTo(null); }
-                                            else { setReplyingTo({ postId: post.id, commentId: c.id }); setReplyText(''); }
-                                          }}
-                                          className="text-caption font-medium text-ink-secondary transition hover:text-brand-600">
-                                          Reply
-                                        </button>
-                                        {post.post_subtype === 'question' && post.user_id === user.id && !c.is_best_answer && (
-                                          <button type="button"
-                                            onClick={() => handleMarkBestAnswer(post.id, c.id)}
-                                            className="text-caption font-medium text-green-600 transition hover:text-green-700">
-                                            ✓ Best Answer
-                                          </button>
-                                        )}
-                                        {(c.reply_count > 0 || (replies[c.id]?.length ?? 0) > 0) && (
-                                          <button type="button"
-                                            onClick={() => toggleReplies(post.id, c.id)}
-                                            className="text-caption text-ink-muted transition hover:text-brand-600">
-                                            {expandedReplies.has(c.id)
-                                              ? 'Hide replies'
-                                              : `View ${c.reply_count > 0 ? c.reply_count : replies[c.id]?.length} ${(c.reply_count === 1 || replies[c.id]?.length === 1) ? 'reply' : 'replies'}`}
-                                          </button>
-                                        )}
-                                      </div>
-                                      {/* Reply input */}
-                                      {replyingTo?.commentId === c.id && (
-                                        <div className="ml-2 mt-2 flex gap-2">
-                                          <Avatar src={user.profile_photo_url} name={user.full_name} size="sm" className="shrink-0" />
-                                          <div className="flex min-w-0 flex-1 gap-2">
-                                            <Input
-                                              value={replyText}
-                                              onChange={(e) => setReplyText(e.target.value)}
-                                              placeholder={`Reply to ${c.author_name}…`}
-                                              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleReply(post.id, c.id); } }}
-                                              className="flex-1 text-sm"
-                                            />
-                                            <Button onClick={() => handleReply(post.id, c.id)} size="sm" disabled={!replyText.trim()}>Post</Button>
-                                          </div>
-                                        </div>
-                                      )}
-                                      {/* Expanded replies */}
-                                      {expandedReplies.has(c.id) && (
-                                        <div className="ml-6 mt-2 space-y-2 border-l-2 border-border pl-3">
-                                          {repliesLoading[c.id] ? (
-                                            <div className="space-y-2 py-1">
-                                              {[1, 2].map((i) => (
-                                                <div key={i} className="flex gap-2">
-                                                  <Skeleton className="h-6 w-6 shrink-0" rounded="full" />
-                                                  <div className="flex-1 space-y-1"><Skeleton className="h-3 w-20" /><Skeleton className="h-3 w-full" /></div>
-                                                </div>
-                                              ))}
-                                            </div>
-                                          ) : (replies[c.id] ?? []).length === 0 ? (
-                                            <p className="py-1 text-caption text-ink-muted">No replies yet.</p>
-                                          ) : (
-                                            (replies[c.id] ?? []).map((r) => (
-                                              <div key={r.id} className="flex gap-2">
-                                                <Avatar src={r.author_photo} name={r.author_name} size="sm" className="h-6 w-6 shrink-0" />
-                                                <div className="rounded-lg bg-surface-subtle px-2.5 py-1.5">
-                                                  <div className="flex items-baseline gap-1.5">
-                                                    <span className="text-caption font-semibold text-ink">{r.author_name}</span>
-                                                    <span className="text-[10px] text-ink-muted">{timeAgo(r.created_at)}</span>
-                                                  </div>
-                                                  <p className="mt-0.5 text-caption text-ink leading-relaxed"><PostContent content={r.content} /></p>
-                                                </div>
-                                              </div>
-                                            ))
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="mb-3 text-center text-caption text-ink-muted">No comments yet — be the first!</p>
-                          )}
-
-                          {/* New comment input */}
-                          <div className="flex gap-2">
-                            <Avatar src={user.profile_photo_url} name={user.full_name} size="sm" className="shrink-0" />
-                            <div className="relative flex min-w-0 flex-1 gap-2">
-                              <Input
-                                ref={commentInputRef}
-                                value={commentText}
-                                onChange={(e) => {
-                                  setCommentText(e.target.value);
-                                  commentMention.handleChange(e.target.value, e.target.selectionStart ?? e.target.value.length);
-                                }}
-                                placeholder="Write a comment…"
-                                onKeyDown={(e) => {
-                                  if (commentMention.isOpen) {
-                                    if (e.key === 'ArrowDown') { e.preventDefault(); commentMention.setActiveIndex(i => Math.min(i + 1, commentMention.results.length - 1)); return; }
-                                    if (e.key === 'ArrowUp') { e.preventDefault(); commentMention.setActiveIndex(i => Math.max(i - 1, 0)); return; }
-                                    if (e.key === 'Enter' || e.key === 'Tab') {
-                                      e.preventDefault();
-                                      const picked = commentMention.results[commentMention.activeIndex];
-                                      if (picked) {
-                                        const input = commentInputRef.current;
-                                        const cursor = input?.selectionStart ?? commentText.length;
-                                        const { text, cursorPos } = commentMention.applyMention(commentText, cursor, picked);
-                                        setCommentText(text);
-                                        requestAnimationFrame(() => input?.setSelectionRange(cursorPos, cursorPos));
-                                      }
-                                      return;
-                                    }
-                                    if (e.key === 'Escape') { commentMention.close(); return; }
-                                  }
-                                  if (e.key === 'Enter' && !e.shiftKey) {
-                                    e.preventDefault();
-                                    handleComment(post.id);
-                                  }
-                                }}
-                                className="flex-1"
-                              />
-                              {commentMention.isOpen && (
-                                <MentionDropdown
-                                  results={commentMention.results}
-                                  activeIndex={commentMention.activeIndex}
-                                  onPick={(pickedUser) => {
-                                    const input = commentInputRef.current;
-                                    const cursor = input?.selectionStart ?? commentText.length;
-                                    const { text, cursorPos } = commentMention.applyMention(commentText, cursor, pickedUser);
-                                    setCommentText(text);
-                                    requestAnimationFrame(() => { input?.focus(); input?.setSelectionRange(cursorPos, cursorPos); });
-                                  }}
-                                />
-                              )}
-                              <Button
-                                onClick={() => handleComment(post.id)}
-                                size="sm"
-                                disabled={!commentText.trim()}
-                              >
-                                Post
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-              </article>
-              );
-            })
+              .map((post) => renderPostCard(post))
           )}
           </>
           )}
@@ -4329,7 +4292,7 @@ export default function FeedPage() {
                     setBlockTarget(null);
                     setReportToast(`${blockTarget.name} has been blocked.`);
                     setTimeout(() => setReportToast(null), 3000);
-                    setPosts(prev => prev.filter(p => p.user_id !== blockTarget.id));
+                    mutatePosts(prev => prev.filter(p => p.user_id !== blockTarget.id));
                   } catch { setBlockTarget(null); }
                 }}
               >
