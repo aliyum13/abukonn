@@ -536,16 +536,22 @@ function StoryViewer({
     }
   }, [index, group.stories]);
 
-  if (!story) return null;
-
   // WhatsApp-style gestures: tap left = previous, tap right = next,
-  // press-and-hold anywhere = pause (release = resume). We distinguish a tap
-  // from a hold using a timer: if the press lasts longer than ~200ms it's a
-  // hold (pause), otherwise it's a tap (navigate).
-  const holdTimerRef = pauseIconTimerRef; // reuse timer ref slot
-
+  // press-and-hold anywhere = pause (release = resume). A tap is told from a
+  // hold with a timer: press longer than ~350ms is a hold (pause), otherwise a
+  // tap (navigate).
+  //
+  // These refs MUST be declared before the `if (!story) return null` below —
+  // hooks can't sit after an early return, or the hook order changes between
+  // renders and React misaligns them.
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pressStartTimeRef = useRef(0);
   const pointerStartRef = useRef({ x: 0, y: 0 });
+  // Read inside the hold timer so it never acts on a stale isPaused value.
+  const isPausedRef = useRef(isPaused);
+  useEffect(() => { isPausedRef.current = isPaused; }, [isPaused]);
+
+  if (!story) return null;
 
   // Unified pointer handling (covers touch, mouse, pen) — avoids the double-fire
   // you get from mixing touch + mouse events. Arm a hold timer on press down;
@@ -556,12 +562,16 @@ function StoryViewer({
     if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
     holdTimerRef.current = setTimeout(() => {
       pressStartedHoldRef.current = true;
-      if (!isPaused) onPauseToggle();
+      // isPausedRef, not isPaused — the closure captured at pointerdown would
+      // otherwise be reading a stale value 350ms later.
+      if (!isPausedRef.current) onPauseToggle();
+      setShowPauseIcon(true); // visible confirmation that the hold registered
     }, 350);
   };
 
   const onZonePointerUp = (side: 'left' | 'right') => (e: React.PointerEvent) => {
     if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+    setShowPauseIcon(false);
     const dx = e.clientX - pointerStartRef.current.x;
     const dy = e.clientY - pointerStartRef.current.y;
     const absX = Math.abs(dx);
@@ -600,6 +610,7 @@ function StoryViewer({
 
   const onZonePointerCancel = () => {
     if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+    setShowPauseIcon(false);
     if (pressStartedHoldRef.current && isPaused) onPauseToggle();
     pressStartedHoldRef.current = false;
   };
@@ -690,7 +701,11 @@ function StoryViewer({
         </div>
       </div>
       {/* Media / Text */}
-      <div key={story.id} className="relative z-10 flex h-full w-full max-w-sm items-center justify-center animate-[fadeIn_0.25s_ease-out]">
+      {/* pointer-events-none is LOAD-BEARING: this layer sits above the gesture
+          zones (z-5) and on a phone covers the whole screen, so without it the
+          story image/text swallows every tap, swipe and hold and the zones
+          beneath never fire. Interactive children opt back in individually. */}
+      <div key={story.id} className="pointer-events-none relative z-10 flex h-full w-full max-w-sm items-center justify-center animate-[fadeIn_0.25s_ease-out]">
         {story.story_type === 'text' ? (
           <div className="flex h-full w-full items-center justify-center px-8"
             style={{ backgroundColor: story.bg_color || '#16a34a' }}>
@@ -709,7 +724,7 @@ function StoryViewer({
                   rel="noopener noreferrer nofollow"
                   onClick={e => e.stopPropagation()}
                   onPointerDown={e => e.stopPropagation()}
-                  className="w-full max-w-xs"
+                  className="pointer-events-auto w-full max-w-xs"
                 >
                   <LinkPreviewCard
                     url={story.link_url}
