@@ -1,6 +1,7 @@
 const Message = require('../models/Message');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const { sendPushToUsers } = require('../lib/push');
 const { isBlocked } = require('../models/ReportBlock');
 const cloudinary = require('../config/cloudinary');
 
@@ -149,6 +150,25 @@ async function sendMessageHandler(req, res) {
     const io = req.app.get('io');
     if (io) {
       io.to(`conversation_${conversationId}`).emit('receive_message', message);
+    }
+
+    // Push the message to the recipient's phone. Until now a DM only reached
+    // someone whose app was OPEN on that conversation — close the app and it
+    // arrived silently. An unanswered message is the strongest reason anyone
+    // reopens an app, so this is the notification that matters most.
+    const recipientId =
+      conversation.user1_id === req.user.id ? conversation.user2_id : conversation.user1_id;
+
+    if (recipientId) {
+      const preview = (content || '').trim();
+      sendPushToUsers([recipientId], {
+        title: 'ABUkonn',
+        body: preview
+          ? `{name}: ${preview.length > 80 ? preview.slice(0, 80) + '…' : preview}`
+          : '{name} sent you a message',
+        senderId: req.user.id,
+        data: { type: 'conversation', conversationId },
+      }).catch(() => {});
     }
 
     res.status(201).json({ message: 'Message sent', data: message, conversation_id: conversationId });

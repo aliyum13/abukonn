@@ -12,8 +12,14 @@
 // Emitting is always best-effort — never let a socket problem break the
 // request that triggered it.
 
+const { sendPushToUsers } = require('./push');
+
 // Notify a single recipient that they have a new notification.
-function emitNotification(app, recipientId) {
+//
+// `push` is optional: { title, body, data }. When present, the recipient also
+// gets a lock-screen push on their phone. Socket = instant badge update while
+// the app is open; push = reaches them when it isn't. Both are best-effort.
+function emitNotification(app, recipientId, push = null) {
   try {
     const io = app && app.get && app.get('io');
     if (!io || !recipientId) return;
@@ -21,10 +27,14 @@ function emitNotification(app, recipientId) {
   } catch (err) {
     console.error('emitNotification error:', err.message);
   }
+  // Fire-and-forget: a push failure must never break the request that caused it.
+  if (push && recipientId) {
+    sendPushToUsers([recipientId], push).catch(() => {});
+  }
 }
 
 // Notify many recipients (e.g. the post fan-out to opted-in followers).
-function emitNotificationToMany(app, recipientIds) {
+function emitNotificationToMany(app, recipientIds, push = null) {
   try {
     const io = app && app.get && app.get('io');
     if (!io || !recipientIds || recipientIds.length === 0) return;
@@ -33,6 +43,9 @@ function emitNotificationToMany(app, recipientIds) {
     }
   } catch (err) {
     console.error('emitNotificationToMany error:', err.message);
+  }
+  if (push && recipientIds?.length) {
+    sendPushToUsers(recipientIds, push).catch(() => {});
   }
 }
 

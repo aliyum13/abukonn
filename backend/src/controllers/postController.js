@@ -82,7 +82,12 @@ async function createPost(req, res) {
           await Promise.all(mentioned.map(u =>
             Notification.createNotification({ recipientId: u.id, senderId: req.user.id, type: 'mention', postId: post.id })
           ));
-          emitNotificationToMany(req.app, mentioned.map(u => u.id));
+          emitNotificationToMany(req.app, mentioned.map(u => u.id), {
+            title: 'ABUkonn',
+            body: '{name} mentioned you',
+            senderId: req.user.id,
+            data: { type: 'post', postId: post.id },
+          });
         })
         .catch(err => console.error('Mention notification error:', err.message));
     }
@@ -100,7 +105,14 @@ async function createPost(req, res) {
             type: activityType,
             postId: post.id,
           });
-          emitNotificationToMany(req.app, ids);
+          emitNotificationToMany(req.app, ids, {
+            title: 'ABUkonn',
+            body: activityType === 'new_event'
+              ? '{name} created an event'
+              : '{name} shared a new post',
+            senderId: req.user.id,
+            data: { type: 'post', postId: post.id },
+          });
         })
         .catch(err => console.error('Post notification fan-out error:', err.message));
     }
@@ -231,7 +243,12 @@ async function likePost(req, res) {
         type: 'like',
         postId,
       })
-        .then(() => emitNotification(req.app, existing.user_id))
+        .then(() => emitNotification(req.app, existing.user_id, {
+          title: 'ABUkonn',
+          body: '{name} liked your post',
+          senderId: req.user.id,
+          data: { type: 'post', postId },
+        }))
         .catch(() => {});
     }
 
@@ -313,7 +330,12 @@ async function addComment(req, res) {
         type: 'comment',
         postId,
       })
-        .then(() => emitNotification(req.app, existing.user_id))
+        .then(() => emitNotification(req.app, existing.user_id, {
+          title: 'ABUkonn',
+          body: '{name} commented on your post',
+          senderId: req.user.id,
+          data: { type: 'post', postId },
+        }))
         .catch(() => {});
     }
 
