@@ -261,6 +261,7 @@ app.use('/api/search', searchRoutes);
 app.use('/api/follows', followRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/push', require('./routes/push'));
 app.use('/api/groups', groupRoutes);
 app.use('/api/stories', storyRoutes);
 app.use('/api/connect', connectRoutes);
@@ -300,6 +301,7 @@ createUsersTable()
   .then(() => createStoryViewsTable())
   .then(() => require('./models/Story').createStoryMutesTable())
   .then(() => require('./models/Story').createStoryAudienceTables())
+  .then(() => require('./lib/push').createPushTokensTable())
   .then(() => createStoryReactionsTable())
   .then(() => createStoryRepliesTable())
   .then(() => createConnectTables())

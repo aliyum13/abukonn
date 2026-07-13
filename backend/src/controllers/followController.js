@@ -22,7 +22,12 @@ async function follow(req, res) {
       senderId: followerId,
       type: 'follow',
     })
-      .then(() => emitNotification(req.app, followingId))
+      .then(() => emitNotification(req.app, followingId, {
+        title: 'ABUkonn',
+        body: '{name} started following you',
+        senderId: followerId,
+        data: { type: 'profile', userId: followerId },
+      }))
       .catch(() => {});
 
     res.json({ message: 'Followed successfully', ...stats });

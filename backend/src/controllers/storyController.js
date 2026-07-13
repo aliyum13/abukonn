@@ -154,7 +154,12 @@ function notifyFollowersOfStory(app, authorId, audience = 'all', audienceUserIds
         type: 'new_story',
         postId: null,
       });
-      emitNotificationToMany(app, recipients);
+      emitNotificationToMany(app, recipients, {
+        title: 'ABUkonn',
+        body: '{name} added to their story',
+        senderId: authorId,
+        data: { type: 'story', userId: authorId },
+      });
     })
     .catch(err => console.error('Story notification fan-out error:', err.message));
 }
