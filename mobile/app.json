@@ -18,10 +18,15 @@
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-notifications"
     ],
     "extra": {
-      "apiUrl": "https://abukonn-production.up.railway.app"
-    }
+      "apiUrl": "https://abukonn-production.up.railway.app",
+      "eas": {
+        "projectId": "8068b40e-8d95-45cf-8551-9a698607dbc9"
+      }
+    },
+    "owner": "auwalu"
   }
 }
