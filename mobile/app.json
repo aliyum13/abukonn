@@ -14,7 +14,8 @@
       "package": "com.abukonn.app",
       "adaptiveIcon": {
         "backgroundColor": "#16a34a"
-      }
+      },
+      "googleServicesFile": "./google-services.json"
     },
     "plugins": [
       "expo-router",
