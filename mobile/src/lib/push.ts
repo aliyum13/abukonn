@@ -1,6 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { apiFetch } from './api';
 
 // Show notifications even while the app is in the foreground.
@@ -37,7 +38,20 @@ export async function registerForPush(): Promise<string | null> {
       });
     }
 
-    const { data: token } = await Notifications.getExpoPushTokenAsync();
+    // Pass the EAS projectId explicitly. Inference works in some contexts and
+    // silently fails in others ('No projectId found'), which is exactly how push
+    // was broken before. Being explicit also means the token survives the project
+    // being renamed or transferred between accounts.
+    const projectId =
+      Constants.expoConfig?.extra?.eas?.projectId ??
+      (Constants as unknown as { easConfig?: { projectId?: string } }).easConfig?.projectId;
+
+    if (!projectId) {
+      console.log('Push: no EAS projectId — run `eas init`.');
+      return null;
+    }
+
+    const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
     currentToken = token;
 
     await apiFetch('/api/push/register', {

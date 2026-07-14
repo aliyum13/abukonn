@@ -39,3 +39,7 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Firebase service account key — SECRET, never commit
+google-services-key*.json
+*-firebase-adminsdk-*.json
