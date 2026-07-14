@@ -1,52 +1,23 @@
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { useEffect } from 'react';
+import { View, ActivityIndicator } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useAuth } from '../src/context/AuthContext';
+import { colors } from '../src/theme';
 
-export default function Home() {
+// Gatekeeper. Waits until we know whether there's a valid session — redirecting
+// before `loading` finishes would bounce a logged-in user to login on every launch.
+export default function Index() {
   const { user, loading } = useAuth();
+  const router = useRouter();
 
-  if (loading) {
-    return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#16a34a" />
-      </View>
-    );
-  }
+  useEffect(() => {
+    if (loading) return;
+    router.replace(user ? '/(tabs)/feed' : '/(auth)/login');
+  }, [user, loading]);
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>ABUkonn</Text>
-      <Text style={styles.subtitle}>Ahmadu Bello University</Text>
-      {user ? (
-        <Text style={styles.text}>Welcome, {user.full_name}!</Text>
-      ) : (
-        <Text style={styles.text}>Mobile app — SDK 52 ready</Text>
-      )}
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg }}>
+      <ActivityIndicator size="large" color={colors.brand} />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f9fafb',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#16a34a',
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginTop: 4,
-    marginBottom: 24,
-  },
-  text: {
-    fontSize: 16,
-    color: '#374151',
-    textAlign: 'center',
-  },
-});

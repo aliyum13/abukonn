@@ -1,100 +1,67 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import axios from 'axios';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { login as apiLogin, fetchMe, ApiUser } from '../lib/api';
+import { saveToken, getToken, clearToken } from '../lib/storage';
+import { registerForPush, unregisterPush } from '../lib/push';
 
-export const API_URL = 'http://172.20.10.8:3000';
-
-export interface User {
-  id: number;
-  matric_number: string;
-  full_name: string;
-  email: string;
-  department: string;
-  level: string;
-  profile_photo_url: string | null;
-  bio: string | null;
-  created_at: string;
-}
-
-interface AuthContextType {
-  user: User | null;
-  token: string | null;
+interface AuthState {
+  user: ApiUser | null;
   loading: boolean;
-  login: (matricNumber: string, password: string) => Promise<void>;
-  register: (data: RegisterData) => Promise<void>;
-  logout: () => void;
-  updateUser: (user: User) => void;
+  signIn: (email: string, password: string) => Promise<void>;
+  signOut: () => Promise<void>;
 }
 
-interface RegisterData {
-  matric_number: string;
-  full_name: string;
-  email: string;
-  department: string;
-  level: string;
-  password: string;
-}
+const AuthContext = createContext<AuthState | undefined>(undefined);
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<ApiUser | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // On launch: a stored token might be expired or revoked, so verify it with the
+  // server rather than assuming it's still good.
   useEffect(() => {
     (async () => {
-      const storedToken = await AsyncStorage.getItem('abukonn_token');
-      const storedUser = await AsyncStorage.getItem('abukonn_user');
-
-      if (storedToken && storedUser) {
-        setToken(storedToken);
-        setUser(JSON.parse(storedUser));
+      const token = await getToken();
+      if (!token) { setLoading(false); return; }
+      try {
+        const res = await fetchMe();
+        setUser(res.user);
+        // Re-register each launch: push tokens rotate, and the user may have
+        // changed notification permissions in system settings since last time.
+        registerForPush();
+      } catch {
+        await clearToken();
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     })();
   }, []);
 
-  const persistAuth = async (newToken: string, newUser: User) => {
-    await AsyncStorage.setItem('abukonn_token', newToken);
-    await AsyncStorage.setItem('abukonn_user', JSON.stringify(newUser));
-    setToken(newToken);
-    setUser(newUser);
-  };
+  const signIn = useCallback(async (email: string, password: string) => {
+    const res = await apiLogin(email, password);
+    await saveToken(res.token);
+    setUser(res.user);
+    // Deliberately NOT awaited — if the push prompt is declined or fails, login
+    // must still succeed.
+    registerForPush();
+  }, []);
 
-  const login = async (matricNumber: string, password: string) => {
-    const { data } = await axios.post(`${API_URL}/api/auth/login`, {
-      matric_number: matricNumber,
-      password,
-    });
-    await persistAuth(data.token, data.user);
-  };
-
-  const register = async (registerData: RegisterData) => {
-    const { data } = await axios.post(`${API_URL}/api/auth/register`, registerData);
-    await persistAuth(data.token, data.user);
-  };
-
-  const logout = async () => {
-    await AsyncStorage.multiRemove(['abukonn_token', 'abukonn_user']);
-    setToken(null);
+  const signOut = useCallback(async () => {
+    // Unregister BEFORE clearing the token (the call needs to be authenticated),
+    // otherwise this phone keeps receiving the old user's notifications.
+    await unregisterPush();
+    await clearToken();
     setUser(null);
-  };
-
-  const updateUser = async (updatedUser: User) => {
-    await AsyncStorage.setItem('abukonn_user', JSON.stringify(updatedUser));
-    setUser(updatedUser);
-  };
+  }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used within an AuthProvider');
-  return context;
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used inside AuthProvider');
+  return ctx;
 }
