@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { Avatar, Button } from '@/components/ui';
 import { excerpt, timeAgo } from '@/lib/format';
+import { triggerPageRefresh } from '@/lib/refresh';
 import { useEffect, useRef, useState, useCallback, KeyboardEvent } from 'react';
 import { io } from 'socket.io-client';
 
@@ -379,6 +380,12 @@ export function AppNav() {
               <Link
                 key={link.href}
                 href={link.href}
+                onClick={(e) => {
+                  if (isActive(link.href)) {
+                    e.preventDefault();
+                    triggerPageRefresh(link.href);
+                  }
+                }}
                 className={`relative rounded-xl px-3.5 py-2 text-body-sm font-medium transition ${
                   isActive(link.href)
                     ? 'bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-400'
@@ -585,6 +592,14 @@ export function AppNav() {
         <Link
           key={link.href}
           href={link.href}
+          onClick={(e) => {
+            // Already here? Don't let Next.js no-op — refresh the page's data
+            // and scroll to top, the way every social app behaves.
+            if (isActive(link.href)) {
+              e.preventDefault();
+              triggerPageRefresh(link.href);
+            }
+          }}
           className={`relative flex flex-1 flex-col items-center justify-center py-2.5 gap-0.5 text-[11px] font-medium transition ${
             isActive(link.href)
               ? 'text-brand-600'

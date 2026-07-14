@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { timeAgo } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { optimizedImage } from '@/lib/image';
 import { Skeleton } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
+import { usePageRefresh } from '@/lib/refresh';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -222,13 +223,19 @@ export default function NewsPage() {
       'there'
     : 'there';
 
-  useEffect(() => {
+  const loadNews = useCallback(() => {
+    setLoading(true);
     fetch(`${API_URL}/api/news`)
       .then((res) => res.json())
       .then((data) => setNews(data.news || []))
       .catch(() => setError('Failed to load news'))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { loadNews(); }, [loadNews]);
+
+  // Tapping the News tab while already on News re-fetches.
+  usePageRefresh(() => { loadNews(); }, '/news');
 
   const filtered = useMemo(() => {
     if (activeCategory === 'all') return news;
