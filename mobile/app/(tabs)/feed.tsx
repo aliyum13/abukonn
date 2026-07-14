@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { apiFetch, API_URL } from '../../src/lib/api';
 import { getToken } from '../../src/lib/storage';
 import { colors } from '../../src/theme';
@@ -50,6 +51,7 @@ export default function Feed() {
 
   const [composeOpen, setComposeOpen] = useState(false);
   const [newPost, setNewPost] = useState('');
+  const [newImage, setNewImage] = useState<string | null>(null);
   const [posting, setPosting] = useState(false);
 
   const [commentsFor, setCommentsFor] = useState<Post | null>(null);
@@ -119,14 +121,46 @@ export default function Feed() {
     }
   };
 
+  const pickImage = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Permission needed', 'Allow photo access to add an image.');
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.8,
+    });
+    if (!res.canceled && res.assets[0]) setNewImage(res.assets[0].uri);
+  };
+
+  const takePhoto = async () => {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Permission needed', 'Allow camera access to take a photo.');
+      return;
+    }
+    const res = await ImagePicker.launchCameraAsync({ quality: 0.8 });
+    if (!res.canceled && res.assets[0]) setNewImage(res.assets[0].uri);
+  };
+
   const submitPost = async () => {
-    if (!newPost.trim()) return;
+    // An image on its own is a perfectly good post — don't require text.
+    if (!newPost.trim() && !newImage) return;
     setPosting(true);
     try {
       const token = await getToken();
       const form = new FormData();
       form.append('content', newPost.trim());
       form.append('category', 'GENERAL');
+      if (newImage) {
+        // The backend's multer field is 'image'.
+        form.append('image', {
+          uri: newImage,
+          name: 'photo.jpg',
+          type: 'image/jpeg',
+        } as unknown as Blob);
+      }
       const res = await fetch(`${API_URL}/api/posts`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
@@ -137,6 +171,7 @@ export default function Feed() {
         throw new Error((d as { message?: string }).message || 'Could not post');
       }
       setNewPost('');
+      setNewImage(null);
       setComposeOpen(false);
       load();
     } catch (err) {
@@ -230,11 +265,19 @@ export default function Feed() {
                 <Text style={s.muted}>Cancel</Text>
               </TouchableOpacity>
               <Text style={s.modalTitle}>New post</Text>
-              <TouchableOpacity onPress={submitPost} disabled={posting || !newPost.trim()}>
+              <TouchableOpacity
+                onPress={submitPost}
+                disabled={posting || (!newPost.trim() && !newImage)}
+              >
                 {posting ? <ActivityIndicator color={colors.brand} />
-                  : <Text style={[s.post, !newPost.trim() ? { opacity: 0.4 } : null]}>Post</Text>}
+                  : (
+                    <Text style={[s.post, (!newPost.trim() && !newImage) ? { opacity: 0.4 } : null]}>
+                      Post
+                    </Text>
+                  )}
               </TouchableOpacity>
             </View>
+
             <TextInput
               style={s.composeInput}
               placeholder="What's happening on campus?"
@@ -244,6 +287,24 @@ export default function Feed() {
               multiline
               autoFocus
             />
+
+            {newImage ? (
+              <View style={s.previewWrap}>
+                <Image source={{ uri: newImage }} style={s.preview} resizeMode="cover" />
+                <TouchableOpacity style={s.removeImg} onPress={() => setNewImage(null)}>
+                  <Text style={s.removeImgText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
+            <View style={s.composeTools}>
+              <TouchableOpacity style={s.tool} onPress={pickImage}>
+                <Text style={s.toolText}>🖼  Photo</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.tool} onPress={takePhoto}>
+                <Text style={s.toolText}>📷  Camera</Text>
+              </TouchableOpacity>
+            </View>
           </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
@@ -322,6 +383,22 @@ const s = StyleSheet.create({
   modalTitle: { fontSize: 16, fontWeight: '700', color: colors.text },
   post: { color: colors.brand, fontWeight: '700', fontSize: 15 },
   composeInput: { flex: 1, padding: 16, fontSize: 16, color: colors.text, textAlignVertical: 'top' },
+  previewWrap: { marginHorizontal: 16, marginBottom: 12 },
+  preview: { width: '100%', height: 220, borderRadius: 12, backgroundColor: '#f3f4f6' },
+  removeImg: {
+    position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center',
+  },
+  removeImgText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  composeTools: {
+    flexDirection: 'row', gap: 10, padding: 12,
+    borderTopWidth: 1, borderTopColor: colors.border,
+  },
+  tool: {
+    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  toolText: { fontSize: 13, fontWeight: '600', color: colors.text },
   commentRow: { padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border },
   commentBar: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderTopWidth: 1, borderTopColor: colors.border },
   commentInput: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, color: colors.text },
