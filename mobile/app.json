@@ -3,27 +3,25 @@
     "name": "ABUkonn",
     "slug": "abukonn",
     "version": "1.0.0",
-    "sdkVersion": "54.0.0",
-    "scheme": "abukonn",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "scheme": "abukonn",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "bundleIdentifier": "com.abukonn.app"
     },
     "android": {
+      "package": "com.abukonn.app",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#16a34a"
       }
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
     "plugins": [
-      "expo-router"
-    ]
+      "expo-router",
+      "expo-secure-store"
+    ],
+    "extra": {
+      "apiUrl": "https://abukonn-production.up.railway.app"
+    }
   }
 }
