@@ -1,0 +1,277 @@
+import { useEffect, useState, useCallback } from 'react';
+import {
+  View, Text, FlatList, StyleSheet, ActivityIndicator, Image,
+  TouchableOpacity, RefreshControl,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { apiFetch } from '../../src/lib/api';
+import { useAuth } from '../../src/context/AuthContext';
+import { colors } from '../../src/theme';
+
+interface ProfileUser {
+  id: number;
+  full_name: string;
+  username: string;
+  department: string | null;
+  level: string | null;
+  bio: string | null;
+  profile_photo_url: string | null;
+  followers_count: number;
+  following_count: number;
+  is_following: boolean;
+  is_verified?: boolean;
+}
+
+interface Post {
+  id: number;
+  content: string;
+  image_url: string | null;
+  likes_count: number;
+  comments_count: number;
+  created_at: string;
+  post_subtype?: string | null;
+  discussion_title?: string | null;
+}
+
+function timeAgo(iso: string) {
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return 'now';
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  return `${Math.floor(s / 86400)}d`;
+}
+
+export default function UserProfile() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
+  const { user: me } = useAuth();
+
+  const [user, setUser] = useState<ProfileUser | null>(null);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const isMe = me?.id === Number(id);
+
+  const load = useCallback(async () => {
+    try {
+      const data = await apiFetch<{ user: ProfileUser; posts: Post[] }>(`/api/users/${id}`);
+      setUser(data.user);
+      setPosts(data.posts || []);
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load profile');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Optimistic follow: flip immediately, roll back if the server refuses.
+  const toggleFollow = async () => {
+    if (!user || busy) return;
+    const was = user.is_following;
+    setBusy(true);
+    setUser({
+      ...user,
+      is_following: !was,
+      followers_count: user.followers_count + (was ? -1 : 1),
+    });
+    try {
+      await apiFetch(`/api/follows/${id}`, { method: was ? 'DELETE' : 'POST' });
+    } catch {
+      setUser(u => u ? {
+        ...u,
+        is_following: was,
+        followers_count: u.followers_count + (was ? 1 : -1),
+      } : u);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const message = async () => {
+    try {
+      // NOTE: the endpoint takes `recipient_id` and returns { conversation: { id } }.
+      const res = await apiFetch<{ conversation: { id: number } }>('/api/messages/start', {
+        method: 'POST',
+        body: JSON.stringify({ recipient_id: Number(id) }),
+      });
+      router.push({
+        pathname: '/chat/[id]',
+        params: { id: String(res.conversation.id), name: user?.full_name ?? 'Chat' },
+      });
+    } catch {
+      /* ignore — the button simply does nothing rather than showing an error */
+    }
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={s.safe} edges={['top']}>
+        <View style={s.center}><ActivityIndicator size="large" color={colors.brand} /></View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error || !user) {
+    return (
+      <SafeAreaView style={s.safe} edges={['top']}>
+        <View style={s.header}>
+          <TouchableOpacity onPress={() => router.back()} hitSlop={10}>
+            <Text style={s.back}>‹ Back</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={s.center}>
+          <Text style={s.error}>{error || 'Profile unavailable'}</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={s.safe} edges={['top']}>
+      <View style={s.header}>
+        <TouchableOpacity onPress={() => router.back()} hitSlop={10}>
+          <Text style={s.back}>‹ Back</Text>
+        </TouchableOpacity>
+        <Text style={s.headerName} numberOfLines={1}>{user.full_name}</Text>
+        <View style={{ width: 50 }} />
+      </View>
+
+      <FlatList
+        data={posts}
+        keyExtractor={p => String(p.id)}
+        refreshControl={
+          <RefreshControl refreshing={refreshing}
+            onRefresh={() => { setRefreshing(true); load(); }}
+            tintColor={colors.brand} />
+        }
+        ListHeaderComponent={
+          <View style={s.top}>
+            {user.profile_photo_url ? (
+              <Image source={{ uri: user.profile_photo_url }} style={s.avatar} />
+            ) : (
+              <View style={[s.avatar, s.fallback]}>
+                <Text style={s.letter}>{user.full_name.charAt(0).toUpperCase()}</Text>
+              </View>
+            )}
+
+            <Text style={s.name}>
+              {user.full_name}{user.is_verified ? ' ✓' : ''}
+            </Text>
+            {user.department ? (
+              <Text style={s.muted}>
+                {user.department}{user.level ? ` · ${user.level}` : ''}
+              </Text>
+            ) : null}
+            {user.bio ? <Text style={s.bio}>{user.bio}</Text> : null}
+
+            <View style={s.stats}>
+              <View style={s.stat}>
+                <Text style={s.statNum}>{user.followers_count}</Text>
+                <Text style={s.statLabel}>Followers</Text>
+              </View>
+              <View style={s.stat}>
+                <Text style={s.statNum}>{user.following_count}</Text>
+                <Text style={s.statLabel}>Following</Text>
+              </View>
+              <View style={s.stat}>
+                <Text style={s.statNum}>{posts.length}</Text>
+                <Text style={s.statLabel}>Posts</Text>
+              </View>
+            </View>
+
+            {!isMe ? (
+              <View style={s.actions}>
+                <TouchableOpacity
+                  style={[s.followBtn, user.is_following ? s.followingBtn : null]}
+                  onPress={toggleFollow}
+                  disabled={busy}
+                >
+                  <Text style={user.is_following ? s.followingText : s.followText}>
+                    {user.is_following ? 'Following' : 'Follow'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={s.msgBtn} onPress={message}>
+                  <Text style={s.msgText}>Message</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
+            <Text style={s.sectionTitle}>Posts</Text>
+          </View>
+        }
+        ListEmptyComponent={
+          <View style={s.center}><Text style={s.muted}>No posts yet</Text></View>
+        }
+        renderItem={({ item }) => (
+          <View style={s.card}>
+            {(item.post_subtype === 'question' || item.post_subtype === 'discussion')
+              && item.discussion_title ? (
+                <Text style={s.postTitle}>{item.discussion_title}</Text>
+              ) : null}
+            {item.content ? <Text style={s.content}>{item.content}</Text> : null}
+            {item.image_url ? (
+              <Image source={{ uri: item.image_url }} style={s.image} resizeMode="cover" />
+            ) : null}
+            <Text style={s.meta}>
+              {item.likes_count} likes · {item.comments_count} comments · {timeAgo(item.created_at)}
+            </Text>
+          </View>
+        )}
+      />
+    </SafeAreaView>
+  );
+}
+
+const s = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: colors.bg },
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
+  },
+  back: { color: colors.brand, fontSize: 16, fontWeight: '600' },
+  headerName: { fontSize: 16, fontWeight: '700', color: colors.text, flex: 1, textAlign: 'center' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
+  error: { color: colors.danger, fontSize: 15, textAlign: 'center' },
+  top: { alignItems: 'center', paddingTop: 24, paddingHorizontal: 24 },
+  avatar: { width: 88, height: 88, borderRadius: 44, backgroundColor: '#dcfce7' },
+  fallback: { alignItems: 'center', justifyContent: 'center' },
+  letter: { fontSize: 32, fontWeight: '800', color: colors.brand },
+  name: { fontSize: 20, fontWeight: '800', color: colors.text, marginTop: 12 },
+  muted: { fontSize: 14, color: colors.muted, marginTop: 4, textAlign: 'center' },
+  bio: { fontSize: 14, color: colors.text, marginTop: 10, textAlign: 'center', lineHeight: 20 },
+  stats: { flexDirection: 'row', gap: 32, marginTop: 18 },
+  stat: { alignItems: 'center' },
+  statNum: { fontSize: 17, fontWeight: '800', color: colors.text },
+  statLabel: { fontSize: 12, color: colors.muted, marginTop: 2 },
+  actions: { flexDirection: 'row', gap: 10, marginTop: 20, width: '100%' },
+  followBtn: {
+    flex: 1, backgroundColor: colors.brand, borderRadius: 10,
+    paddingVertical: 11, alignItems: 'center',
+  },
+  followingBtn: { backgroundColor: '#fff', borderWidth: 1, borderColor: colors.border },
+  followText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  followingText: { color: colors.text, fontWeight: '700', fontSize: 14 },
+  msgBtn: {
+    flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 10,
+    paddingVertical: 11, alignItems: 'center',
+  },
+  msgText: { color: colors.text, fontWeight: '700', fontSize: 14 },
+  sectionTitle: {
+    alignSelf: 'flex-start', fontSize: 15, fontWeight: '700',
+    color: colors.text, marginTop: 26, marginBottom: 4,
+  },
+  card: { padding: 16, borderTopWidth: 1, borderTopColor: colors.border },
+  postTitle: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 4 },
+  content: { fontSize: 15, color: colors.text, lineHeight: 22 },
+  image: { width: '100%', height: 200, borderRadius: 12, marginTop: 10, backgroundColor: '#f3f4f6' },
+  meta: { fontSize: 12, color: colors.muted, marginTop: 10 },
+});

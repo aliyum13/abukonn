@@ -4,6 +4,7 @@ import {
   TouchableOpacity, TextInput, Modal, KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { apiFetch, API_URL } from '../../src/lib/api';
 import { getToken } from '../../src/lib/storage';
 import { colors } from '../../src/theme';
@@ -11,6 +12,7 @@ import { StoryBar } from '../../src/components/Stories';
 
 interface Post {
   id: number;
+  user_id: number;
   content: string;
   image_url: string | null;
   author_name: string;
@@ -40,6 +42,7 @@ function timeAgo(iso: string) {
 }
 
 export default function Feed() {
+  const router = useRouter();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -172,7 +175,11 @@ export default function Feed() {
           ListEmptyComponent={<View style={s.center}><Text style={s.muted}>No posts yet</Text></View>}
           renderItem={({ item }) => (
             <View style={s.card}>
-              <View style={s.row}>
+              <TouchableOpacity
+                style={s.row}
+                activeOpacity={0.7}
+                onPress={() => router.push({ pathname: '/user/[id]', params: { id: String(item.user_id) } })}
+              >
                 {item.author_photo ? (
                   <Image source={{ uri: item.author_photo }} style={s.avatar} />
                 ) : (
@@ -184,7 +191,7 @@ export default function Feed() {
                   <Text style={s.author}>{item.author_name}</Text>
                   <Text style={s.muted}>{item.author_department} · {timeAgo(item.created_at)}</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
 
               {/* Questions keep their title in discussion_title, same as
                   discussions — rendering only 'discussion' is what made

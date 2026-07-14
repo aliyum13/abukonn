@@ -4,6 +4,7 @@ import {
   Image, TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { apiFetch } from '../../src/lib/api';
 import { colors } from '../../src/theme';
 
@@ -66,6 +67,7 @@ const ICON: Record<string, string> = {
 };
 
 export default function Notifications() {
+  const router = useRouter();
   const [items, setItems] = useState<Grouped[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -145,15 +147,21 @@ export default function Notifications() {
                 onPress={() => openOne(item)}
                 activeOpacity={0.7}
               >
-                {actor?.profile_photo_url ? (
-                  <Image source={{ uri: actor.profile_photo_url }} style={s.avatar} />
-                ) : (
-                  <View style={[s.avatar, s.fallback]}>
-                    <Text style={s.letter}>
-                      {actor?.full_name?.charAt(0).toUpperCase() ?? '?'}
-                    </Text>
-                  </View>
-                )}
+                <TouchableOpacity
+                  onPress={() => actor && router.push({
+                    pathname: '/user/[id]', params: { id: String(actor.id) },
+                  })}
+                >
+                  {actor?.profile_photo_url ? (
+                    <Image source={{ uri: actor.profile_photo_url }} style={s.avatar} />
+                  ) : (
+                    <View style={[s.avatar, s.fallback]}>
+                      <Text style={s.letter}>
+                        {actor?.full_name?.charAt(0).toUpperCase() ?? '?'}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
 
                 <View style={{ flex: 1 }}>
                   <Text style={s.text}>
