@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -9,6 +9,7 @@ import { optimizedImage } from '@/lib/image';
 import { cn } from '@/lib/utils';
 import { useFollow } from '@/hooks/useFollow';
 import { Avatar, Button, Skeleton, RoleBadge, PostContent } from '@/components/ui';
+import { usePageRefresh } from '@/lib/refresh';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -192,8 +193,9 @@ export default function ProfilePage() {
     if (!authLoading && !token) router.push('/login');
   }, [authLoading, token, router]);
 
-  useEffect(() => {
+  const loadProfile = useCallback(() => {
     if (!token) return;
+    setLoading(true);
     fetch(`${API_URL}/api/users/me`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(data => {
@@ -206,6 +208,11 @@ export default function ProfilePage() {
       .catch(() => setError('Failed to load profile'))
       .finally(() => setLoading(false));
   }, [token]);
+
+  useEffect(() => { loadProfile(); }, [loadProfile]);
+
+  // Tapping the Profile tab while already on Profile reloads it.
+  usePageRefresh(() => { loadProfile(); }, '/profile');
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {

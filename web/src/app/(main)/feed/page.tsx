@@ -10,6 +10,7 @@ import { optimizedImage } from '@/lib/image';
 import { useFollow } from '@/hooks/useFollow';
 import { useMentionAutocomplete, MentionDropdown } from '@/hooks/useMentionAutocomplete';
 import ReportModal from '@/components/ReportModal';
+import { usePageRefresh } from '@/lib/refresh';
 import {
   Avatar,
   Badge,
@@ -1744,6 +1745,12 @@ export default function FeedPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [commentingId]);
+
+  // Tapping the Feed tab while already on Feed reloads posts and stories.
+  usePageRefresh(() => {
+    fetchPosts();
+    setStoriesLoaded(false);
+  }, '/feed');
 
   const fetchPosts = async (isRetry = false) => {
     if (!token) return;

@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Button, Card, CardContent, Skeleton } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { DEPARTMENT_GROUPS, LEVELS } from '@/lib/departments';
+import { usePageRefresh } from '@/lib/refresh';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -93,6 +94,9 @@ export default function LibraryPage() {
       setTotal(data.total || 0);
     } finally { setLoading(false); }
   }, [token, typeFilter, faculty, department, level, search, page]);
+
+  // Tapping the Library tab while already on Library re-fetches materials.
+  usePageRefresh(() => { fetchMaterials(); }, '/library');
 
   useEffect(() => { fetchMaterials(); }, [fetchMaterials]);
 
