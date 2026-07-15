@@ -39,6 +39,10 @@ export default function Profile() {
             <Text style={s.linkText}>📅  Timetable</Text>
             <Text style={s.linkArrow}>›</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={s.link} onPress={() => router.push('/groups')}>
+            <Text style={s.linkText}>👥  Groups</Text>
+            <Text style={s.linkArrow}>›</Text>
+          </TouchableOpacity>
         </View>
 
         <TouchableOpacity style={s.logout} onPress={onLogout}>
