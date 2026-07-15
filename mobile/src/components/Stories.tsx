@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View, Text, Image, StyleSheet, TouchableOpacity, Modal, Dimensions,
   ScrollView, TextInput, KeyboardAvoidingView, Platform, Alert,
-  ActivityIndicator, Pressable,
+  ActivityIndicator, Pressable, FlatList,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { apiFetch, API_URL } from '../lib/api';
@@ -314,8 +314,22 @@ function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: (
   const [text, setText] = useState('');
   const [bg, setBg] = useState(BG_COLORS[0]);
   const [image, setImage] = useState<string | null>(null);
-  const [audience, setAudience] = useState<'all' | 'followers'>('all');
+  const [audience, setAudience] = useState<'all' | 'only' | 'except'>('all');
+  const [picking, setPicking] = useState(false);
+  const [following, setFollowing] = useState<{ id: number; full_name: string; profile_photo_url: string | null }[]>([]);
+  const [chosen, setChosen] = useState<Set<number>>(new Set());
   const [busy, setBusy] = useState(false);
+
+  // Load who you follow, so 'only'/'except' can name specific people.
+  const loadFollowing = async () => {
+    try {
+      const d = await apiFetch<{ following: { id: number; full_name: string; profile_photo_url: string | null }[] }>(
+        '/api/follows/following');
+      setFollowing(d.following || []);
+    } catch {
+      setFollowing([]);
+    }
+  };
 
   const pick = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -335,18 +349,31 @@ function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: (
     if (mode === 'image' && !image) return;
     setBusy(true);
     try {
-      const token = await getToken();
-      const form = new FormData();
-
-      // Everyone, or followers only. The 'except'/'only' lists need a member
-      // picker, which is a separate piece of work — noted as a follow-up.
-      form.append('audience', audience);
+      // Audience: 'all' = every follower; 'only'/'except' name specific people,
+      // snapshotted server-side at post time. The values must match the backend
+      // whitelist exactly ('all' | 'only' | 'except') — anything else is silently
+      // ignored and the last saved preference is used instead.
+      const audienceIds = audience === 'all' ? [] : Array.from(chosen);
 
       if (mode === 'text') {
-        form.append('story_type', 'text');
-        form.append('text_content', text.trim());
-        form.append('bg_color', bg);
+        // Text stories carry no file, so send JSON — exactly like the web client.
+        // This matters: audience_user_ids reaches the backend as a real array,
+        // which a multipart form can't reliably produce.
+        await apiFetch('/api/stories', {
+          method: 'POST',
+          body: JSON.stringify({
+            story_type: 'text',
+            text_content: text.trim(),
+            bg_color: bg,
+            audience,
+            audience_user_ids: audienceIds,
+          }),
+        });
       } else {
+        // Image stories must be multipart (the file). Send the id list as a JSON
+        // string so it survives multipart intact; the backend JSON-parses it.
+        const token = await getToken();
+        const form = new FormData();
         form.append('story_type', 'image');
         form.append('media', {
           uri: image as string,
@@ -354,16 +381,19 @@ function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: (
           type: 'image/jpeg',
         } as unknown as Blob);
         if (text.trim()) form.append('caption', text.trim());
-      }
-
-      const res = await fetch(`${API_URL}/api/stories`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: form,
-      });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error((d as { message?: string }).message || 'Could not post story');
+        form.append('audience', audience);
+        if (audience !== 'all') {
+          form.append('audience_user_ids', JSON.stringify(audienceIds));
+        }
+        const res = await fetch(`${API_URL}/api/stories`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: form,
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          throw new Error((d as { message?: string }).message || 'Could not post story');
+        }
       }
       onPosted();
     } catch (err) {
@@ -406,10 +436,28 @@ function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: (
             <Text style={audience === 'all' ? c.audTextOn : c.audText}>🌍 Everyone</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[c.audChip, audience === 'followers' ? c.audChipOn : null]}
-            onPress={() => setAudience('followers')}
+            style={[c.audChip, audience === 'only' ? c.audChipOn : null]}
+            onPress={() => {
+              setAudience('only');
+              if (following.length === 0) loadFollowing();
+              setPicking(true);
+            }}
           >
-            <Text style={audience === 'followers' ? c.audTextOn : c.audText}>👥 Followers</Text>
+            <Text style={audience === 'only' ? c.audTextOn : c.audText}>
+              ✅ Only{audience === 'only' && chosen.size ? ` (${chosen.size})` : ''}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[c.audChip, audience === 'except' ? c.audChipOn : null]}
+            onPress={() => {
+              setAudience('except');
+              if (following.length === 0) loadFollowing();
+              setPicking(true);
+            }}
+          >
+            <Text style={audience === 'except' ? c.audTextOn : c.audText}>
+              🚫 Except{audience === 'except' && chosen.size ? ` (${chosen.size})` : ''}
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -437,6 +485,60 @@ function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: (
           ) : null}
         </View>
       </View>
+
+      {/* Follower picker for 'only' / 'except' audiences */}
+      <Modal visible={picking} animationType="slide" onRequestClose={() => setPicking(false)}>
+        <View style={c.pickerRoot}>
+          <View style={c.pickerHeader}>
+            <TouchableOpacity onPress={() => setPicking(false)}>
+              <Text style={c.action}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={c.title}>
+              {audience === 'only' ? 'Show only to' : 'Hide from'}
+            </Text>
+            <TouchableOpacity onPress={() => setPicking(false)}>
+              <Text style={c.action}>Done</Text>
+            </TouchableOpacity>
+          </View>
+
+          <FlatList
+            data={following}
+            keyExtractor={u => String(u.id)}
+            ListEmptyComponent={
+              <View style={{ padding: 40, alignItems: 'center' }}>
+                <Text style={{ color: 'rgba(255,255,255,0.6)' }}>You're not following anyone yet</Text>
+              </View>
+            }
+            renderItem={({ item }) => {
+              const on = chosen.has(item.id);
+              return (
+                <TouchableOpacity
+                  style={c.pickRow}
+                  onPress={() => setChosen(prev => {
+                    const n = new Set(prev);
+                    if (n.has(item.id)) n.delete(item.id); else n.add(item.id);
+                    return n;
+                  })}
+                >
+                  {item.profile_photo_url ? (
+                    <Image source={{ uri: item.profile_photo_url }} style={c.pickAvatar} />
+                  ) : (
+                    <View style={[c.pickAvatar, { backgroundColor: '#333', alignItems: 'center', justifyContent: 'center' }]}>
+                      <Text style={{ color: '#fff', fontWeight: '700' }}>
+                        {item.full_name.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
+                  <Text style={c.pickName}>{item.full_name}</Text>
+                  <View style={[c.check, on ? c.checkOn : null]}>
+                    {on ? <Text style={c.checkMark}>✓</Text> : null}
+                  </View>
+                </TouchableOpacity>
+              );
+            }}
+          />
+        </View>
+      </Modal>
     </Modal>
   );
 }
@@ -489,6 +591,23 @@ const c = StyleSheet.create({
   swatchOn: { borderColor: '#fff' },
   photoBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' },
   photoText: { color: '#fff', fontWeight: '600', fontSize: 13 },
+  pickerRoot: { flex: 1, backgroundColor: '#0a0a0a' },
+  pickerHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    padding: 16, paddingTop: 50, borderBottomWidth: 1, borderBottomColor: '#222',
+  },
+  pickRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
+    borderBottomWidth: 1, borderBottomColor: '#1a1a1a',
+  },
+  pickAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#333' },
+  pickName: { flex: 1, color: '#fff', fontSize: 15, fontWeight: '600' },
+  check: {
+    width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: '#555',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  checkOn: { backgroundColor: colors.brand, borderColor: colors.brand },
+  checkMark: { color: '#fff', fontSize: 13, fontWeight: '800' },
   audienceRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingBottom: 6 },
   audChip: {
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,

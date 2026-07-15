@@ -30,7 +30,15 @@ const STORY_AUDIENCES = ['all', 'except', 'only'];
 // changing the default later never alters a story already posted.
 async function resolveAudience(userId, body) {
   let audience = body?.audience;
-  let userIds = Array.isArray(body?.audience_user_ids) ? body.audience_user_ids : null;
+
+  // audience_user_ids arrives as a real array from JSON clients (web, and mobile
+  // text stories), but multipart can't send an array — mobile image stories send
+  // it as a JSON string. Accept either.
+  let raw = body?.audience_user_ids;
+  if (typeof raw === 'string') {
+    try { raw = JSON.parse(raw); } catch { raw = null; }
+  }
+  let userIds = Array.isArray(raw) ? raw : null;
 
   if (STORY_AUDIENCES.includes(audience)) {
     if (audience === 'all') userIds = [];
