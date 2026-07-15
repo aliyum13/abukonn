@@ -38,6 +38,7 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen name="feed" options={{ title: 'Feed' }} />
+      <Tabs.Screen name="library" options={{ title: 'Library' }} />
       <Tabs.Screen name="messages" options={{ title: 'Messages' }} />
       <Tabs.Screen
         name="notifications"
