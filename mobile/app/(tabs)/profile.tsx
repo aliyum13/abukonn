@@ -29,6 +29,9 @@ export default function Profile() {
           </View>
         )}
         <Text style={s.name}>{user?.full_name}</Text>
+        <TouchableOpacity style={s.editBtn} onPress={() => router.push('/edit-profile')}>
+          <Text style={s.editText}>Edit profile</Text>
+        </TouchableOpacity>
         {user?.email ? <Text style={s.muted}>{user.email}</Text> : null}
         {user?.department ? (
           <Text style={s.muted}>{user.department}{user.level ? ` · ${user.level}` : ''}</Text>
@@ -60,6 +63,8 @@ const s = StyleSheet.create({
   fallback: { alignItems: 'center', justifyContent: 'center' },
   letter: { fontSize: 32, fontWeight: '800', color: colors.brand },
   name: { fontSize: 20, fontWeight: '800', color: colors.text, marginTop: 14 },
+  editBtn: { marginTop: 8, borderWidth: 1, borderColor: colors.border, borderRadius: 18, paddingHorizontal: 18, paddingVertical: 7 },
+  editText: { color: colors.text, fontWeight: '600', fontSize: 13 },
   muted: { fontSize: 14, color: colors.muted, marginTop: 4 },
   links: { width: '100%', marginTop: 32 },
   link: {

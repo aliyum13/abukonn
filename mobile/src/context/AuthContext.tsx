@@ -8,6 +8,7 @@ interface AuthState {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  refresh: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -45,6 +46,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     registerForPush();
   }, []);
 
+  // Re-pull the current user from the server (e.g. after editing the profile).
+  const refresh = useCallback(async () => {
+    try {
+      const res = await fetchMe();
+      setUser(res.user);
+    } catch {
+      /* keep the existing user if the refresh fails */
+    }
+  }, []);
+
   const signOut = useCallback(async () => {
     // Unregister BEFORE clearing the token (the call needs to be authenticated),
     // otherwise this phone keeps receiving the old user's notifications.
@@ -54,7 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signOut, refresh }}>
       {children}
     </AuthContext.Provider>
   );

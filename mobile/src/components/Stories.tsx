@@ -314,6 +314,7 @@ function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: (
   const [text, setText] = useState('');
   const [bg, setBg] = useState(BG_COLORS[0]);
   const [image, setImage] = useState<string | null>(null);
+  const [audience, setAudience] = useState<'all' | 'followers'>('all');
   const [busy, setBusy] = useState(false);
 
   const pick = async () => {
@@ -336,6 +337,10 @@ function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: (
     try {
       const token = await getToken();
       const form = new FormData();
+
+      // Everyone, or followers only. The 'except'/'only' lists need a member
+      // picker, which is a separate piece of work — noted as a follow-up.
+      form.append('audience', audience);
 
       if (mode === 'text') {
         form.append('story_type', 'text');
@@ -392,6 +397,21 @@ function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: (
             autoFocus
           />
         )}
+
+        <View style={c.audienceRow}>
+          <TouchableOpacity
+            style={[c.audChip, audience === 'all' ? c.audChipOn : null]}
+            onPress={() => setAudience('all')}
+          >
+            <Text style={audience === 'all' ? c.audTextOn : c.audText}>🌍 Everyone</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[c.audChip, audience === 'followers' ? c.audChipOn : null]}
+            onPress={() => setAudience('followers')}
+          >
+            <Text style={audience === 'followers' ? c.audTextOn : c.audText}>👥 Followers</Text>
+          </TouchableOpacity>
+        </View>
 
         <View style={c.tools}>
           {mode === 'text' ? (
@@ -469,4 +489,12 @@ const c = StyleSheet.create({
   swatchOn: { borderColor: '#fff' },
   photoBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' },
   photoText: { color: '#fff', fontWeight: '600', fontSize: 13 },
+  audienceRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingBottom: 6 },
+  audChip: {
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)',
+  },
+  audChipOn: { backgroundColor: 'rgba(255,255,255,0.25)', borderColor: '#fff' },
+  audText: { color: 'rgba(255,255,255,0.7)', fontWeight: '600', fontSize: 13 },
+  audTextOn: { color: '#fff', fontWeight: '700', fontSize: 13 },
 });
