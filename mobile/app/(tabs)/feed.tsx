@@ -10,7 +10,7 @@ import { uploadImage } from '../../src/lib/upload';
 import { MenuSheet } from '../../src/components/MenuSheet';
 import { apiFetch, API_URL } from '../../src/lib/api';
 import { getToken } from '../../src/lib/storage';
-import { colors } from '../../src/theme';
+import { colors, radius, shadow } from '../../src/theme';
 import { StoryBar } from '../../src/components/Stories';
 
 interface Post {
@@ -361,7 +361,7 @@ export default function Feed() {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface },
   logo: { fontSize: 20, fontWeight: '800', color: colors.brand },
   menuBtn: { fontSize: 24, color: colors.text },
   newBtn: { backgroundColor: colors.brand, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20 },
@@ -369,7 +369,16 @@ const s = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   error: { color: colors.danger, fontSize: 15, textAlign: 'center', marginBottom: 6 },
   muted: { color: colors.muted, fontSize: 12 },
-  card: { padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border },
+  card: {
+    backgroundColor: colors.surface,
+    marginHorizontal: 12,
+    marginTop: 10,
+    padding: 16,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadow.card,
+  },
   row: { flexDirection: 'row', gap: 10, marginBottom: 8 },
   avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#dcfce7' },
   fallback: { alignItems: 'center', justifyContent: 'center' },
