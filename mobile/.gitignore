@@ -43,3 +43,4 @@ yarn-error.*
 # Firebase service account key — SECRET, never commit
 google-services-key*.json
 *-firebase-adminsdk-*.json
+play-service-account.json
