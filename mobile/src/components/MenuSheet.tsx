@@ -9,6 +9,7 @@ import { colors } from '../theme';
 const LINKS: { path: string; label: string; icon: string; badge?: 'messages' | 'alerts' }[] = [
   { path: '/(tabs)/messages', label: 'Messages', icon: '💬', badge: 'messages' },
   { path: '/(tabs)/notifications', label: 'Notifications', icon: '🔔', badge: 'alerts' },
+  { path: '/discover', label: 'Discover People', icon: '🧭' },
   { path: '/groups', label: 'Groups', icon: '👥' },
   { path: '/timetable', label: 'Timetable', icon: '🗓️' },
   // Added as their screens are built: Discover, Academic Calendar, Settings, Support.
