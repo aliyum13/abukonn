@@ -75,7 +75,9 @@ export default function Groups() {
           <Text style={s.back}>‹ Back</Text>
         </TouchableOpacity>
         <Text style={s.title}>Groups</Text>
-        <View style={{ width: 50 }} />
+        <TouchableOpacity onPress={() => router.push('/group-create')} hitSlop={10}>
+          <Text style={s.newLink}>+ New</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={s.tabs}>
@@ -177,6 +179,7 @@ const s = StyleSheet.create({
   },
   back: { color: colors.brand, fontSize: 16, fontWeight: '600' },
   title: { fontSize: 18, fontWeight: '700', color: colors.text },
+  newLink: { color: colors.brand, fontSize: 15, fontWeight: '700' },
   tabs: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 10, gap: 8 },
   tab: {
     flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center',
