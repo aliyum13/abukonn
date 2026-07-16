@@ -113,12 +113,21 @@ async function updateProfile(req, res) {
 
 async function uploadPhoto(req, res) {
   try {
-    if (!req.file) {
+    let photoUrl;
+
+    // Mobile uploads the image straight to Cloudinary (to avoid Railway's
+    // request timeout on large files) and sends just the resulting URL. Web
+    // still posts the raw file as multipart. Support both.
+    if (req.body?.photo_url) {
+      photoUrl = req.body.photo_url;
+    } else if (req.file) {
+      const result = await uploadBufferToCloudinary(req.file.buffer, req.file.mimetype);
+      photoUrl = result.secure_url;
+    } else {
       return res.status(400).json({ message: 'No photo provided' });
     }
 
-    const result = await uploadBufferToCloudinary(req.file.buffer, req.file.mimetype);
-    const user = await User.updateProfilePhoto(req.user.id, result.secure_url);
+    const user = await User.updateProfilePhoto(req.user.id, photoUrl);
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' });

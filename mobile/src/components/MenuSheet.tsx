@@ -13,7 +13,8 @@ const LINKS: { path: string; label: string; icon: string; badge?: 'messages' | '
   { path: '/groups', label: 'Groups', icon: '👥' },
   { path: '/timetable', label: 'Timetable', icon: '🗓️' },
   { path: '/academic-calendar', label: 'Academic Calendar', icon: '📅' },
-  // Added as their screens are built: Settings, Support.
+  { path: '/settings', label: 'Settings', icon: '⚙️' },
+  // Added as its screen is built: Support.
 ];
 
 export function MenuSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {

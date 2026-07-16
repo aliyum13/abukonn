@@ -37,6 +37,10 @@ export default function Profile() {
           <Text style={s.muted}>{user.department}{user.level ? ` · ${user.level}` : ''}</Text>
         ) : null}
 
+        <TouchableOpacity style={s.settingsBtn} onPress={() => router.push('/settings')}>
+          <Text style={s.settingsText}>⚙️  Settings & Edit Profile</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity style={s.logout} onPress={onLogout}>
           <Text style={s.logoutText}>Log out</Text>
         </TouchableOpacity>
@@ -55,6 +59,11 @@ const s = StyleSheet.create({
   editBtn: { marginTop: 8, borderWidth: 1, borderColor: colors.border, borderRadius: 18, paddingHorizontal: 18, paddingVertical: 7 },
   editText: { color: colors.text, fontWeight: '600', fontSize: 13 },
   muted: { fontSize: 14, color: colors.muted, marginTop: 4 },
+  settingsBtn: {
+    marginTop: 32, width: '100%', borderWidth: 1, borderColor: colors.border,
+    borderRadius: 12, paddingVertical: 13, alignItems: 'center', backgroundColor: colors.surface,
+  },
+  settingsText: { color: colors.text, fontWeight: '700', fontSize: 15 },
   logout: { marginTop: 24, borderWidth: 1, borderColor: colors.danger, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 32 },
   logoutText: { color: colors.danger, fontWeight: '700', fontSize: 15 },
 });
