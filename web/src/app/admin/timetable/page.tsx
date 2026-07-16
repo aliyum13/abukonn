@@ -444,7 +444,7 @@ export default function AdminTimetablePage() {
       <Card>
         <CardHeader className="p-6 pb-0"><CardTitle>Upload Timetable (CSV)</CardTitle></CardHeader>
         <CardContent className="p-6 space-y-5">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-1.5 block text-label text-ink-secondary">Department</label>
               <select value={department} onChange={e => setDepartment(e.target.value)}

@@ -119,7 +119,7 @@ export default function AdminClassRepsPage() {
                 </div>
                 <button onClick={() => setPicked(null)} className="text-[12px] text-ink-muted">Change</button>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-[12px] text-ink-muted">Department</label>
                   <select value={dept} onChange={e => setDept(e.target.value)}
