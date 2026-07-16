@@ -12,7 +12,8 @@ const LINKS: { path: string; label: string; icon: string; badge?: 'messages' | '
   { path: '/discover', label: 'Discover People', icon: '🧭' },
   { path: '/groups', label: 'Groups', icon: '👥' },
   { path: '/timetable', label: 'Timetable', icon: '🗓️' },
-  // Added as their screens are built: Discover, Academic Calendar, Settings, Support.
+  { path: '/academic-calendar', label: 'Academic Calendar', icon: '📅' },
+  // Added as their screens are built: Settings, Support.
 ];
 
 export function MenuSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
