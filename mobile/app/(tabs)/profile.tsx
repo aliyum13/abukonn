@@ -37,17 +37,6 @@ export default function Profile() {
           <Text style={s.muted}>{user.department}{user.level ? ` · ${user.level}` : ''}</Text>
         ) : null}
 
-        <View style={s.links}>
-          <TouchableOpacity style={s.link} onPress={() => router.push('/timetable')}>
-            <Text style={s.linkText}>📅  Timetable</Text>
-            <Text style={s.linkArrow}>›</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={s.link} onPress={() => router.push('/groups')}>
-            <Text style={s.linkText}>👥  Groups</Text>
-            <Text style={s.linkArrow}>›</Text>
-          </TouchableOpacity>
-        </View>
-
         <TouchableOpacity style={s.logout} onPress={onLogout}>
           <Text style={s.logoutText}>Log out</Text>
         </TouchableOpacity>
@@ -66,14 +55,6 @@ const s = StyleSheet.create({
   editBtn: { marginTop: 8, borderWidth: 1, borderColor: colors.border, borderRadius: 18, paddingHorizontal: 18, paddingVertical: 7 },
   editText: { color: colors.text, fontWeight: '600', fontSize: 13 },
   muted: { fontSize: 14, color: colors.muted, marginTop: 4 },
-  links: { width: '100%', marginTop: 32 },
-  link: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingVertical: 16, paddingHorizontal: 4,
-    borderTopWidth: 1, borderTopColor: colors.border,
-  },
-  linkText: { fontSize: 15, fontWeight: '600', color: colors.text },
-  linkArrow: { fontSize: 22, color: colors.muted },
   logout: { marginTop: 24, borderWidth: 1, borderColor: colors.danger, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 32 },
   logoutText: { color: colors.danger, fontWeight: '700', fontSize: 15 },
 });

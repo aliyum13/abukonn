@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadImage } from '../../src/lib/upload';
+import { MenuSheet } from '../../src/components/MenuSheet';
 import { apiFetch, API_URL } from '../../src/lib/api';
 import { getToken } from '../../src/lib/storage';
 import { colors } from '../../src/theme';
@@ -54,6 +55,7 @@ export default function Feed() {
   const [newPost, setNewPost] = useState('');
   const [newImage, setNewImage] = useState<string | null>(null);
   const [posting, setPosting] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const [commentsFor, setCommentsFor] = useState<Post | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -179,11 +181,16 @@ export default function Feed() {
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
       <View style={s.header}>
+        <TouchableOpacity onPress={() => setMenuOpen(true)} hitSlop={10}>
+          <Text style={s.menuBtn}>☰</Text>
+        </TouchableOpacity>
         <Text style={s.logo}>ABUkonn</Text>
         <TouchableOpacity style={s.newBtn} onPress={() => setComposeOpen(true)}>
           <Text style={s.newBtnText}>+ Post</Text>
         </TouchableOpacity>
       </View>
+
+      <MenuSheet visible={menuOpen} onClose={() => setMenuOpen(false)} />
 
       {loading ? (
         <View style={s.center}><ActivityIndicator size="large" color={colors.brand} /></View>
@@ -356,6 +363,7 @@ const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
   logo: { fontSize: 20, fontWeight: '800', color: colors.brand },
+  menuBtn: { fontSize: 24, color: colors.text },
   newBtn: { backgroundColor: colors.brand, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20 },
   newBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
