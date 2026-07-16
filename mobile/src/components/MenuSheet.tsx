@@ -14,7 +14,7 @@ const LINKS: { path: string; label: string; icon: string; badge?: 'messages' | '
   { path: '/timetable', label: 'Timetable', icon: '🗓️' },
   { path: '/academic-calendar', label: 'Academic Calendar', icon: '📅' },
   { path: '/settings', label: 'Settings', icon: '⚙️' },
-  // Added as its screen is built: Support.
+  { path: '/support', label: 'Support', icon: '🛟' },
 ];
 
 export function MenuSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
