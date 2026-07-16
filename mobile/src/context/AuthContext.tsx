@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import { login as apiLogin, fetchMe, ApiUser } from '../lib/api';
 import { saveToken, getToken, clearToken } from '../lib/storage';
 import { registerForPush, unregisterPush } from '../lib/push';
+import { disconnectSocket } from '../lib/socket';
 
 interface AuthState {
   user: ApiUser | null;
@@ -60,6 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Unregister BEFORE clearing the token (the call needs to be authenticated),
     // otherwise this phone keeps receiving the old user's notifications.
     await unregisterPush();
+    disconnectSocket(); // stop receiving realtime events on this signed-out phone
     await clearToken();
     setUser(null);
   }, []);

@@ -6,6 +6,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { apiFetch } from '../../src/lib/api';
+import { getSocket } from '../../src/lib/socket';
+import type { Socket } from 'socket.io-client';
 import { useAuth } from '../../src/context/AuthContext';
 import { colors } from '../../src/theme';
 
@@ -25,6 +27,7 @@ export default function Chat() {
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
   const listRef = useRef<FlatList<Msg>>(null);
+  const socketRef = useRef<Socket | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -37,12 +40,42 @@ export default function Chat() {
     }
   }, [id]);
 
+  // Append a message unless we already have it (the socket echoes back messages
+  // we sent, and load() may overlap) — dedupe by id.
+  const addMessage = useCallback((m: Msg) => {
+    setMessages(prev => (prev.some(x => x.id === m.id) ? prev : [...prev, m]));
+    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
+  }, []);
+
   useEffect(() => { load(); }, [load]);
 
-  // Polling, not sockets. Less elegant, but simple and reliable — and worth
-  // revisiting once the app is proven.
+  // Real-time: join this conversation's room and receive messages instantly.
   useEffect(() => {
-    const t = setInterval(load, 5000);
+    let live = true;
+    let cleanup: (() => void) | null = null;
+    (async () => {
+      const socket = await getSocket();
+      if (!socket || !live) return;
+      socketRef.current = socket;
+      socket.emit('join_conversation', Number(id));
+      const onReceive = (msg: Msg & { conversation_id?: number }) => {
+        // Server broadcasts to the room; guard against cross-room bleed.
+        if (msg.conversation_id && String(msg.conversation_id) !== String(id)) return;
+        addMessage(msg);
+      };
+      socket.on('receive_message', onReceive);
+      cleanup = () => socket.off('receive_message', onReceive);
+    })();
+    return () => {
+      live = false;
+      cleanup?.();
+    };
+  }, [id, addMessage]);
+
+  // Safety net only: sockets deliver messages in real time now, but if the
+  // connection briefly drops we still reconcile every 20s so nothing is lost.
+  useEffect(() => {
+    const t = setInterval(load, 20000);
     return () => clearInterval(t);
   }, [load]);
 
@@ -51,12 +84,19 @@ export default function Chat() {
     if (!body) return;
     setText('');
     try {
-      const res = await apiFetch<{ data: Msg }>('/api/messages', {
-        method: 'POST',
-        body: JSON.stringify({ conversation_id: Number(id), content: body }),
-      });
-      setMessages(prev => [...prev, res.data]);
-      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
+      const socket = socketRef.current;
+      if (socket?.connected) {
+        // Real-time path — the server saves it and broadcasts back to the room,
+        // where our receive_message handler (deduped) will add it.
+        socket.emit('send_message', { conversationId: Number(id), content: body });
+      } else {
+        // Socket down — fall back to REST so a message is never lost.
+        const res = await apiFetch<{ data: Msg }>('/api/messages', {
+          method: 'POST',
+          body: JSON.stringify({ conversation_id: Number(id), content: body }),
+        });
+        addMessage(res.data);
+      }
     } catch {
       setText(body); // put it back so nothing is lost
     }
