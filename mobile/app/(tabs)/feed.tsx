@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import { uploadImage } from '../../src/lib/upload';
 import { apiFetch, API_URL } from '../../src/lib/api';
 import { getToken } from '../../src/lib/storage';
 import { colors } from '../../src/theme';
@@ -149,27 +150,21 @@ export default function Feed() {
     if (!newPost.trim() && !newImage) return;
     setPosting(true);
     try {
-      const token = await getToken();
-      const form = new FormData();
-      form.append('content', newPost.trim());
-      form.append('category', 'GENERAL');
-      if (newImage) {
-        // The backend's multer field is 'image'.
-        form.append('image', {
-          uri: newImage,
-          name: 'photo.jpg',
-          type: 'image/jpeg',
-        } as unknown as Blob);
-      }
-      const res = await fetch(`${API_URL}/api/posts`, {
+      // If there's a photo, upload it to Cloudinary FIRST and post only the URL.
+      // Sending the file through the backend hangs on Railway's timeout — this is
+      // exactly what web does, and why text posts worked but image posts didn't.
+      let imageUrl: string | null = null;
+      if (newImage) imageUrl = await uploadImage(newImage, 'abukonn/posts');
+
+      await apiFetch('/api/posts', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: form,
+        body: JSON.stringify({
+          content: newPost.trim(),
+          category: 'GENERAL',
+          ...(imageUrl ? { image_url: imageUrl } : {}),
+        }),
       });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error((d as { message?: string }).message || 'Could not post');
-      }
+
       setNewPost('');
       setNewImage(null);
       setComposeOpen(false);
@@ -258,7 +253,7 @@ export default function Feed() {
 
       {/* Compose */}
       <Modal visible={composeOpen} animationType="slide" onRequestClose={() => setComposeOpen(false)}>
-        <SafeAreaView style={s.safe}>
+        <SafeAreaView style={s.safe} edges={['top']}>
           <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <View style={s.modalHeader}>
               <TouchableOpacity onPress={() => setComposeOpen(false)}>
@@ -311,7 +306,7 @@ export default function Feed() {
 
       {/* Comments */}
       <Modal visible={!!commentsFor} animationType="slide" onRequestClose={() => setCommentsFor(null)}>
-        <SafeAreaView style={s.safe}>
+        <SafeAreaView style={s.safe} edges={['top']}>
           <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <View style={s.modalHeader}>
               <TouchableOpacity onPress={() => setCommentsFor(null)}>

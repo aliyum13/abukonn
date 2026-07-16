@@ -5,8 +5,8 @@ import {
   ActivityIndicator, Pressable, FlatList,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { apiFetch, API_URL } from '../lib/api';
-import { getToken } from '../lib/storage';
+import { apiFetch } from '../lib/api';
+import { uploadImage } from '../lib/upload';
 import { colors } from '../theme';
 
 const { width: W, height: H } = Dimensions.get('window');
@@ -370,30 +370,22 @@ function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: (
           }),
         });
       } else {
-        // Image stories must be multipart (the file). Send the id list as a JSON
-        // string so it survives multipart intact; the backend JSON-parses it.
-        const token = await getToken();
-        const form = new FormData();
-        form.append('story_type', 'image');
-        form.append('media', {
-          uri: image as string,
-          name: 'story.jpg',
-          type: 'image/jpeg',
-        } as unknown as Blob);
-        if (text.trim()) form.append('caption', text.trim());
-        form.append('audience', audience);
-        if (audience !== 'all') {
-          form.append('audience_user_ids', JSON.stringify(audienceIds));
-        }
-        const res = await fetch(`${API_URL}/api/stories`, {
+        // Upload the photo to Cloudinary first, then post the URL as JSON —
+        // exactly like text stories and like the web client. Sending the file
+        // through the backend hangs on Railway's timeout, which is why photo
+        // stories never completed.
+        const mediaUrl = await uploadImage(image as string, 'abukonn/stories');
+        await apiFetch('/api/stories', {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-          body: form,
+          body: JSON.stringify({
+            story_type: 'image',
+            direct_upload: true,
+            media_url: mediaUrl,
+            caption: text.trim() || undefined,
+            audience,
+            audience_user_ids: audienceIds,
+          }),
         });
-        if (!res.ok) {
-          const d = await res.json().catch(() => ({}));
-          throw new Error((d as { message?: string }).message || 'Could not post story');
-        }
       }
       onPosted();
     } catch (err) {
