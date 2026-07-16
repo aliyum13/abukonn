@@ -18,15 +18,75 @@ interface Settings {
   notif_messages: boolean;
   notif_connect_requests: boolean;
   show_birthday: boolean;
+  default_post_audience: string;
+  story_audience: string;
+  who_can_message: string;
+  who_can_connect: string;
 }
 
-const NOTIF_ROWS: { key: keyof Settings; label: string }[] = [
+interface Blocked {
+  id: number;
+  full_name: string;
+  username: string | null;
+  profile_photo_url: string | null;
+}
+
+// Option sets, matching web exactly.
+const POST_AUDIENCE = [
+  { value: 'public', label: 'Public' },
+  { value: 'connections', label: 'Connections only' },
+  { value: 'followers', label: 'Followers only' },
+];
+const STORY_AUDIENCE = [
+  { value: 'public', label: 'Public' },
+  { value: 'followers', label: 'Followers' },
+  { value: 'connections', label: 'Connections' },
+  { value: 'close_friends', label: 'Close friends' },
+];
+const WHO_MESSAGE = [
+  { value: 'everyone', label: 'Everyone' },
+  { value: 'connections', label: 'Connections only' },
+  { value: 'nobody', label: 'Nobody' },
+];
+const WHO_CONNECT = [
+  { value: 'everyone', label: 'Everyone' },
+  { value: 'nobody', label: 'Nobody' },
+];
+
+type BoolSettingKey = 'notif_likes' | 'notif_comments' | 'notif_follows'
+  | 'notif_messages' | 'notif_connect_requests' | 'show_birthday';
+
+const NOTIF_ROWS: { key: BoolSettingKey; label: string }[] = [
   { key: 'notif_likes', label: 'Likes' },
   { key: 'notif_comments', label: 'Comments' },
   { key: 'notif_follows', label: 'New followers' },
   { key: 'notif_messages', label: 'Messages' },
   { key: 'notif_connect_requests', label: 'Connection requests' },
 ];
+
+function ChoiceRow({ label, value, options, onChange, divider }: {
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (v: string) => void;
+  divider?: boolean;
+}) {
+  return (
+    <View style={[cr.wrap, divider ? cr.divider : null]}>
+      <Text style={cr.label}>{label}</Text>
+      <View style={cr.options}>
+        {options.map(o => {
+          const on = o.value === value;
+          return (
+            <TouchableOpacity key={o.value} style={[cr.chip, on ? cr.chipOn : null]} onPress={() => onChange(o.value)}>
+              <Text style={on ? cr.chipTextOn : cr.chipText}>{o.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -40,6 +100,8 @@ export default function SettingsScreen() {
   const [savingProfile, setSavingProfile] = useState(false);
 
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [blocked, setBlocked] = useState<Blocked[]>([]);
+  const [unblocking, setUnblocking] = useState<number | null>(null);
 
   const [pwCurrent, setPwCurrent] = useState('');
   const [pwNew, setPwNew] = useState('');
@@ -52,6 +114,12 @@ export default function SettingsScreen() {
       setSettings(d.settings);
     } catch {
       // toggles just won't render until this loads
+    }
+    try {
+      const b = await apiFetch<{ blocked: Blocked[] }>('/api/moderation/blocks');
+      setBlocked(b.blocked || []);
+    } catch {
+      setBlocked([]);
     }
   }, []);
 
@@ -97,7 +165,7 @@ export default function SettingsScreen() {
     }
   };
 
-  const toggle = async (key: keyof Settings) => {
+  const toggle = async (key: BoolSettingKey) => {
     if (!settings) return;
     const next = { ...settings, [key]: !settings[key] };
     setSettings(next); // optimistic
@@ -105,6 +173,29 @@ export default function SettingsScreen() {
       await apiFetch('/api/settings', { method: 'PATCH', body: JSON.stringify({ [key]: next[key] }) });
     } catch {
       setSettings(settings); // revert
+    }
+  };
+
+  const setChoice = async (key: keyof Settings, value: string) => {
+    if (!settings) return;
+    const prev = settings;
+    setSettings({ ...settings, [key]: value }); // optimistic
+    try {
+      await apiFetch('/api/settings', { method: 'PATCH', body: JSON.stringify({ [key]: value }) });
+    } catch {
+      setSettings(prev); // revert
+    }
+  };
+
+  const unblock = async (id: number) => {
+    setUnblocking(id);
+    try {
+      await apiFetch(`/api/moderation/block/${id}`, { method: 'DELETE' });
+      setBlocked(prev => prev.filter(b => b.id !== id));
+    } catch (err) {
+      Alert.alert('Could not unblock', err instanceof Error ? err.message : '');
+    } finally {
+      setUnblocking(null);
     }
   };
 
@@ -195,6 +286,49 @@ export default function SettingsScreen() {
             )}
           </View>
 
+          {/* Privacy */}
+          <Text style={s.sectionTitle}>Privacy</Text>
+          <View style={s.card}>
+            {settings ? (
+              <>
+                <ChoiceRow label="Default post audience"
+                  value={settings.default_post_audience} options={POST_AUDIENCE}
+                  onChange={v => setChoice('default_post_audience', v)} />
+                <ChoiceRow label="Story audience" divider
+                  value={settings.story_audience} options={STORY_AUDIENCE}
+                  onChange={v => setChoice('story_audience', v)} />
+                <ChoiceRow label="Who can message me" divider
+                  value={settings.who_can_message} options={WHO_MESSAGE}
+                  onChange={v => setChoice('who_can_message', v)} />
+                <ChoiceRow label="Who can connect" divider
+                  value={settings.who_can_connect} options={WHO_CONNECT}
+                  onChange={v => setChoice('who_can_connect', v)} />
+                <View style={[s.toggleRow, s.divider]}>
+                  <Text style={s.toggleLabel}>Show my birthday</Text>
+                  <Switch value={settings.show_birthday} onValueChange={() => toggle('show_birthday')}
+                    trackColor={{ true: colors.brand, false: colors.faint }} thumbColor={colors.white} />
+                </View>
+              </>
+            ) : <View style={s.loadingRow}><ActivityIndicator color={colors.brand} /></View>}
+          </View>
+
+          {/* Blocked users */}
+          <Text style={s.sectionTitle}>Blocked Users</Text>
+          <View style={s.card}>
+            {blocked.length === 0 ? (
+              <Text style={s.emptyText}>You haven't blocked anyone.</Text>
+            ) : blocked.map((b, i) => (
+              <View key={b.id} style={[s.blockedRow, i > 0 ? s.divider : null]}>
+                <Text style={s.blockedName}>{b.full_name}</Text>
+                <TouchableOpacity style={s.unblockBtn} onPress={() => unblock(b.id)} disabled={unblocking === b.id}>
+                  {unblocking === b.id
+                    ? <ActivityIndicator color={colors.brand} size="small" />
+                    : <Text style={s.unblockText}>Unblock</Text>}
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+
           {/* Change password */}
           <Text style={s.sectionTitle}>Change Password</Text>
           <View style={s.card}>
@@ -258,4 +392,20 @@ const s = StyleSheet.create({
     borderRadius: radius.md, paddingVertical: 13, alignItems: 'center',
   },
   logoutText: { color: colors.danger, fontWeight: '700', fontSize: 15 },
+  emptyText: { color: colors.muted, fontSize: 14, paddingVertical: 4 },
+  blockedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12 },
+  blockedName: { fontSize: 15, fontWeight: '600', color: colors.text },
+  unblockBtn: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.full, paddingHorizontal: 14, paddingVertical: 6 },
+  unblockText: { color: colors.brand, fontWeight: '700', fontSize: 13 },
+});
+
+const cr = StyleSheet.create({
+  wrap: { paddingVertical: 12 },
+  divider: { borderTopWidth: 1, borderTopColor: colors.border },
+  label: { fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 8 },
+  options: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: radius.full, borderWidth: 1, borderColor: colors.border },
+  chipOn: { backgroundColor: colors.brand, borderColor: colors.brand },
+  chipText: { fontSize: 12, color: colors.textSecondary, fontWeight: '600' },
+  chipTextOn: { fontSize: 12, color: colors.white, fontWeight: '700' },
 });
