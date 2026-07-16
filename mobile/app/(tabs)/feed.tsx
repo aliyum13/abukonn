@@ -8,6 +8,7 @@ import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadImage } from '../../src/lib/upload';
 import { MenuSheet } from '../../src/components/MenuSheet';
+import { useTabScrollToTop } from '../../src/lib/useScrollToTop';
 import { apiFetch, API_URL } from '../../src/lib/api';
 import { getToken } from '../../src/lib/storage';
 import { colors, radius, shadow } from '../../src/theme';
@@ -46,6 +47,7 @@ function timeAgo(iso: string) {
 
 export default function Feed() {
   const router = useRouter();
+  const { ref: listRef, setRefresh } = useTabScrollToTop<Post>();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -75,7 +77,7 @@ export default function Feed() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); setRefresh(load); }, [load, setRefresh]);
 
   // Optimistic: flip immediately, roll back if the server disagrees.
   const toggleLike = async (post: Post) => {
@@ -201,6 +203,7 @@ export default function Feed() {
         </View>
       ) : (
         <FlatList
+          ref={listRef}
           data={posts}
           keyExtractor={p => String(p.id)}
           ListHeaderComponent={<StoryBar />}

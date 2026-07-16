@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiFetch } from '../../src/lib/api';
 import { colors, radius, shadow } from '../../src/theme';
+import { useTabScrollToTop } from '../../src/lib/useScrollToTop';
 
 interface Article {
   id: number;
@@ -37,6 +38,7 @@ function timeAgo(iso: string) {
 }
 
 export default function News() {
+  const { ref: listRef, setRefresh } = useTabScrollToTop<Article>();
   const [news, setNews] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -55,7 +57,7 @@ export default function News() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); setRefresh(load); }, [load, setRefresh]);
 
   const filtered = cat === 'all' ? news : news.filter(n => n.category === cat);
 
@@ -85,6 +87,7 @@ export default function News() {
         <View style={s.center}><ActivityIndicator size="large" color={colors.brand} /></View>
       ) : (
         <FlatList
+          ref={listRef}
           data={filtered}
           keyExtractor={n => String(n.id)}
           refreshControl={

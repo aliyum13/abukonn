@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useTabScrollToTop } from '../../src/lib/useScrollToTop';
 import { apiFetch } from '../../src/lib/api';
 import { colors, radius, shadow } from '../../src/theme';
 
@@ -68,6 +69,7 @@ const ICON: Record<string, string> = {
 
 export default function Notifications() {
   const router = useRouter();
+  const { ref: listRef, setRefresh } = useTabScrollToTop<Grouped>();
   const [items, setItems] = useState<Grouped[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -84,7 +86,7 @@ export default function Notifications() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); setRefresh(load); }, [load, setRefresh]);
 
   const markAllRead = async () => {
     // Optimistic — this is cosmetic, so don't make the user wait on the network.
@@ -126,6 +128,7 @@ export default function Notifications() {
         <View style={s.center}><ActivityIndicator size="large" color={colors.brand} /></View>
       ) : (
         <FlatList
+          ref={listRef}
           data={items}
           keyExtractor={n => n.id}
           refreshControl={

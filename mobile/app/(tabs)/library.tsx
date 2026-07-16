@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiFetch } from '../../src/lib/api';
 import { colors, radius, shadow } from '../../src/theme';
+import { useTabScrollToTop } from '../../src/lib/useScrollToTop';
 
 interface Material {
   id: number;
@@ -40,6 +41,7 @@ const TYPE_ICON: Record<string, string> = {
 };
 
 export default function Library() {
+  const { ref: listRef, setRefresh } = useTabScrollToTop<Material>();
   const [materials, setMaterials] = useState<Material[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -63,6 +65,7 @@ export default function Library() {
   }, []);
 
   useEffect(() => { load(type, search); }, [type]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setRefresh(() => load(type, search)); }, [type, search, load, setRefresh]);
 
   // Debounce search so we're not firing a request on every keystroke.
   useEffect(() => {
@@ -115,6 +118,7 @@ export default function Library() {
         <View style={s.center}><ActivityIndicator size="large" color={colors.brand} /></View>
       ) : (
         <FlatList
+          ref={listRef}
           data={materials}
           keyExtractor={m => String(m.id)}
           refreshControl={
