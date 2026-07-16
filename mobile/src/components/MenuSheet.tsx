@@ -1,21 +1,47 @@
+import { useEffect, useState } from 'react';
 import { Modal, View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
+import { apiFetch } from '../lib/api';
 import { colors } from '../theme';
 
-// Matches the web app's logo menu: the destinations that don't fit in the
-// bottom tab bar. Feed / Library / Messages / Alerts / Profile are tabs; this
-// holds the rest.
-const LINKS: { path: string; label: string; icon: string }[] = [
+// Mirrors the web logo menu: destinations that aren't in the bottom tab bar.
+// Feed / News / Library / Profile are tabs; everything else lives here.
+const LINKS: { path: string; label: string; icon: string; badge?: 'messages' | 'alerts' }[] = [
+  { path: '/(tabs)/messages', label: 'Messages', icon: '💬', badge: 'messages' },
+  { path: '/(tabs)/notifications', label: 'Notifications', icon: '🔔', badge: 'alerts' },
   { path: '/groups', label: 'Groups', icon: '👥' },
   { path: '/timetable', label: 'Timetable', icon: '🗓️' },
+  // Added as their screens are built: Discover, Academic Calendar, Settings, Support.
 ];
 
 export function MenuSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const router = useRouter();
+  const [msgUnread, setMsgUnread] = useState(0);
+  const [alertUnread, setAlertUnread] = useState(0);
+
+  // Web shows unread counts next to these — match that. Fetched each time the
+  // menu opens so the numbers are fresh without polling in the background.
+  useEffect(() => {
+    if (!visible) return;
+    apiFetch<{ count: number }>('/api/messages/unread-count')
+      .then(d => setMsgUnread(d.count || 0)).catch(() => {});
+    apiFetch<{ count: number }>('/api/notifications/unread-count')
+      .then(d => setAlertUnread(d.count || 0)).catch(() => {});
+  }, [visible]);
 
   const go = (path: string) => {
     onClose();
     router.push(path as never);
+  };
+
+  const badgeFor = (b?: 'messages' | 'alerts') => {
+    const n = b === 'messages' ? msgUnread : b === 'alerts' ? alertUnread : 0;
+    if (!n) return null;
+    return (
+      <View style={s.badge}>
+        <Text style={s.badgeText}>{n > 99 ? '99+' : n}</Text>
+      </View>
+    );
   };
 
   return (
@@ -29,6 +55,7 @@ export function MenuSheet({ visible, onClose }: { visible: boolean; onClose: () 
               <TouchableOpacity key={l.path} style={s.row} onPress={() => go(l.path)}>
                 <Text style={s.icon}>{l.icon}</Text>
                 <Text style={s.label}>{l.label}</Text>
+                {badgeFor(l.badge)}
                 <Text style={s.arrow}>›</Text>
               </TouchableOpacity>
             ))}
@@ -54,4 +81,9 @@ const s = StyleSheet.create({
   icon: { fontSize: 22 },
   label: { flex: 1, fontSize: 16, fontWeight: '600', color: colors.text },
   arrow: { fontSize: 22, color: colors.muted },
+  badge: {
+    backgroundColor: colors.brand, borderRadius: 11, minWidth: 22, height: 22,
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 7,
+  },
+  badgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
 });
