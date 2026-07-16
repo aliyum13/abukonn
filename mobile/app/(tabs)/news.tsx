@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiFetch } from '../../src/lib/api';
-import { colors } from '../../src/theme';
+import { colors, radius, shadow } from '../../src/theme';
 
 interface Article {
   id: number;
@@ -144,7 +144,7 @@ export default function News() {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 },
+  header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, backgroundColor: colors.surface },
   title: { fontSize: 20, fontWeight: '800', color: colors.text },
   filterRow: { marginBottom: 8 },
   chip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 18, borderWidth: 1, borderColor: colors.border },
@@ -153,7 +153,11 @@ const s = StyleSheet.create({
   chipTextOn: { fontSize: 13, color: '#fff', fontWeight: '700' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   muted: { color: colors.muted, fontSize: 15 },
-  card: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  card: {
+    backgroundColor: colors.surface, marginHorizontal: 12, marginTop: 10,
+    borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, ...shadow.card,
+    overflow: 'hidden',
+  },
   cardImg: { width: '100%', height: 180, backgroundColor: '#f3f4f6' },
   cardBody: { padding: 16 },
   cat: { fontSize: 11, fontWeight: '800', color: colors.brand, letterSpacing: 0.5 },

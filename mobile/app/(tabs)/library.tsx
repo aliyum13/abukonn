@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiFetch } from '../../src/lib/api';
-import { colors } from '../../src/theme';
+import { colors, radius, shadow } from '../../src/theme';
 
 interface Material {
   id: number;
@@ -155,11 +155,12 @@ export default function Library() {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 },
+  header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, backgroundColor: colors.surface },
   title: { fontSize: 20, fontWeight: '800', color: colors.text },
   search: {
     marginHorizontal: 16, marginBottom: 10, borderWidth: 1, borderColor: colors.border,
-    borderRadius: 12, paddingHorizontal: 16, paddingVertical: 11, fontSize: 15, color: colors.text,
+    borderRadius: radius.md, paddingHorizontal: 16, paddingVertical: 11, fontSize: 15,
+    color: colors.text, backgroundColor: colors.surface,
   },
   filterRow: { marginBottom: 8 },
   chip: {
@@ -174,7 +175,8 @@ const s = StyleSheet.create({
   mutedSmall: { color: colors.muted, fontSize: 13 },
   card: {
     flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
-    borderBottomWidth: 1, borderBottomColor: colors.border,
+    backgroundColor: colors.surface, marginHorizontal: 12, marginTop: 10,
+    borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, ...shadow.card,
   },
   icon: { fontSize: 26 },
   cardTitle: { fontSize: 15, fontWeight: '700', color: colors.text },

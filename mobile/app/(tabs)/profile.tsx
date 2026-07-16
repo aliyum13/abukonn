@@ -2,7 +2,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Image, Alert } from 'react-na
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
-import { colors } from '../../src/theme';
+import { colors, radius, shadow } from '../../src/theme';
 
 export default function Profile() {
   const { user, signOut } = useAuth();
@@ -61,7 +61,7 @@ const s = StyleSheet.create({
   muted: { fontSize: 14, color: colors.muted, marginTop: 4 },
   settingsBtn: {
     marginTop: 32, width: '100%', borderWidth: 1, borderColor: colors.border,
-    borderRadius: 12, paddingVertical: 13, alignItems: 'center', backgroundColor: colors.surface,
+    borderRadius: radius.md, paddingVertical: 13, alignItems: 'center', backgroundColor: colors.surface, ...shadow.card,
   },
   settingsText: { color: colors.text, fontWeight: '700', fontSize: 15 },
   logout: { marginTop: 24, borderWidth: 1, borderColor: colors.danger, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 32 },

@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { apiFetch } from '../src/lib/api';
-import { colors } from '../src/theme';
+import { colors, radius, shadow } from '../src/theme';
 
 interface Group {
   id: number;
@@ -190,7 +190,8 @@ const s = StyleSheet.create({
   mutedSmall: { color: colors.muted, fontSize: 13 },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
-    borderBottomWidth: 1, borderBottomColor: colors.border,
+    backgroundColor: colors.surface, marginHorizontal: 12, marginTop: 8,
+    borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, ...shadow.card,
   },
   avatar: { width: 50, height: 50, borderRadius: 12, backgroundColor: '#dcfce7' },
   fallback: { alignItems: 'center', justifyContent: 'center' },

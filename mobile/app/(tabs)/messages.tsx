@@ -5,7 +5,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { apiFetch } from '../../src/lib/api';
-import { colors } from '../../src/theme';
+import { colors, radius, shadow } from '../../src/theme';
 
 interface Conversation {
   id: number;
@@ -99,11 +99,15 @@ export default function Messages() {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  header: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
+  header: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface },
   title: { fontSize: 20, fontWeight: '800', color: colors.text },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   muted: { color: colors.muted, fontSize: 12 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderBottomWidth: 1, borderBottomColor: colors.border },
+  row: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
+    backgroundColor: colors.surface, marginHorizontal: 12, marginTop: 8,
+    borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, ...shadow.card,
+  },
   rowTop: { flexDirection: 'row', justifyContent: 'space-between' },
   avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#dcfce7' },
   fallback: { alignItems: 'center', justifyContent: 'center' },

@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { apiFetch } from '../../src/lib/api';
-import { colors } from '../../src/theme';
+import { colors, radius, shadow } from '../../src/theme';
 
 interface Actor {
   id: number;
@@ -186,7 +186,7 @@ const s = StyleSheet.create({
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: colors.border,
+    borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface,
   },
   title: { fontSize: 20, fontWeight: '800', color: colors.text },
   readAll: { color: colors.brand, fontWeight: '600', fontSize: 13 },
@@ -195,9 +195,10 @@ const s = StyleSheet.create({
   mutedSmall: { color: colors.muted, fontSize: 13, textAlign: 'center' },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
-    borderBottomWidth: 1, borderBottomColor: colors.border,
+    backgroundColor: colors.surface, marginHorizontal: 12, marginTop: 8,
+    borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, ...shadow.card,
   },
-  unreadRow: { backgroundColor: '#f0fdf4' },
+  unreadRow: { backgroundColor: colors.brand50, borderColor: colors.brand100 },
   avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#dcfce7' },
   fallback: { alignItems: 'center', justifyContent: 'center' },
   letter: { color: colors.brand, fontWeight: '700', fontSize: 16 },

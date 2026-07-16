@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiFetch } from '../src/lib/api';
-import { colors } from '../src/theme';
+import { colors, radius, shadow } from '../src/theme';
 
 interface Override {
   kind: 'cancel' | 'change';
@@ -184,7 +184,7 @@ const s = StyleSheet.create({
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: colors.border,
+    borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface,
   },
   title: { fontSize: 20, fontWeight: '800', color: colors.text },
   toggle: { flexDirection: 'row', backgroundColor: '#f3f4f6', borderRadius: 10, padding: 2 },
@@ -196,7 +196,11 @@ const s = StyleSheet.create({
   muted: { color: colors.muted, fontSize: 15, fontWeight: '600' },
   mutedSmall: { color: colors.muted, fontSize: 13, marginBottom: 8 },
   dayLabel: { fontSize: 15, fontWeight: '800', color: colors.text, marginBottom: 10 },
-  class: { flexDirection: 'row', paddingVertical: 12, gap: 12 },
+  class: {
+    flexDirection: 'row', paddingVertical: 12, paddingHorizontal: 14, gap: 12,
+    backgroundColor: colors.surface, borderRadius: radius.md, marginBottom: 8,
+    borderWidth: 1, borderColor: colors.border, ...shadow.card,
+  },
   cancelled: { opacity: 0.6 },
   timeCol: { width: 58 },
   time: { fontSize: 14, fontWeight: '700', color: colors.text },
