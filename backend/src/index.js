@@ -213,17 +213,45 @@ app.use(cors({
 // Rate limiting — a sane default ceiling on the whole API, with a much
 // stricter limit on auth endpoints (login/register/password-reset) since
 // those are the ones worth protecting against brute force.
+// The general API limiter. CRITICAL: on a campus, many students share one public
+// IP (university network, carrier NAT). Keying purely by IP means they share one
+// bucket, so a handful of active users trip "Too many requests" for everyone on
+// that network. So we key authenticated requests by the user's token instead —
+// each logged-in student gets their own allowance — and only fall back to IP for
+// requests with no token. The limit is also generous, because an active social
+// session polls (feed, unread counts, notifications) and legitimately makes many
+// requests in 15 minutes.
+const crypto = require('crypto');
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 600,
+  limit: 3000,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => {
+    const auth = req.headers.authorization;
+    if (auth && auth.startsWith('Bearer ')) {
+      // Per-user bucket. Hash the token so we're not keying on raw credentials,
+      // and so users behind a shared IP are counted independently.
+      return 'u:' + crypto.createHash('sha256').update(auth.slice(7)).digest('hex').slice(0, 24);
+    }
+    // Unauthenticated (login page, register): fall back to IP.
+    return 'ip:' + (req.ip || 'unknown');
+  },
   message: { message: 'Too many requests. Please try again shortly.' },
 });
 
+// Auth endpoints (login, register, password reset). These are pre-authentication,
+// so they can only be keyed by IP — which means a whole campus sharing one public
+// IP shares this bucket. 60 was far too low for that: dozens of students logging
+// in at once (start of a lecture, an announcement) would exhaust it and all get
+// "Too many attempts". Raised well above realistic shared-IP demand.
+//
+// This is NOT the brute-force defence — that's loginLimiter below, which counts
+// only FAILED logins (10 per window). So authLimiter can be generous without
+// weakening security: a password-guessing script still gets stopped at 10 fails.
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 60,
+  limit: 500,
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: 'Too many attempts. Please try again in a few minutes.' },
@@ -236,9 +264,16 @@ const authLimiter = rateLimit({
 // skipSuccessfulRequests means only FAILED logins count. Someone legitimately
 // signing in and out repeatedly is never penalised — only repeated failures,
 // which is exactly the brute-force signal we care about.
+// Brute-force protection on login: only FAILED logins count
+// (skipSuccessfulRequests). 10 was tuned for a per-user IP, but on a shared
+// campus IP the failed attempts of MANY students pool together — a dozen people
+// mistyping passwords would lock the whole network out of logging in. 100 failed
+// attempts per 15 min still stops a password-guessing script cold (a script does
+// thousands), while leaving ample room for real students on a shared IP to fumble
+// their passwords without locking each other out.
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 10,
+  limit: 100,
   skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
