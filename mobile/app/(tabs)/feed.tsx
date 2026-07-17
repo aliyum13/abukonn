@@ -114,6 +114,10 @@ export default function Feed() {
   const [newImage, setNewImage] = useState<string | null>(null);
   const [posting, setPosting] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [feedTab, setFeedTab] = useState<'for_you' | 'following'>('for_you');
+  const [followingPosts, setFollowingPosts] = useState<Post[]>([]);
+  const [followingLoading, setFollowingLoading] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const [commentsFor, setCommentsFor] = useState<Post | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -135,21 +139,43 @@ export default function Feed() {
 
   useEffect(() => { load(); setRefresh(load); }, [load, setRefresh]);
 
+  const loadFollowing = useCallback(async () => {
+    setFollowingLoading(true);
+    try {
+      const data = await apiFetch<{ posts: Post[] }>('/api/posts/following');
+      setFollowingPosts(data.posts || []);
+    } catch {
+      setFollowingPosts([]);
+    } finally {
+      setFollowingLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { if (feedTab === 'following') loadFollowing(); }, [feedTab, loadFollowing]);
+
+  // Unread badge for the Messages tab (matches web).
+  useEffect(() => {
+    apiFetch<{ count: number }>('/api/messages/unread-count')
+      .then(d => setUnreadCount(d.count || 0)).catch(() => {});
+  }, []);
+
   // Optimistic: flip immediately, roll back if the server disagrees.
+  const mutateBoth = useCallback((id: number, fn: (p: Post) => Post) => {
+    setPosts(prev => prev.map(p => (p.id === id ? fn(p) : p)));
+    setFollowingPosts(prev => prev.map(p => (p.id === id ? fn(p) : p)));
+  }, []);
+
   const toggleLike = useCallback(async (post: Post) => {
     const was = post.is_liked;
-    setPosts(prev => prev.map(p => p.id === post.id
-      ? { ...p, is_liked: !was, likes_count: p.likes_count + (was ? -1 : 1) } : p));
+    mutateBoth(post.id, p => ({ ...p, is_liked: !was, likes_count: p.likes_count + (was ? -1 : 1) }));
     try {
       const res = await apiFetch<{ is_liked: boolean; post: Post }>(
         `/api/posts/${post.id}/like`, { method: 'POST' });
-      setPosts(prev => prev.map(p => p.id === post.id
-        ? { ...p, is_liked: res.is_liked, likes_count: res.post.likes_count } : p));
+      mutateBoth(post.id, p => ({ ...p, is_liked: res.is_liked, likes_count: res.post.likes_count }));
     } catch {
-      setPosts(prev => prev.map(p => p.id === post.id
-        ? { ...p, is_liked: was, likes_count: p.likes_count + (was ? 1 : -1) } : p));
+      mutateBoth(post.id, p => ({ ...p, is_liked: was, likes_count: p.likes_count + (was ? 1 : -1) }));
     }
-  }, []);
+  }, [mutateBoth]);
 
   const openComments = useCallback(async (post: Post) => {
     setCommentsFor(post);
@@ -242,13 +268,36 @@ export default function Feed() {
         <TouchableOpacity onPress={() => setMenuOpen(true)} hitSlop={10}>
           <Text style={s.menuBtn}>☰</Text>
         </TouchableOpacity>
-        <Text style={s.logo}>ABUkonn</Text>
+        <View style={s.brand}>
+          <Image source={require('../../assets/icon.png')} style={s.logoImg} />
+          <Text style={s.logo}>ABUkonn</Text>
+        </View>
         <TouchableOpacity style={s.newBtn} onPress={() => setComposeOpen(true)}>
           <Text style={s.newBtnText}>+ Post</Text>
         </TouchableOpacity>
       </View>
 
       <MenuSheet visible={menuOpen} onClose={() => setMenuOpen(false)} />
+
+      {/* For You / Following / Messages — matches web */}
+      <View style={s.tabBar}>
+        <TouchableOpacity style={s.feedTab} onPress={() => setFeedTab('for_you')}>
+          <Text style={feedTab === 'for_you' ? s.feedTabOn : s.feedTabOff}>For You</Text>
+          {feedTab === 'for_you' ? <View style={s.tabUnderline} /> : null}
+        </TouchableOpacity>
+        <TouchableOpacity style={s.feedTab} onPress={() => setFeedTab('following')}>
+          <Text style={feedTab === 'following' ? s.feedTabOn : s.feedTabOff}>Following</Text>
+          {feedTab === 'following' ? <View style={s.tabUnderline} /> : null}
+        </TouchableOpacity>
+        <TouchableOpacity style={s.feedTab} onPress={() => router.push('/(tabs)/messages')}>
+          <View style={s.feedTabRow}>
+            <Text style={s.feedTabOff}>Messages</Text>
+            {unreadCount > 0 ? (
+              <View style={s.tabBadge}><Text style={s.tabBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text></View>
+            ) : null}
+          </View>
+        </TouchableOpacity>
+      </View>
 
       {loading ? (
         <View style={s.center}><ActivityIndicator size="large" color={colors.brand} /></View>
@@ -260,15 +309,28 @@ export default function Feed() {
       ) : (
         <FlatList
           ref={listRef}
-          data={posts}
+          data={feedTab === 'following' ? followingPosts : posts}
           keyExtractor={p => String(p.id)}
-          ListHeaderComponent={<StoryBar />}
+          ListHeaderComponent={feedTab === 'for_you' ? <StoryBar /> : null}
           refreshControl={
-            <RefreshControl refreshing={refreshing}
-              onRefresh={() => { setRefreshing(true); load(); }}
+            <RefreshControl
+              refreshing={feedTab === 'following' ? followingLoading : refreshing}
+              onRefresh={() => {
+                if (feedTab === 'following') { loadFollowing(); }
+                else { setRefreshing(true); load(); }
+              }}
               tintColor={colors.brand} />
           }
-          ListEmptyComponent={<View style={s.center}><Text style={s.muted}>No posts yet</Text></View>}
+          ListEmptyComponent={
+            feedTab === 'following' ? (
+              followingLoading ? null : (
+                <View style={s.center}>
+                  <Text style={s.muted}>No posts from people you follow yet</Text>
+                  <Text style={s.mutedSmall}>Follow classmates to see their posts here</Text>
+                </View>
+              )
+            ) : <View style={s.center}><Text style={s.muted}>No posts yet</Text></View>
+          }
           renderItem={({ item }) => (
             <PostCard
               post={item}
@@ -388,7 +450,27 @@ export default function Feed() {
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface },
+  brand: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  logoImg: { width: 26, height: 26, borderRadius: 6 },
   logo: { fontSize: 20, fontWeight: '800', color: colors.brand },
+  tabBar: {
+    flexDirection: 'row', backgroundColor: colors.surface,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
+  },
+  feedTab: { flex: 1, alignItems: 'center', paddingVertical: 13 },
+  feedTabRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  feedTabOn: { fontSize: 14, fontWeight: '800', color: colors.text },
+  feedTabOff: { fontSize: 14, fontWeight: '600', color: colors.muted },
+  tabUnderline: {
+    position: 'absolute', bottom: 0, height: 2.5, width: 40,
+    borderRadius: 2, backgroundColor: colors.brand,
+  },
+  tabBadge: {
+    backgroundColor: colors.brand, borderRadius: 8, minWidth: 16, height: 16,
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4,
+  },
+  tabBadgeText: { color: colors.white, fontSize: 10, fontWeight: '700' },
+  mutedSmall: { color: colors.muted, fontSize: 13, marginTop: 4 },
   menuBtn: { fontSize: 24, color: colors.text },
   newBtn: { backgroundColor: colors.brand, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20 },
   newBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
