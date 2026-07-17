@@ -6,7 +6,9 @@ import {
   TouchableOpacity, TextInput, Modal, KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../src/theme/ThemeContext';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadImage } from '../../src/lib/upload';
 import { MenuSheet } from '../../src/components/MenuSheet';
@@ -87,7 +89,7 @@ const PostCard = memo(function PostCard({ post, onOpenProfile, onToggleLike, onO
 
       {post.content ? <Text style={s.content}>{post.content}</Text> : null}
       {post.image_url ? (
-        <Image source={{ uri: post.image_url }} style={s.image} resizeMode="cover" />
+        <Image source={{ uri: post.image_url }} style={s.image} resizeMode="contain" />
       ) : null}
 
       <View style={s.actions}>
@@ -120,6 +122,7 @@ export default function Feed() {
   const router = useRouter();
   const { ref: listRef, setRefresh } = useTabScrollToTop<Post>();
   const openProfile = useCallback((userId: number) => router.push({ pathname: '/user/[id]', params: { id: String(userId) } }), [router]);
+  const { scheme } = useTheme();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -173,14 +176,22 @@ export default function Feed() {
   useEffect(() => { if (feedTab === 'following') loadFollowing(); }, [feedTab, loadFollowing]);
 
   // Unread badges + who-to-follow (matches web).
-  useEffect(() => {
+  const refreshBadges = useCallback(() => {
     apiFetch<{ count: number }>('/api/messages/unread-count')
       .then(d => setUnreadCount(d.count || 0)).catch(() => {});
     apiFetch<{ count: number }>('/api/notifications/unread-count')
       .then(d => setNotifUnread(d.count || 0)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    refreshBadges();
     apiFetch<{ suggestions: typeof suggestions }>('/api/follows/suggestions')
       .then(d => setSuggestions(d.suggestions || [])).catch(() => {});
-  }, []);
+  }, [refreshBadges]);
+
+  // Re-check unread counts whenever the feed regains focus — e.g. after you open
+  // Notifications and mark all read, the bell should clear when you come back.
+  useFocusEffect(useCallback(() => { refreshBadges(); }, [refreshBadges]));
 
   // Optimistic: flip immediately, roll back if the server disagrees.
   const mutateBoth = useCallback((id: number, fn: (p: Post) => Post) => {
@@ -342,15 +353,18 @@ export default function Feed() {
     <SafeAreaView style={s.safe} edges={['top']}>
       <View style={s.header}>
         <TouchableOpacity onPress={() => setMenuOpen(true)} hitSlop={10}>
-          <Text style={s.menuBtn}>☰</Text>
+          <Ionicons name="menu" size={26} color={colors.text} />
         </TouchableOpacity>
-        <View style={s.brand}>
-          <Image source={require('../../assets/icon.png')} style={s.logoImg} />
-          <Text style={s.logo}>ABUkonn</Text>
-        </View>
+        <Image
+          source={scheme === 'dark'
+            ? require('../../assets/logo-lockup-dark.png')
+            : require('../../assets/logo-lockup-light.png')}
+          style={s.logoLockup}
+          resizeMode="contain"
+        />
         <View style={s.headerRight}>
           <TouchableOpacity onPress={() => router.push('/(tabs)/notifications')} hitSlop={8} style={s.bellWrap}>
-            <Text style={s.bell}>🔔</Text>
+            <Ionicons name="notifications-outline" size={24} color={colors.text} />
             {notifUnread > 0 ? (
               <View style={s.bellBadge}><Text style={s.bellBadgeText}>{notifUnread > 9 ? '9+' : notifUnread}</Text></View>
             ) : null}
@@ -464,7 +478,7 @@ export default function Feed() {
 
             {newImage ? (
               <View style={s.previewWrap}>
-                <Image source={{ uri: newImage }} style={s.preview} resizeMode="cover" />
+                <Image source={{ uri: newImage }} style={s.preview} resizeMode="contain" />
                 <TouchableOpacity style={s.removeImg} onPress={() => setNewImage(null)}>
                   <Text style={s.removeImgText}>✕</Text>
                 </TouchableOpacity>
@@ -536,6 +550,7 @@ const make_s = (colors: Palette) => StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   logoImg: { width: 26, height: 26, borderRadius: 6 },
+  logoLockup: { width: 120, height: 30 },
   logo: { fontSize: 20, fontWeight: '800', color: colors.brand },
   tabBar: {
     flexDirection: 'row', backgroundColor: colors.surface,
@@ -605,7 +620,7 @@ const make_s = (colors: Palette) => StyleSheet.create({
   author: { fontSize: 14, fontWeight: '700', color: colors.text },
   title: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 4 },
   content: { fontSize: 15, color: colors.text, lineHeight: 22 },
-  image: { width: '100%', height: 220, borderRadius: 12, marginTop: 10, backgroundColor: '#f3f4f6' },
+  image: { width: '100%', height: 300, borderRadius: 12, marginTop: 10, backgroundColor: colors.surfaceSubtle },
   actions: { flexDirection: 'row', gap: 24, marginTop: 12 },
   action: { paddingVertical: 4 },
   actionText: { fontSize: 14, color: colors.muted },

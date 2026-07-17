@@ -221,7 +221,7 @@ export default function UserProfile() {
               ) : null}
             {item.content ? <Text style={s.content}>{item.content}</Text> : null}
             {item.image_url ? (
-              <Image source={{ uri: item.image_url }} style={s.image} resizeMode="cover" />
+              <Image source={{ uri: item.image_url }} style={s.image} resizeMode="contain" />
             ) : null}
             <Text style={s.meta}>
               {item.likes_count} likes · {item.comments_count} comments · {timeAgo(item.created_at)}
@@ -275,6 +275,6 @@ const make_s = (colors: Palette) => StyleSheet.create({
   card: { padding: 16, borderTopWidth: 1, borderTopColor: colors.border },
   postTitle: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 4 },
   content: { fontSize: 15, color: colors.text, lineHeight: 22 },
-  image: { width: '100%', height: 200, borderRadius: 12, marginTop: 10, backgroundColor: '#f3f4f6' },
+  image: { width: '100%', height: 280, borderRadius: 12, marginTop: 10, backgroundColor: colors.surfaceSubtle },
   meta: { fontSize: 12, color: colors.muted, marginTop: 10 },
 });

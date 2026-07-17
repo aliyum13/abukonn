@@ -132,7 +132,7 @@ export default function News() {
           {open ? (
             <ScrollView contentContainerStyle={{ padding: 16 }}>
               {open.image_url ? (
-                <Image source={{ uri: open.image_url }} style={s.fullImg} resizeMode="cover" />
+                <Image source={{ uri: open.image_url }} style={s.fullImg} resizeMode="contain" />
               ) : null}
               <Text style={s.cat}>{open.category.toUpperCase()}</Text>
               <Text style={s.fullTitle}>{open.title}</Text>
@@ -176,7 +176,7 @@ const make_s = (colors: Palette) => StyleSheet.create({
   },
   back: { color: colors.brand, fontSize: 16, fontWeight: '600' },
   modalTitle: { fontSize: 16, fontWeight: '700', color: colors.text },
-  fullImg: { width: '100%', height: 220, borderRadius: 12, marginBottom: 16, backgroundColor: '#f3f4f6' },
+  fullImg: { width: '100%', height: 260, borderRadius: 12, marginBottom: 16, backgroundColor: colors.surfaceSubtle },
   fullTitle: { fontSize: 22, fontWeight: '800', color: colors.text, marginTop: 4 },
   fullBody: { fontSize: 16, color: colors.text, lineHeight: 26, marginTop: 16 },
 });

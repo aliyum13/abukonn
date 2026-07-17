@@ -117,7 +117,7 @@ export default function GroupChat() {
                   <View style={[s.bubble, mine ? s.mine : s.theirs]}>
                     {!mine ? <Text style={s.senderName}>{item.sender_name}</Text> : null}
                     {item.image_url ? (
-                      <Image source={{ uri: item.image_url }} style={s.msgImage} resizeMode="cover" />
+                      <Image source={{ uri: item.image_url }} style={s.msgImage} resizeMode="contain" />
                     ) : null}
                     {item.content ? (
                       <Text style={mine ? s.mineText : s.theirsText}>{item.content}</Text>

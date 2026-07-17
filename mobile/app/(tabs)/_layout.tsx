@@ -1,14 +1,15 @@
 import { Tabs } from 'expo-router';
-import { Text } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/theme/ThemeContext';
 
-// Tabs mirror the web bottom nav: Feed, News, Library, Profile — with the same
-// emoji icons web uses in its nav, so there's a real glyph instead of the blank
-// default. Messages and Notifications live in the ☰ menu (href: null hides them
-// from the bar but keeps their routes working).
-function tabIcon(emoji: string) {
-  return ({ focused }: { focused: boolean }) => (
-    <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.5 }}>{emoji}</Text>
+// Tabs mirror the web bottom nav: Feed, News, Library, Profile. Real vector
+// icons (Ionicons) rather than emoji — outline when inactive, filled when
+// active, the standard iOS/Android tab convention.
+type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
+
+function tabIcon(active: IoniconName, inactive: IoniconName) {
+  return ({ color, size, focused }: { color: string; size: number; focused: boolean }) => (
+    <Ionicons name={focused ? active : inactive} size={size} color={color} />
   );
 }
 
@@ -26,10 +27,10 @@ export default function TabsLayout() {
         },
       }}
     >
-      <Tabs.Screen name="feed" options={{ title: 'Feed', tabBarIcon: tabIcon('🏠') }} />
-      <Tabs.Screen name="news" options={{ title: 'News', tabBarIcon: tabIcon('📰') }} />
-      <Tabs.Screen name="library" options={{ title: 'Library', tabBarIcon: tabIcon('📚') }} />
-      <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: tabIcon('👤') }} />
+      <Tabs.Screen name="feed" options={{ title: 'Feed', tabBarIcon: tabIcon('home', 'home-outline') }} />
+      <Tabs.Screen name="news" options={{ title: 'News', tabBarIcon: tabIcon('newspaper', 'newspaper-outline') }} />
+      <Tabs.Screen name="library" options={{ title: 'Library', tabBarIcon: tabIcon('library', 'library-outline') }} />
+      <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: tabIcon('person', 'person-outline') }} />
 
       <Tabs.Screen name="messages" options={{ href: null }} />
       <Tabs.Screen name="notifications" options={{ href: null }} />
