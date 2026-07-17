@@ -20,6 +20,7 @@ interface Post {
   id: number;
   user_id: number;
   content: string;
+  category?: string;
   image_url: string | null;
   author_name: string;
   author_department: string | null;
@@ -103,6 +104,17 @@ const PostCard = memo(function PostCard({ post, onOpenProfile, onToggleLike, onO
   );
 });
 
+const POST_CATEGORIES = [
+  { value: 'ALL', label: 'All' },
+  { value: 'GENERAL', label: 'General' },
+  { value: 'EXAMINATION', label: 'Examination' },
+  { value: 'REGISTRATION', label: 'Registration' },
+  { value: 'ACADEMIC', label: 'Academic' },
+  { value: 'SPORTS', label: 'Sports' },
+  { value: 'EVENTS', label: 'Events' },
+  { value: 'CAMPUS_LIFE', label: 'Campus Life' },
+];
+
 export default function Feed() {
   const s = useThemedStyles(make_s);
   const router = useRouter();
@@ -122,6 +134,9 @@ export default function Feed() {
   const [followingPosts, setFollowingPosts] = useState<Post[]>([]);
   const [followingLoading, setFollowingLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [notifUnread, setNotifUnread] = useState(0);
+  const [category, setCategory] = useState('ALL');
+  const [suggestions, setSuggestions] = useState<{ id: number; full_name: string; department: string | null; level: string | null; profile_photo_url: string | null }[]>([]);
 
   const [commentsFor, setCommentsFor] = useState<Post | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -157,10 +172,14 @@ export default function Feed() {
 
   useEffect(() => { if (feedTab === 'following') loadFollowing(); }, [feedTab, loadFollowing]);
 
-  // Unread badge for the Messages tab (matches web).
+  // Unread badges + who-to-follow (matches web).
   useEffect(() => {
     apiFetch<{ count: number }>('/api/messages/unread-count')
       .then(d => setUnreadCount(d.count || 0)).catch(() => {});
+    apiFetch<{ count: number }>('/api/notifications/unread-count')
+      .then(d => setNotifUnread(d.count || 0)).catch(() => {});
+    apiFetch<{ suggestions: typeof suggestions }>('/api/follows/suggestions')
+      .then(d => setSuggestions(d.suggestions || [])).catch(() => {});
   }, []);
 
   // Optimistic: flip immediately, roll back if the server disagrees.
@@ -266,6 +285,59 @@ export default function Feed() {
     }
   };
 
+  const forYouHeader = (
+    <View>
+      <StoryBar />
+
+      {/* Category filter — matches web's post categories */}
+      <FlatList
+        data={POST_CATEGORIES}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        keyExtractor={c => c.value}
+        contentContainerStyle={s.catRow}
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            style={[s.catChip, category === item.value ? s.catChipOn : null]}
+            onPress={() => setCategory(item.value)}
+          >
+            <Text style={category === item.value ? s.catTextOn : s.catText}>{item.label}</Text>
+          </TouchableOpacity>
+        )}
+      />
+
+      {/* Who to follow */}
+      {suggestions.length > 0 ? (
+        <View style={s.wtfWrap}>
+          <Text style={s.wtfTitle}>Who to follow</Text>
+          <FlatList
+            data={suggestions}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={u => String(u.id)}
+            contentContainerStyle={{ paddingHorizontal: 12, gap: 10 }}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={s.wtfCard}
+                onPress={() => router.push({ pathname: '/user/[id]', params: { id: String(item.id) } })}
+              >
+                {item.profile_photo_url ? (
+                  <Image source={{ uri: item.profile_photo_url }} style={s.wtfAvatar} />
+                ) : (
+                  <View style={[s.wtfAvatar, s.fallback]}>
+                    <Text style={s.letter}>{item.full_name.charAt(0).toUpperCase()}</Text>
+                  </View>
+                )}
+                <Text style={s.wtfName} numberOfLines={1}>{item.full_name}</Text>
+                {item.department ? <Text style={s.wtfDept} numberOfLines={1}>{item.department}</Text> : null}
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      ) : null}
+    </View>
+  );
+
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
       <View style={s.header}>
@@ -276,9 +348,17 @@ export default function Feed() {
           <Image source={require('../../assets/icon.png')} style={s.logoImg} />
           <Text style={s.logo}>ABUkonn</Text>
         </View>
-        <TouchableOpacity style={s.newBtn} onPress={() => setComposeOpen(true)}>
-          <Text style={s.newBtnText}>+ Post</Text>
-        </TouchableOpacity>
+        <View style={s.headerRight}>
+          <TouchableOpacity onPress={() => router.push('/(tabs)/notifications')} hitSlop={8} style={s.bellWrap}>
+            <Text style={s.bell}>🔔</Text>
+            {notifUnread > 0 ? (
+              <View style={s.bellBadge}><Text style={s.bellBadgeText}>{notifUnread > 9 ? '9+' : notifUnread}</Text></View>
+            ) : null}
+          </TouchableOpacity>
+          <TouchableOpacity style={s.newBtn} onPress={() => setComposeOpen(true)}>
+            <Text style={s.newBtnText}>+ Post</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <MenuSheet visible={menuOpen} onClose={() => setMenuOpen(false)} />
@@ -313,9 +393,9 @@ export default function Feed() {
       ) : (
         <FlatList
           ref={listRef}
-          data={feedTab === 'following' ? followingPosts : posts}
+          data={feedTab === 'following' ? followingPosts : (category === 'ALL' ? posts : posts.filter(p => p.category === category))}
           keyExtractor={p => String(p.id)}
-          ListHeaderComponent={feedTab === 'for_you' ? <StoryBar /> : null}
+          ListHeaderComponent={feedTab === 'for_you' ? forYouHeader : null}
           refreshControl={
             <RefreshControl
               refreshing={feedTab === 'following' ? followingLoading : refreshing}
@@ -355,8 +435,8 @@ export default function Feed() {
         <SafeAreaView style={s.safe} edges={['top']}>
           <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <View style={s.modalHeader}>
-              <TouchableOpacity onPress={() => setComposeOpen(false)}>
-                <Text style={s.muted}>Cancel</Text>
+              <TouchableOpacity onPress={() => setComposeOpen(false)} hitSlop={12} style={s.modalClose}>
+                <Text style={s.modalCloseText}>Cancel</Text>
               </TouchableOpacity>
               <Text style={s.modalTitle}>New post</Text>
               <TouchableOpacity
@@ -408,8 +488,8 @@ export default function Feed() {
         <SafeAreaView style={s.safe} edges={['top']}>
           <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <View style={s.modalHeader}>
-              <TouchableOpacity onPress={() => setCommentsFor(null)}>
-                <Text style={s.muted}>Close</Text>
+              <TouchableOpacity onPress={() => setCommentsFor(null)} hitSlop={12} style={s.modalClose}>
+                <Text style={s.modalCloseText}>‹ Back</Text>
               </TouchableOpacity>
               <Text style={s.modalTitle}>Comments</Text>
               <View style={{ width: 50 }} />
@@ -475,6 +555,33 @@ const make_s = (colors: Palette) => StyleSheet.create({
   },
   tabBadgeText: { color: colors.white, fontSize: 10, fontWeight: '700' },
   mutedSmall: { color: colors.muted, fontSize: 13, marginTop: 4 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  bellWrap: { position: 'relative' },
+  bell: { fontSize: 20 },
+  bellBadge: {
+    position: 'absolute', top: -5, right: -6, backgroundColor: colors.danger,
+    borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3,
+  },
+  bellBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  catRow: { paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
+  catChip: {
+    paddingHorizontal: 14, paddingVertical: 7, borderRadius: radius.full,
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
+  },
+  catChipOn: { backgroundColor: colors.brand, borderColor: colors.brand },
+  catText: { fontSize: 13, color: colors.textSecondary, fontWeight: '600' },
+  catTextOn: { fontSize: 13, color: '#fff', fontWeight: '700' },
+  wtfWrap: { paddingTop: 6, paddingBottom: 12, borderBottomWidth: 8, borderBottomColor: colors.bg },
+  wtfTitle: { fontSize: 15, fontWeight: '800', color: colors.text, paddingHorizontal: 16, marginBottom: 10 },
+  wtfCard: {
+    width: 130, backgroundColor: colors.surface, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.border, padding: 12, alignItems: 'center',
+  },
+  wtfAvatar: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.brand100, marginBottom: 8 },
+  wtfName: { fontSize: 13, fontWeight: '700', color: colors.text, textAlign: 'center' },
+  wtfDept: { fontSize: 11, color: colors.muted, textAlign: 'center', marginTop: 2 },
+  modalClose: { paddingVertical: 4, paddingHorizontal: 4 },
+  modalCloseText: { color: colors.brand, fontSize: 16, fontWeight: '600' },
   menuBtn: { fontSize: 24, color: colors.text },
   newBtn: { backgroundColor: colors.brand, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20 },
   newBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
@@ -503,7 +610,7 @@ const make_s = (colors: Palette) => StyleSheet.create({
   action: { paddingVertical: 4 },
   actionText: { fontSize: 14, color: colors.muted },
   liked: { color: colors.danger, fontWeight: '700' },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, minHeight: 56, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface },
   modalTitle: { fontSize: 16, fontWeight: '700', color: colors.text },
   post: { color: colors.brand, fontWeight: '700', fontSize: 15 },
   composeInput: { flex: 1, padding: 16, fontSize: 16, color: colors.text, textAlignVertical: 'top' },
