@@ -22,15 +22,8 @@
   "submit": {
     "production": {
       "android": {
-        "//": "Path to a Google Play service-account JSON with 'Release Manager' access. Create it in Play Console > Setup > API access, download the key, and point to it here (keep it OUT of git).",
         "serviceAccountKeyPath": "./play-service-account.json",
         "track": "internal"
-      },
-      "ios": {
-        "//": "Fill these from App Store Connect. appleId = your Apple account email; ascAppId = the app's numeric ID once created; appleTeamId = your Apple Developer team ID.",
-        "appleId": "REPLACE_WITH_APPLE_ID_EMAIL",
-        "ascAppId": "REPLACE_WITH_APP_STORE_CONNECT_APP_ID",
-        "appleTeamId": "REPLACE_WITH_APPLE_TEAM_ID"
       }
     }
   }
