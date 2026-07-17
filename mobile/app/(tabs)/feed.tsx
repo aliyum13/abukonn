@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, memo } from 'react';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl, Image,
   TouchableOpacity, TextInput, Modal, KeyboardAvoidingView, Platform, Alert,
@@ -45,9 +45,65 @@ function timeAgo(iso: string) {
   return `${Math.floor(s / 86400)}d`;
 }
 
+// Memoized so a row only re-renders when its own post changes (like/comment
+// counts), not when any other post or unrelated state updates. This is the fix
+// for the VirtualizedList slow-update warning on a large feed.
+interface PostCardProps {
+  post: Post;
+  onOpenProfile: (userId: number) => void;
+  onToggleLike: (post: Post) => void;
+  onOpenComments: (post: Post) => void;
+}
+
+const PostCard = memo(function PostCard({ post, onOpenProfile, onToggleLike, onOpenComments }: PostCardProps) {
+  return (
+    <View style={s.card}>
+      <TouchableOpacity
+        style={s.row}
+        activeOpacity={0.7}
+        onPress={() => onOpenProfile(post.user_id)}
+      >
+        {post.author_photo ? (
+          <Image source={{ uri: post.author_photo }} style={s.avatar} />
+        ) : (
+          <View style={[s.avatar, s.fallback]}>
+            <Text style={s.letter}>{post.author_name?.charAt(0).toUpperCase()}</Text>
+          </View>
+        )}
+        <View style={{ flex: 1 }}>
+          <Text style={s.author}>{post.author_name}</Text>
+          <Text style={s.muted}>{post.author_department} · {timeAgo(post.created_at)}</Text>
+        </View>
+      </TouchableOpacity>
+
+      {(post.post_subtype === 'question' || post.post_subtype === 'discussion')
+        && post.discussion_title ? (
+          <Text style={s.title}>{post.discussion_title}</Text>
+        ) : null}
+
+      {post.content ? <Text style={s.content}>{post.content}</Text> : null}
+      {post.image_url ? (
+        <Image source={{ uri: post.image_url }} style={s.image} resizeMode="cover" />
+      ) : null}
+
+      <View style={s.actions}>
+        <TouchableOpacity style={s.action} onPress={() => onToggleLike(post)}>
+          <Text style={[s.actionText, post.is_liked ? s.liked : null]}>
+            {post.is_liked ? '♥' : '♡'}  {post.likes_count}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={s.action} onPress={() => onOpenComments(post)}>
+          <Text style={s.actionText}>💬  {post.comments_count}</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+});
+
 export default function Feed() {
   const router = useRouter();
   const { ref: listRef, setRefresh } = useTabScrollToTop<Post>();
+  const openProfile = useCallback((userId: number) => router.push({ pathname: '/user/[id]', params: { id: String(userId) } }), [router]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -80,7 +136,7 @@ export default function Feed() {
   useEffect(() => { load(); setRefresh(load); }, [load, setRefresh]);
 
   // Optimistic: flip immediately, roll back if the server disagrees.
-  const toggleLike = async (post: Post) => {
+  const toggleLike = useCallback(async (post: Post) => {
     const was = post.is_liked;
     setPosts(prev => prev.map(p => p.id === post.id
       ? { ...p, is_liked: !was, likes_count: p.likes_count + (was ? -1 : 1) } : p));
@@ -93,9 +149,9 @@ export default function Feed() {
       setPosts(prev => prev.map(p => p.id === post.id
         ? { ...p, is_liked: was, likes_count: p.likes_count + (was ? 1 : -1) } : p));
     }
-  };
+  }, []);
 
-  const openComments = async (post: Post) => {
+  const openComments = useCallback(async (post: Post) => {
     setCommentsFor(post);
     setComments([]);
     setCommentsLoading(true);
@@ -107,7 +163,7 @@ export default function Feed() {
     } finally {
       setCommentsLoading(false);
     }
-  };
+  }, []);
 
   const sendComment = async () => {
     if (!commentText.trim() || !commentsFor) return;
@@ -214,50 +270,17 @@ export default function Feed() {
           }
           ListEmptyComponent={<View style={s.center}><Text style={s.muted}>No posts yet</Text></View>}
           renderItem={({ item }) => (
-            <View style={s.card}>
-              <TouchableOpacity
-                style={s.row}
-                activeOpacity={0.7}
-                onPress={() => router.push({ pathname: '/user/[id]', params: { id: String(item.user_id) } })}
-              >
-                {item.author_photo ? (
-                  <Image source={{ uri: item.author_photo }} style={s.avatar} />
-                ) : (
-                  <View style={[s.avatar, s.fallback]}>
-                    <Text style={s.letter}>{item.author_name?.charAt(0).toUpperCase()}</Text>
-                  </View>
-                )}
-                <View style={{ flex: 1 }}>
-                  <Text style={s.author}>{item.author_name}</Text>
-                  <Text style={s.muted}>{item.author_department} · {timeAgo(item.created_at)}</Text>
-                </View>
-              </TouchableOpacity>
-
-              {/* Questions keep their title in discussion_title, same as
-                  discussions — rendering only 'discussion' is what made
-                  title-only questions come out blank on the web. */}
-              {(item.post_subtype === 'question' || item.post_subtype === 'discussion')
-                && item.discussion_title ? (
-                  <Text style={s.title}>{item.discussion_title}</Text>
-                ) : null}
-
-              {item.content ? <Text style={s.content}>{item.content}</Text> : null}
-              {item.image_url ? (
-                <Image source={{ uri: item.image_url }} style={s.image} resizeMode="cover" />
-              ) : null}
-
-              <View style={s.actions}>
-                <TouchableOpacity style={s.action} onPress={() => toggleLike(item)}>
-                  <Text style={[s.actionText, item.is_liked ? s.liked : null]}>
-                    {item.is_liked ? '♥' : '♡'}  {item.likes_count}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={s.action} onPress={() => openComments(item)}>
-                  <Text style={s.actionText}>💬  {item.comments_count}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+            <PostCard
+              post={item}
+              onOpenProfile={openProfile}
+              onToggleLike={toggleLike}
+              onOpenComments={openComments}
+            />
           )}
+          initialNumToRender={6}
+          maxToRenderPerBatch={6}
+          windowSize={9}
+          removeClippedSubviews
         />
       )}
 
