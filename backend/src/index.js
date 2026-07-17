@@ -6,6 +6,7 @@ const http = require('http');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const { ipKeyGenerator } = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
 const { Server } = require('socket.io');
 const authRoutes = require('./routes/auth');
@@ -234,8 +235,10 @@ const apiLimiter = rateLimit({
       // and so users behind a shared IP are counted independently.
       return 'u:' + crypto.createHash('sha256').update(auth.slice(7)).digest('hex').slice(0, 24);
     }
-    // Unauthenticated (login page, register): fall back to IP.
-    return 'ip:' + (req.ip || 'unknown');
+    // Unauthenticated (login page, register): fall back to IP. Use the library's
+    // helper so IPv6 addresses are normalised to their /64 block correctly —
+    // hand-rolling req.ip mis-buckets IPv6 users.
+    return 'ip:' + ipKeyGenerator(req.ip);
   },
   message: { message: 'Too many requests. Please try again shortly.' },
 });
