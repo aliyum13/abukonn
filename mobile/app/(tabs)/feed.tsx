@@ -5,7 +5,7 @@ import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl, Image,
   TouchableOpacity, TextInput, Modal, KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/theme/ThemeContext';
@@ -122,7 +122,18 @@ export default function Feed() {
   const router = useRouter();
   const { ref: listRef, setRefresh } = useTabScrollToTop<Post>();
   const openProfile = useCallback((userId: number) => router.push({ pathname: '/user/[id]', params: { id: String(userId) } }), [router]);
+  const followUser = useCallback(async (id: number) => {
+    // Optimistically remove from the list — matches web, which drops a suggestion
+    // once you follow it.
+    setSuggestions(prev => prev.filter(u => u.id !== id));
+    try {
+      await apiFetch(`/api/follows/${id}`, { method: 'POST' });
+    } catch {
+      // On failure we simply don't re-add; the list refreshes on next focus.
+    }
+  }, []);
   const { scheme } = useTheme();
+  const insets = useSafeAreaInsets();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -328,20 +339,25 @@ export default function Feed() {
             keyExtractor={u => String(u.id)}
             contentContainerStyle={{ paddingHorizontal: 12, gap: 10 }}
             renderItem={({ item }) => (
-              <TouchableOpacity
-                style={s.wtfCard}
-                onPress={() => router.push({ pathname: '/user/[id]', params: { id: String(item.id) } })}
-              >
-                {item.profile_photo_url ? (
-                  <Image source={{ uri: item.profile_photo_url }} style={s.wtfAvatar} />
-                ) : (
-                  <View style={[s.wtfAvatar, s.fallback]}>
-                    <Text style={s.letter}>{item.full_name.charAt(0).toUpperCase()}</Text>
-                  </View>
-                )}
-                <Text style={s.wtfName} numberOfLines={1}>{item.full_name}</Text>
-                {item.department ? <Text style={s.wtfDept} numberOfLines={1}>{item.department}</Text> : null}
-              </TouchableOpacity>
+              <View style={s.wtfCard}>
+                <TouchableOpacity
+                  style={{ alignItems: 'center' }}
+                  onPress={() => router.push({ pathname: '/user/[id]', params: { id: String(item.id) } })}
+                >
+                  {item.profile_photo_url ? (
+                    <Image source={{ uri: item.profile_photo_url }} style={s.wtfAvatar} />
+                  ) : (
+                    <View style={[s.wtfAvatar, s.fallback]}>
+                      <Text style={s.letter}>{item.full_name.charAt(0).toUpperCase()}</Text>
+                    </View>
+                  )}
+                  <Text style={s.wtfName} numberOfLines={1}>{item.full_name}</Text>
+                  {item.department ? <Text style={s.wtfDept} numberOfLines={1}>{item.department}</Text> : null}
+                </TouchableOpacity>
+                <TouchableOpacity style={s.wtfFollowBtn} onPress={() => followUser(item.id)}>
+                  <Text style={s.wtfFollowText}>Follow</Text>
+                </TouchableOpacity>
+              </View>
             )}
           />
         </View>
@@ -446,9 +462,9 @@ export default function Feed() {
 
       {/* Compose */}
       <Modal visible={composeOpen} animationType="slide" onRequestClose={() => setComposeOpen(false)}>
-        <SafeAreaView style={s.safe} edges={['top']}>
+        <SafeAreaView style={s.safe} edges={['bottom']}>
           <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <View style={s.modalHeader}>
+            <View style={[s.modalHeader, { paddingTop: insets.top + 12 }]}>
               <TouchableOpacity onPress={() => setComposeOpen(false)} hitSlop={12} style={s.modalClose}>
                 <Text style={s.modalCloseText}>Cancel</Text>
               </TouchableOpacity>
@@ -499,9 +515,9 @@ export default function Feed() {
 
       {/* Comments */}
       <Modal visible={!!commentsFor} animationType="slide" onRequestClose={() => setCommentsFor(null)}>
-        <SafeAreaView style={s.safe} edges={['top']}>
+        <SafeAreaView style={s.safe} edges={['bottom']}>
           <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <View style={s.modalHeader}>
+            <View style={[s.modalHeader, { paddingTop: insets.top + 12 }]}>
               <TouchableOpacity onPress={() => setCommentsFor(null)} hitSlop={12} style={s.modalClose}>
                 <Text style={s.modalCloseText}>‹ Back</Text>
               </TouchableOpacity>
@@ -595,6 +611,11 @@ const make_s = (colors: Palette) => StyleSheet.create({
   wtfAvatar: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.brand100, marginBottom: 8 },
   wtfName: { fontSize: 13, fontWeight: '700', color: colors.text, textAlign: 'center' },
   wtfDept: { fontSize: 11, color: colors.muted, textAlign: 'center', marginTop: 2 },
+  wtfFollowBtn: {
+    marginTop: 10, backgroundColor: colors.brand, borderRadius: radius.full,
+    paddingVertical: 7, alignItems: 'center', width: '100%',
+  },
+  wtfFollowText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   modalClose: { paddingVertical: 4, paddingHorizontal: 4 },
   modalCloseText: { color: colors.brand, fontSize: 16, fontWeight: '600' },
   menuBtn: { fontSize: 24, color: colors.text },

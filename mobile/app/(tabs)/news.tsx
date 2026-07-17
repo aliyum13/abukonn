@@ -104,7 +104,7 @@ export default function News() {
           renderItem={({ item }) => (
             <TouchableOpacity style={s.card} activeOpacity={0.8} onPress={() => setOpen(item)}>
               {item.image_url ? (
-                <Image source={{ uri: item.image_url }} style={s.cardImg} resizeMode="cover" />
+                <Image source={{ uri: item.image_url }} style={s.cardImg} resizeMode="contain" />
               ) : null}
               <View style={s.cardBody}>
                 <Text style={s.cat}>{item.category.toUpperCase()}</Text>
@@ -164,7 +164,7 @@ const make_s = (colors: Palette) => StyleSheet.create({
     borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, ...shadow.card,
     overflow: 'hidden',
   },
-  cardImg: { width: '100%', height: 180, backgroundColor: '#f3f4f6' },
+  cardImg: { width: '100%', height: 200, borderRadius: 10, backgroundColor: colors.surfaceSubtle },
   cardBody: { padding: 16 },
   cat: { fontSize: 11, fontWeight: '800', color: colors.brand, letterSpacing: 0.5 },
   cardTitle: { fontSize: 17, fontWeight: '700', color: colors.text, marginTop: 4 },

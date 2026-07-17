@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useTabScrollToTop } from '../../src/lib/useScrollToTop';
 import { apiFetch } from '../../src/lib/api';
 import { colors, radius, shadow } from '../../src/theme';
@@ -119,12 +120,20 @@ export default function Notifications() {
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
       <View style={s.header}>
+        <TouchableOpacity
+          onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/feed'))}
+          hitSlop={12}
+          style={s.backBtn}
+        >
+          <Ionicons name="chevron-back" size={24} color={colors.brand} />
+          <Text style={s.backText}>Back</Text>
+        </TouchableOpacity>
         <Text style={s.title}>Notifications</Text>
         {unread > 0 ? (
-          <TouchableOpacity onPress={markAllRead}>
+          <TouchableOpacity onPress={markAllRead} hitSlop={8}>
             <Text style={s.readAll}>Mark all read</Text>
           </TouchableOpacity>
-        ) : null}
+        ) : <View style={{ width: 60 }} />}
       </View>
 
       {loading ? (
@@ -189,6 +198,8 @@ export default function Notifications() {
 
 const make_s = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
+  backBtn: { flexDirection: 'row', alignItems: 'center', width: 70 },
+  backText: { color: colors.brand, fontSize: 16, fontWeight: '600', marginLeft: -2 },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, paddingVertical: 12,
