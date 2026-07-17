@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useThemedStyles } from '../../src/theme/ThemeContext';
+import type { Palette } from '../../src/theme';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, Image,
   TouchableOpacity, RefreshControl,
@@ -43,6 +45,7 @@ function timeAgo(iso: string) {
 }
 
 export default function UserProfile() {
+  const s = useThemedStyles(make_s);
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user: me } = useAuth();
@@ -230,7 +233,7 @@ export default function UserProfile() {
   );
 }
 
-const s = StyleSheet.create({
+const make_s = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

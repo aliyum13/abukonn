@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useThemedStyles } from '../../src/theme/ThemeContext';
+import type { Palette } from '../../src/theme';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl,
   TouchableOpacity, TextInput, Linking, Alert,
@@ -41,6 +43,7 @@ const TYPE_ICON: Record<string, string> = {
 };
 
 export default function Library() {
+  const s = useThemedStyles(make_s);
   const { ref: listRef, setRefresh } = useTabScrollToTop<Material>();
   const [materials, setMaterials] = useState<Material[]>([]);
   const [loading, setLoading] = useState(true);
@@ -157,7 +160,7 @@ export default function Library() {
   );
 }
 
-const s = StyleSheet.create({
+const make_s = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, backgroundColor: colors.surface },
   title: { fontSize: 20, fontWeight: '800', color: colors.text },

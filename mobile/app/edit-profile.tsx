@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useThemedStyles } from '../src/theme/ThemeContext';
+import type { Palette } from '../src/theme';
 import {
   View, Text, TextInput, StyleSheet, TouchableOpacity, Image,
   ActivityIndicator, Alert, ScrollView, KeyboardAvoidingView, Platform,
@@ -12,6 +14,7 @@ import { useAuth } from '../src/context/AuthContext';
 import { colors } from '../src/theme';
 
 export default function EditProfile() {
+  const s = useThemedStyles(make_s);
   const router = useRouter();
   const { user, refresh } = useAuth();
 
@@ -130,7 +133,7 @@ export default function EditProfile() {
   );
 }
 
-const s = StyleSheet.create({
+const make_s = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

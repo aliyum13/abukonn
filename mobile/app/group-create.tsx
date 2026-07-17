@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useThemedStyles } from '../src/theme/ThemeContext';
+import type { Palette } from '../src/theme';
 import {
   View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity,
   ActivityIndicator, Switch, KeyboardAvoidingView, Platform, Alert,
@@ -9,6 +11,7 @@ import { apiFetch } from '../src/lib/api';
 import { colors, radius, shadow } from '../src/theme';
 
 export default function CreateGroup() {
+  const s = useThemedStyles(make_s);
   const router = useRouter();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -119,7 +122,7 @@ export default function CreateGroup() {
   );
 }
 
-const s = StyleSheet.create({
+const make_s = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

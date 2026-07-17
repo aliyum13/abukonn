@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useThemedStyles } from '../../src/theme/ThemeContext';
+import type { Palette } from '../../src/theme';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator,
   KeyboardAvoidingView, Platform, ScrollView,
@@ -9,6 +11,7 @@ import { colors } from '../../src/theme';
 import { API_URL } from '../../src/lib/api';
 
 export default function Login() {
+  const s = useThemedStyles(make_s);
   const { signIn } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -55,7 +58,7 @@ export default function Login() {
   );
 }
 
-const s = StyleSheet.create({
+const make_s = (colors: Palette) => StyleSheet.create({
   container: { flexGrow: 1, justifyContent: 'center', padding: 24 },
   logo: { fontSize: 32, fontWeight: '800', color: colors.brand, textAlign: 'center' },
   subtitle: { fontSize: 15, color: colors.muted, textAlign: 'center', marginTop: 6, marginBottom: 28 },

@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useThemedStyles } from '../src/theme/ThemeContext';
+import type { Palette } from '../src/theme';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl, TouchableOpacity,
 } from 'react-native';
@@ -29,6 +31,7 @@ interface ClassItem {
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 export default function Timetable() {
+  const s = useThemedStyles(make_s);
   const [mode, setMode] = useState<'today' | 'week'>('today');
   const [today, setToday] = useState<ClassItem[]>([]);
   const [todayName, setTodayName] = useState<string | null>(null);
@@ -179,7 +182,7 @@ export default function Timetable() {
   );
 }
 
-const s = StyleSheet.create({
+const make_s = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -189,7 +192,7 @@ const s = StyleSheet.create({
   title: { fontSize: 20, fontWeight: '800', color: colors.text },
   toggle: { flexDirection: 'row', backgroundColor: '#f3f4f6', borderRadius: 10, padding: 2 },
   toggleBtn: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 8 },
-  toggleOn: { backgroundColor: '#fff' },
+  toggleOn: { backgroundColor: colors.surface },
   toggleText: { color: colors.muted, fontWeight: '600', fontSize: 13 },
   toggleTextOn: { color: colors.brand, fontWeight: '700', fontSize: 13 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 6 },

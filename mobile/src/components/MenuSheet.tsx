@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { useThemedStyles } from '../theme/ThemeContext';
+import type { Palette } from '../theme';
 import { Modal, View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { apiFetch } from '../lib/api';
@@ -18,6 +20,7 @@ const LINKS: { path: string; label: string; icon: string; badge?: 'messages' | '
 ];
 
 export function MenuSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const s = useThemedStyles(make_s);
   const router = useRouter();
   const [msgUnread, setMsgUnread] = useState(0);
   const [alertUnread, setAlertUnread] = useState(0);
@@ -69,7 +72,7 @@ export function MenuSheet({ visible, onClose }: { visible: boolean; onClose: () 
   );
 }
 
-const s = StyleSheet.create({
+const make_s = (colors: Palette) => StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: colors.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20,

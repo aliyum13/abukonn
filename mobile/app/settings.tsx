@@ -1,4 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useThemedStyles, useTheme } from '../src/theme/ThemeContext';
+import type { ThemeMode } from '../src/theme/ThemeContext';
+import type { Palette } from '../src/theme';
 import {
   View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity,
   ActivityIndicator, Alert, Switch, Image, KeyboardAvoidingView, Platform,
@@ -71,6 +74,7 @@ function ChoiceRow({ label, value, options, onChange, divider }: {
   onChange: (v: string) => void;
   divider?: boolean;
 }) {
+  const cr = useThemedStyles(make_cr);
   return (
     <View style={[cr.wrap, divider ? cr.divider : null]}>
       <Text style={cr.label}>{label}</Text>
@@ -89,6 +93,9 @@ function ChoiceRow({ label, value, options, onChange, divider }: {
 }
 
 export default function SettingsScreen() {
+  const s = useThemedStyles(make_s);
+  const cr = useThemedStyles(make_cr);
+  const { mode, setMode } = useTheme();
   const router = useRouter();
   const { user, signOut } = useAuth();
 
@@ -237,6 +244,28 @@ export default function SettingsScreen() {
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
+          {/* Appearance */}
+          <Text style={s.sectionTitle}>Appearance</Text>
+          <View style={s.card}>
+            <Text style={s.label}>Theme</Text>
+            <View style={s.themeRow}>
+              {(['system', 'light', 'dark'] as ThemeMode[]).map(m => (
+                <TouchableOpacity
+                  key={m}
+                  style={[s.themeChip, mode === m ? s.themeChipOn : null]}
+                  onPress={() => setMode(m)}
+                >
+                  <Text style={mode === m ? s.themeChipTextOn : s.themeChipText}>
+                    {m === 'system' ? 'System' : m === 'light' ? 'Light' : 'Dark'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={s.themeHint}>
+              {mode === 'system' ? 'Follows your phone\'s setting' : `Always ${mode}`}
+            </Text>
+          </View>
+
           {/* Edit profile */}
           <Text style={s.sectionTitle}>Edit Profile</Text>
           <View style={s.card}>
@@ -350,7 +379,7 @@ export default function SettingsScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const make_s = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -397,9 +426,18 @@ const s = StyleSheet.create({
   blockedName: { fontSize: 15, fontWeight: '600', color: colors.text },
   unblockBtn: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.full, paddingHorizontal: 14, paddingVertical: 6 },
   unblockText: { color: colors.brand, fontWeight: '700', fontSize: 13 },
+  themeRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  themeChip: {
+    flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg,
+  },
+  themeChipOn: { backgroundColor: colors.brand, borderColor: colors.brand },
+  themeChipText: { fontSize: 14, fontWeight: '600', color: colors.textSecondary },
+  themeChipTextOn: { fontSize: 14, fontWeight: '700', color: colors.white },
+  themeHint: { fontSize: 12, color: colors.muted, marginTop: 8 },
 });
 
-const cr = StyleSheet.create({
+const make_cr = (colors: Palette) => StyleSheet.create({
   wrap: { paddingVertical: 12 },
   divider: { borderTopWidth: 1, borderTopColor: colors.border },
   label: { fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 8 },

@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback, memo } from 'react';
+import { useThemedStyles } from '../../src/theme/ThemeContext';
+import type { Palette } from '../../src/theme';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl, Image,
   TouchableOpacity, TextInput, Modal, KeyboardAvoidingView, Platform, Alert,
@@ -56,6 +58,7 @@ interface PostCardProps {
 }
 
 const PostCard = memo(function PostCard({ post, onOpenProfile, onToggleLike, onOpenComments }: PostCardProps) {
+  const s = useThemedStyles(make_s);
   return (
     <View style={s.card}>
       <TouchableOpacity
@@ -101,6 +104,7 @@ const PostCard = memo(function PostCard({ post, onOpenProfile, onToggleLike, onO
 });
 
 export default function Feed() {
+  const s = useThemedStyles(make_s);
   const router = useRouter();
   const { ref: listRef, setRefresh } = useTabScrollToTop<Post>();
   const openProfile = useCallback((userId: number) => router.push({ pathname: '/user/[id]', params: { id: String(userId) } }), [router]);
@@ -447,7 +451,7 @@ export default function Feed() {
   );
 }
 
-const s = StyleSheet.create({
+const make_s = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 8 },

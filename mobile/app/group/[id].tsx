@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { useThemedStyles } from '../../src/theme/ThemeContext';
+import type { Palette } from '../../src/theme';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, TextInput,
   TouchableOpacity, KeyboardAvoidingView, Platform, Image,
@@ -21,6 +23,7 @@ interface GroupMsg {
 }
 
 export default function GroupChat() {
+  const s = useThemedStyles(make_s);
   const { id, name } = useLocalSearchParams<{ id: string; name: string }>();
   const router = useRouter();
   const { user } = useAuth();
@@ -144,7 +147,7 @@ export default function GroupChat() {
   );
 }
 
-const s = StyleSheet.create({
+const make_s = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

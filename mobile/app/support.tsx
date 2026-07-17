@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useThemedStyles } from '../src/theme/ThemeContext';
+import type { Palette } from '../src/theme';
 import {
   View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity,
   ActivityIndicator, KeyboardAvoidingView, Platform,
@@ -13,6 +15,7 @@ import { colors, radius, shadow } from '../src/theme';
 const CATEGORIES = ['Bug Report', 'Feature Request', 'Account Issue', 'Content Report', 'Other'];
 
 export default function Support() {
+  const s = useThemedStyles(make_s);
   const router = useRouter();
   const { user } = useAuth();
 
@@ -134,7 +137,7 @@ export default function Support() {
   );
 }
 
-const s = StyleSheet.create({
+const make_s = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

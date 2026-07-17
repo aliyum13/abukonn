@@ -1,4 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { useThemedStyles } from '../theme/ThemeContext';
+import type { Palette } from '../theme';
 import {
   View, Text, Image, StyleSheet, TouchableOpacity, Modal, Dimensions,
   ScrollView, TextInput, KeyboardAvoidingView, Platform, Alert,
@@ -37,6 +39,7 @@ export interface StoryGroup {
 
 // ── Story bar ────────────────────────────────────────────────────────────────
 export function StoryBar() {
+  const s = useThemedStyles(make_s);
   const [groups, setGroups] = useState<StoryGroup[]>([]);
   const [seen, setSeen] = useState<Set<number>>(new Set());
   const [viewing, setViewing] = useState<StoryGroup | null>(null);
@@ -146,6 +149,8 @@ function StoryViewer({
   onChangeGroup: (g: StoryGroup) => void;
   onClose: () => void;
 }) {
+  const s = useThemedStyles(make_s);
+  const v = useThemedStyles(make_v);
   const firstUnseen = group.stories.findIndex(st => !seen.has(st.id));
   const [idx, setIdx] = useState(firstUnseen >= 0 ? firstUnseen : 0);
   const [paused, setPaused] = useState(false);
@@ -310,6 +315,8 @@ function StoryViewer({
 const BG_COLORS = ['#16a34a', '#0ea5e9', '#8b5cf6', '#f43f5e', '#f59e0b', '#0a0a0a'];
 
 function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: () => void }) {
+  const s = useThemedStyles(make_s);
+  const c = useThemedStyles(make_c);
   const [mode, setMode] = useState<'text' | 'image'>('text');
   const [text, setText] = useState('');
   const [bg, setBg] = useState(BG_COLORS[0]);
@@ -535,7 +542,7 @@ function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: (
   );
 }
 
-const s = StyleSheet.create({
+const make_s = (colors: Palette) => StyleSheet.create({
   bar: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, flexGrow: 0 },
   item: { alignItems: 'center', width: 66 },
   ring: { width: 60, height: 60, borderRadius: 30, borderWidth: 2.5, alignItems: 'center', justifyContent: 'center' },
@@ -549,7 +556,7 @@ const s = StyleSheet.create({
   name: { fontSize: 11, color: colors.muted, marginTop: 4, maxWidth: 62 },
 });
 
-const v = StyleSheet.create({
+const make_v = (colors: Palette) => StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000' },
   content: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', zIndex: 1 },
   media: { width: W, height: H * 0.8 },
@@ -571,7 +578,7 @@ const v = StyleSheet.create({
   views: { color: '#fff', fontSize: 14 },
 });
 
-const c = StyleSheet.create({
+const make_c = (colors: Palette) => StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0a0a0a' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, paddingTop: 50 },
   action: { color: '#fff', fontWeight: '700', fontSize: 15 },

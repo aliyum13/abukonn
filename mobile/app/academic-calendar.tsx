@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useThemedStyles } from '../src/theme/ThemeContext';
+import type { Palette } from '../src/theme';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl,
   TouchableOpacity, Modal, ScrollView,
@@ -33,6 +35,7 @@ function dateRange(e: Entry): string {
 }
 
 export default function AcademicCalendar() {
+  const s = useThemedStyles(make_s);
   const router = useRouter();
   const [entries, setEntries] = useState<Entry[]>([]);
   const [sessions, setSessions] = useState<string[]>([]);
@@ -157,7 +160,7 @@ export default function AcademicCalendar() {
   );
 }
 
-const s = StyleSheet.create({
+const make_s = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

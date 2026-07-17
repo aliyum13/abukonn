@@ -1,8 +1,10 @@
 import { useEffect } from 'react';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
 import { AuthProvider } from '../src/context/AuthContext';
+import { ThemeProvider, useTheme } from '../src/theme/ThemeContext';
 
 // Tapping a push should land you on the thing it's about, not just open the app
 // wherever you last left it. The backend attaches a data payload to every push
@@ -41,15 +43,24 @@ function useNotificationRouting() {
 
 function Routes() {
   useNotificationRouting();
-  return <Stack screenOptions={{ headerShown: false }} />;
+  const { scheme } = useTheme();
+  return (
+    <>
+      {/* Flip status-bar icons to suit the background: dark icons on light, light on dark */}
+      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+      <Stack screenOptions={{ headerShown: false }} />
+    </>
+  );
 }
 
 export default function RootLayout() {
   return (
-    <SafeAreaProvider>
-      <AuthProvider>
-        <Routes />
-      </AuthProvider>
-    </SafeAreaProvider>
+    <ThemeProvider>
+      <SafeAreaProvider>
+        <AuthProvider>
+          <Routes />
+        </AuthProvider>
+      </SafeAreaProvider>
+    </ThemeProvider>
   );
 }

@@ -1,10 +1,13 @@
 import { View, Text, StyleSheet, TouchableOpacity, Image, Alert } from 'react-native';
+import { useThemedStyles } from '../../src/theme/ThemeContext';
+import type { Palette } from '../../src/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 import { colors, radius, shadow } from '../../src/theme';
 
 export default function Profile() {
+  const s = useThemedStyles(make_s);
   const { user, signOut } = useAuth();
   const router = useRouter();
 
@@ -49,7 +52,7 @@ export default function Profile() {
   );
 }
 
-const s = StyleSheet.create({
+const make_s = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   body: { flex: 1, alignItems: 'center', paddingTop: 48, paddingHorizontal: 24 },
   avatar: { width: 88, height: 88, borderRadius: 44, backgroundColor: '#dcfce7' },

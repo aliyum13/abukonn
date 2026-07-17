@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useThemedStyles } from '../../src/theme/ThemeContext';
+import type { Palette } from '../../src/theme';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl,
   Image, TouchableOpacity, Modal, ScrollView,
@@ -38,6 +40,7 @@ function timeAgo(iso: string) {
 }
 
 export default function News() {
+  const s = useThemedStyles(make_s);
   const { ref: listRef, setRefresh } = useTabScrollToTop<Article>();
   const [news, setNews] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
@@ -145,7 +148,7 @@ export default function News() {
   );
 }
 
-const s = StyleSheet.create({
+const make_s = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, backgroundColor: colors.surface },
   title: { fontSize: 20, fontWeight: '800', color: colors.text },

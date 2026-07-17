@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useThemedStyles } from '../src/theme/ThemeContext';
+import type { Palette } from '../src/theme';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, TextInput,
   TouchableOpacity, Image, RefreshControl,
@@ -28,6 +30,7 @@ interface Section {
 }
 
 function PersonRow({ person, onOpen }: { person: Person; onOpen: (id: number) => void }) {
+  const s = useThemedStyles(make_s);
   const [following, setFollowing] = useState(!!person.is_following);
   const [busy, setBusy] = useState(false);
 
@@ -80,6 +83,7 @@ function PersonRow({ person, onOpen }: { person: Person; onOpen: (id: number) =>
 }
 
 export default function Discover() {
+  const s = useThemedStyles(make_s);
   const router = useRouter();
   const [tab, setTab] = useState<'discover' | 'following'>('discover');
   const [sections, setSections] = useState<Section[]>([]);
@@ -226,7 +230,7 @@ export default function Discover() {
   );
 }
 
-const s = StyleSheet.create({
+const make_s = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
