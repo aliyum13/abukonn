@@ -17,6 +17,7 @@ import { apiFetch, API_URL } from '../../src/lib/api';
 import { getToken } from '../../src/lib/storage';
 import { colors, radius, shadow } from '../../src/theme';
 import { StoryBar } from '../../src/components/Stories';
+import { useAuth } from '../../src/context/AuthContext';
 
 interface Post {
   id: number;
@@ -30,6 +31,8 @@ interface Post {
   likes_count: number;
   comments_count: number;
   is_liked: boolean;
+  is_reposted?: boolean;
+  reposts_count?: number;
   created_at: string;
   post_subtype?: string | null;
   discussion_title?: string | null;
@@ -55,32 +58,41 @@ function timeAgo(iso: string) {
 // for the VirtualizedList slow-update warning on a large feed.
 interface PostCardProps {
   post: Post;
+  currentUserId?: number;
   onOpenProfile: (userId: number) => void;
   onToggleLike: (post: Post) => void;
   onOpenComments: (post: Post) => void;
+  onRepost: (post: Post) => void;
+  onMenu: (post: Post) => void;
 }
 
-const PostCard = memo(function PostCard({ post, onOpenProfile, onToggleLike, onOpenComments }: PostCardProps) {
+const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, onToggleLike, onOpenComments, onRepost, onMenu }: PostCardProps) {
   const s = useThemedStyles(make_s);
+  const { palette } = useTheme();
   return (
     <View style={s.card}>
-      <TouchableOpacity
-        style={s.row}
-        activeOpacity={0.7}
-        onPress={() => onOpenProfile(post.user_id)}
-      >
-        {post.author_photo ? (
-          <Image source={{ uri: post.author_photo }} style={s.avatar} />
-        ) : (
-          <View style={[s.avatar, s.fallback]}>
-            <Text style={s.letter}>{post.author_name?.charAt(0).toUpperCase()}</Text>
+      <View style={s.row}>
+        <TouchableOpacity
+          style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+          activeOpacity={0.7}
+          onPress={() => onOpenProfile(post.user_id)}
+        >
+          {post.author_photo ? (
+            <Image source={{ uri: post.author_photo }} style={s.avatar} />
+          ) : (
+            <View style={[s.avatar, s.fallback]}>
+              <Text style={s.letter}>{post.author_name?.charAt(0).toUpperCase()}</Text>
+            </View>
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={s.author}>{post.author_name}</Text>
+            <Text style={s.muted}>{post.author_department} · {timeAgo(post.created_at)}</Text>
           </View>
-        )}
-        <View style={{ flex: 1 }}>
-          <Text style={s.author}>{post.author_name}</Text>
-          <Text style={s.muted}>{post.author_department} · {timeAgo(post.created_at)}</Text>
-        </View>
-      </TouchableOpacity>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => onMenu(post)} hitSlop={12} style={s.menuDots}>
+          <Ionicons name="ellipsis-horizontal" size={20} color={palette.muted} />
+        </TouchableOpacity>
+      </View>
 
       {(post.post_subtype === 'question' || post.post_subtype === 'discussion')
         && post.discussion_title ? (
@@ -94,12 +106,20 @@ const PostCard = memo(function PostCard({ post, onOpenProfile, onToggleLike, onO
 
       <View style={s.actions}>
         <TouchableOpacity style={s.action} onPress={() => onToggleLike(post)}>
-          <Text style={[s.actionText, post.is_liked ? s.liked : null]}>
-            {post.is_liked ? '♥' : '♡'}  {post.likes_count}
-          </Text>
+          <Ionicons
+            name={post.is_liked ? 'heart' : 'heart-outline'}
+            size={20}
+            color={post.is_liked ? palette.danger : palette.textSecondary}
+          />
+          <Text style={[s.actionText, post.is_liked ? s.liked : null]}>{post.likes_count}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={s.action} onPress={() => onOpenComments(post)}>
-          <Text style={s.actionText}>💬  {post.comments_count}</Text>
+          <Ionicons name="chatbubble-outline" size={19} color={palette.textSecondary} />
+          <Text style={s.actionText}>{post.comments_count}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={s.action} onPress={() => onRepost(post)}>
+          <Ionicons name="repeat-outline" size={20} color={post.is_reposted ? palette.brand : palette.textSecondary} />
+          {post.reposts_count ? <Text style={[s.actionText, post.is_reposted ? { color: palette.brand } : null]}>{post.reposts_count}</Text> : null}
         </TouchableOpacity>
       </View>
     </View>
@@ -133,6 +153,8 @@ export default function Feed() {
     }
   }, []);
   const { scheme } = useTheme();
+  const { user } = useAuth();
+
   const insets = useSafeAreaInsets();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -221,6 +243,88 @@ export default function Feed() {
       mutateBoth(post.id, p => ({ ...p, is_liked: was, likes_count: p.likes_count + (was ? 1 : -1) }));
     }
   }, [mutateBoth]);
+
+  const repost = useCallback(async (post: Post) => {
+    const was = post.is_reposted;
+    mutateBoth(post.id, p => ({
+      ...p,
+      is_reposted: !was,
+      reposts_count: (p.reposts_count || 0) + (was ? -1 : 1),
+    }));
+    try {
+      await apiFetch(`/api/posts/${post.id}/repost`, { method: 'POST' });
+    } catch {
+      mutateBoth(post.id, p => ({
+        ...p,
+        is_reposted: was,
+        reposts_count: (p.reposts_count || 0) + (was ? 1 : -1),
+      }));
+    }
+  }, [mutateBoth]);
+
+  const deletePost = useCallback((post: Post) => {
+    Alert.alert('Delete post', 'This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: async () => {
+          // Optimistically remove from both lists.
+          setPosts(prev => prev.filter(p => p.id !== post.id));
+          setFollowingPosts(prev => prev.filter(p => p.id !== post.id));
+          try {
+            await apiFetch(`/api/posts/${post.id}`, { method: 'DELETE' });
+          } catch {
+            load(); // restore on failure
+          }
+        },
+      },
+    ]);
+  }, [load]);
+
+  const reportPost = useCallback((post: Post) => {
+    const reasons: { label: string; value: string }[] = [
+      { label: 'Spam', value: 'spam' },
+      { label: 'Harassment', value: 'harassment' },
+      { label: 'Hate speech', value: 'hate_speech' },
+      { label: 'Misinformation', value: 'misinformation' },
+      { label: 'Inappropriate content', value: 'inappropriate_content' },
+    ];
+    Alert.alert('Report post', 'Why are you reporting this?',
+      [
+        ...reasons.map(r => ({
+          text: r.label,
+          onPress: async () => {
+            try {
+              await apiFetch(`/api/moderation/report/post/${post.id}`, {
+                method: 'POST',
+                body: JSON.stringify({ reason: r.value }),
+              });
+              Alert.alert('Thanks', 'Your report has been submitted.');
+            } catch (err) {
+              const m = err instanceof Error ? err.message : '';
+              Alert.alert(m.includes('already') ? 'Already reported' : 'Could not report', m);
+            }
+          },
+        })),
+        { text: 'Cancel', style: 'cancel' as const },
+      ]);
+  }, []);
+
+  const openPostMenu = useCallback((post: Post) => {
+    const isOwn = user?.id === post.user_id;
+    if (isOwn) {
+      Alert.alert('Post options', undefined, [
+        { text: 'Delete post', style: 'destructive', onPress: () => deletePost(post) },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    } else {
+      Alert.alert('Post options', undefined, [
+        { text: 'Report post', style: 'destructive', onPress: () => reportPost(post) },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+  }, [user, deletePost, reportPost]);
+
 
   const openComments = useCallback(async (post: Post) => {
     setCommentsFor(post);
@@ -448,9 +552,12 @@ export default function Feed() {
           renderItem={({ item }) => (
             <PostCard
               post={item}
+              currentUserId={user?.id}
               onOpenProfile={openProfile}
               onToggleLike={toggleLike}
               onOpenComments={openComments}
+              onRepost={repost}
+              onMenu={openPostMenu}
             />
           )}
           initialNumToRender={6}
@@ -643,8 +750,9 @@ const make_s = (colors: Palette) => StyleSheet.create({
   content: { fontSize: 15, color: colors.text, lineHeight: 22 },
   image: { width: '100%', height: 300, borderRadius: 12, marginTop: 10, backgroundColor: colors.surfaceSubtle },
   actions: { flexDirection: 'row', gap: 24, marginTop: 12 },
-  action: { paddingVertical: 4 },
-  actionText: { fontSize: 14, color: colors.muted },
+  action: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 },
+  actionText: { fontSize: 14, color: colors.textSecondary },
+  menuDots: { padding: 4, marginLeft: 8 },
   liked: { color: colors.danger, fontWeight: '700' },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, minHeight: 56, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface },
   modalTitle: { fontSize: 16, fontWeight: '700', color: colors.text },
