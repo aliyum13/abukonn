@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../../src/lib/api';
 import { useAuth } from '../../src/context/AuthContext';
 import { colors } from '../../src/theme';
@@ -82,7 +83,13 @@ export default function GroupChat() {
           <Text style={s.title} numberOfLines={1}>{name}</Text>
           {memberCount > 0 ? <Text style={s.sub}>{memberCount} members</Text> : null}
         </View>
-        <View style={{ width: 50 }} />
+        <TouchableOpacity
+          onPress={() => router.push({ pathname: '/group-info', params: { id: String(id), name } })}
+          hitSlop={10}
+          style={{ width: 50, alignItems: 'flex-end' }}
+        >
+          <Ionicons name="information-circle-outline" size={24} color={colors.text} />
+        </TouchableOpacity>
       </View>
 
       <KeyboardAvoidingView
