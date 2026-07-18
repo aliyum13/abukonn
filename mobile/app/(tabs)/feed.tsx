@@ -18,6 +18,7 @@ import { getToken } from '../../src/lib/storage';
 import { colors, radius, shadow } from '../../src/theme';
 import { StoryBar } from '../../src/components/Stories';
 import { useAuth } from '../../src/context/AuthContext';
+import { friendlyPreview } from '../../src/lib/messagePreview';
 
 interface Post {
   id: number;
@@ -166,9 +167,15 @@ export default function Feed() {
   const [newImage, setNewImage] = useState<string | null>(null);
   const [posting, setPosting] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [feedTab, setFeedTab] = useState<'for_you' | 'following'>('for_you');
+  const [feedTab, setFeedTab] = useState<'for_you' | 'following' | 'messages'>('for_you');
   const [followingPosts, setFollowingPosts] = useState<Post[]>([]);
   const [followingLoading, setFollowingLoading] = useState(false);
+  const [conversations, setConversations] = useState<{
+    id: number; other_user_id: number; other_user_name: string;
+    other_user_photo: string | null; last_message: string | null;
+    last_message_at: string | null; unread_count: number;
+  }[]>([]);
+  const [conversationsLoading, setConversationsLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifUnread, setNotifUnread] = useState(0);
   const [category, setCategory] = useState('ALL');
@@ -209,6 +216,20 @@ export default function Feed() {
   }, []);
 
   useEffect(() => { if (feedTab === 'following') loadFollowing(); }, [feedTab, loadFollowing]);
+
+  const loadConversations = useCallback(async () => {
+    setConversationsLoading(true);
+    try {
+      const data = await apiFetch<{ conversations: typeof conversations }>('/api/messages/conversations');
+      setConversations(data.conversations || []);
+    } catch {
+      setConversations([]);
+    } finally {
+      setConversationsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { if (feedTab === 'messages') loadConversations(); }, [feedTab, loadConversations]);
 
   // Unread badges + who-to-follow (matches web).
   const refreshBadges = useCallback(() => {
@@ -539,18 +560,60 @@ export default function Feed() {
           <Text style={feedTab === 'following' ? s.feedTabOn : s.feedTabOff}>Following</Text>
           {feedTab === 'following' ? <View style={s.tabUnderline} /> : null}
         </TouchableOpacity>
-        <TouchableOpacity style={s.feedTab} onPress={() => router.push('/(tabs)/messages')}>
+        <TouchableOpacity style={s.feedTab} onPress={() => setFeedTab('messages')}>
           <View style={s.feedTabRow}>
-            <Text style={s.feedTabOff}>Messages</Text>
+            <Text style={feedTab === 'messages' ? s.feedTabOn : s.feedTabOff}>Messages</Text>
             {unreadCount > 0 ? (
               <View style={s.tabBadge}><Text style={s.tabBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text></View>
             ) : null}
           </View>
+          {feedTab === 'messages' ? <View style={s.tabUnderline} /> : null}
         </TouchableOpacity>
       </View>
 
       {loading ? (
         <View style={s.center}><ActivityIndicator size="large" color={colors.brand} /></View>
+      ) : feedTab === 'messages' ? (
+        <FlatList
+          data={conversations}
+          keyExtractor={c => String(c.id)}
+          refreshControl={
+            <RefreshControl refreshing={conversationsLoading}
+              onRefresh={loadConversations} tintColor={colors.brand} />
+          }
+          ListEmptyComponent={
+            conversationsLoading ? null : (
+              <View style={s.center}>
+                <Text style={s.muted}>No conversations yet</Text>
+                <Text style={s.mutedSmall}>Start a chat from someone&apos;s profile</Text>
+              </View>
+            )
+          }
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={s.convoRow}
+              onPress={() => router.push({ pathname: '/chat/[id]', params: { id: String(item.id), name: item.other_user_name } })}
+            >
+              {item.other_user_photo ? (
+                <Image source={{ uri: item.other_user_photo }} style={s.convoAvatar} />
+              ) : (
+                <View style={[s.convoAvatar, s.fallback]}>
+                  <Text style={s.letter}>{item.other_user_name?.charAt(0).toUpperCase()}</Text>
+                </View>
+              )}
+              <View style={{ flex: 1 }}>
+                <View style={s.convoTop}>
+                  <Text style={s.convoName} numberOfLines={1}>{item.other_user_name}</Text>
+                  <Text style={s.mutedSmall}>{item.last_message_at ? timeAgo(item.last_message_at) : ''}</Text>
+                </View>
+                <Text style={s.convoPreview} numberOfLines={1}>{friendlyPreview(item.last_message)}</Text>
+              </View>
+              {item.unread_count > 0 ? (
+                <View style={s.convoBadge}><Text style={s.convoBadgeText}>{item.unread_count > 9 ? '9+' : item.unread_count}</Text></View>
+              ) : null}
+            </TouchableOpacity>
+          )}
+        />
       ) : error ? (
         <View style={s.center}>
           <Text style={s.error}>{error}</Text>
@@ -725,6 +788,19 @@ const make_s = (colors: Palette) => StyleSheet.create({
   },
   tabBadgeText: { color: colors.white, fontSize: 10, fontWeight: '700' },
   mutedSmall: { color: colors.muted, fontSize: 13, marginTop: 4 },
+  convoRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
+    backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border,
+  },
+  convoAvatar: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.brand100 },
+  convoTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  convoName: { fontSize: 15, fontWeight: '700', color: colors.text, flex: 1 },
+  convoPreview: { fontSize: 14, color: colors.textSecondary, marginTop: 2 },
+  convoBadge: {
+    backgroundColor: colors.brand, borderRadius: 11, minWidth: 22, height: 22,
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6,
+  },
+  convoBadgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   bellWrap: { position: 'relative' },
   bell: { fontSize: 20 },

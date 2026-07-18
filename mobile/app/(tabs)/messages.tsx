@@ -7,6 +7,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { apiFetch } from '../../src/lib/api';
+import { friendlyPreview } from '../../src/lib/messagePreview';
 import { colors, radius, shadow } from '../../src/theme';
 
 interface Conversation {
@@ -86,7 +87,7 @@ export default function Messages() {
                   <Text style={s.muted}>{timeAgo(item.last_message_at)}</Text>
                 </View>
                 <Text style={s.preview} numberOfLines={1}>
-                  {item.last_message || 'No messages yet'}
+                  {friendlyPreview(item.last_message)}
                 </Text>
               </View>
               {item.unread_count > 0 ? (
