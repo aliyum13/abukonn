@@ -173,6 +173,8 @@ export default function Feed() {
   const [notifUnread, setNotifUnread] = useState(0);
   const [category, setCategory] = useState('ALL');
   const [suggestions, setSuggestions] = useState<{ id: number; full_name: string; department: string | null; level: string | null; profile_photo_url: string | null }[]>([]);
+  const [trending, setTrending] = useState<{ tag: string; post_count: number }[]>([]);
+  const [birthdays, setBirthdays] = useState<{ id: number; full_name: string; profile_photo_url: string | null }[]>([]);
 
   const [commentsFor, setCommentsFor] = useState<Post | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -220,6 +222,10 @@ export default function Feed() {
     refreshBadges();
     apiFetch<{ suggestions: typeof suggestions }>('/api/follows/suggestions')
       .then(d => setSuggestions(d.suggestions || [])).catch(() => {});
+    apiFetch<{ hashtags: typeof trending }>('/api/hashtags/trending?limit=6')
+      .then(d => setTrending(d.hashtags || [])).catch(() => {});
+    apiFetch<{ users: typeof birthdays }>('/api/users/birthdays/today')
+      .then(d => setBirthdays(d.users || [])).catch(() => {});
   }, [refreshBadges]);
 
   // Re-check unread counts whenever the feed regains focus — e.g. after you open
@@ -464,6 +470,32 @@ export default function Feed() {
               </View>
             )}
           />
+        </View>
+      ) : null}
+
+      {/* Birthdays today */}
+      {birthdays.length > 0 ? (
+        <View style={s.bdayWrap}>
+          <Text style={s.bdayTitle}>🎂 Birthdays today</Text>
+          <Text style={s.bdayNames}>
+            {birthdays.slice(0, 3).map(b => b.full_name).join(', ')}
+            {birthdays.length > 3 ? ` and ${birthdays.length - 3} more` : ''}
+          </Text>
+        </View>
+      ) : null}
+
+      {/* Trending hashtags */}
+      {trending.length > 0 ? (
+        <View style={s.trendWrap}>
+          <Text style={s.wtfTitle}>Trending</Text>
+          <View style={s.trendChips}>
+            {trending.map(t => (
+              <View key={t.tag} style={s.trendChip}>
+                <Text style={s.trendTag}>#{t.tag}</Text>
+                <Text style={s.trendCount}>{t.post_count} {t.post_count === 1 ? 'post' : 'posts'}</Text>
+              </View>
+            ))}
+          </View>
         </View>
       ) : null}
     </View>
@@ -723,6 +755,21 @@ const make_s = (colors: Palette) => StyleSheet.create({
     paddingVertical: 7, alignItems: 'center', width: '100%',
   },
   wtfFollowText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  bdayWrap: {
+    marginHorizontal: 12, marginTop: 10, padding: 14,
+    backgroundColor: colors.brand50, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.brand100,
+  },
+  bdayTitle: { fontSize: 14, fontWeight: '800', color: colors.brand },
+  bdayNames: { fontSize: 14, color: colors.textSecondary, marginTop: 4, lineHeight: 20 },
+  trendWrap: { paddingTop: 12, paddingBottom: 12, borderBottomWidth: 8, borderBottomColor: colors.bg },
+  trendChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16 },
+  trendChip: {
+    backgroundColor: colors.surface, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.border, paddingVertical: 8, paddingHorizontal: 12,
+  },
+  trendTag: { fontSize: 14, fontWeight: '700', color: colors.brand },
+  trendCount: { fontSize: 11, color: colors.muted, marginTop: 1 },
   modalClose: { paddingVertical: 4, paddingHorizontal: 4 },
   modalCloseText: { color: colors.brand, fontSize: 16, fontWeight: '600' },
   menuBtn: { fontSize: 24, color: colors.text },
