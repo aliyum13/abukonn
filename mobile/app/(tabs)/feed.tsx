@@ -3,8 +3,7 @@ import { useThemedStyles } from '../../src/theme/ThemeContext';
 import type { Palette } from '../../src/theme';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl, Image,
-  TouchableOpacity, TextInput, Modal, KeyboardAvoidingView, Platform, Alert,
-} from 'react-native';
+  TouchableOpacity, TextInput, Modal, KeyboardAvoidingView, Platform, Alert, ScrollView } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -165,6 +164,14 @@ export default function Feed() {
   const [composeOpen, setComposeOpen] = useState(false);
   const [newPost, setNewPost] = useState('');
   const [newImage, setNewImage] = useState<string | null>(null);
+  const [composerMode, setComposerMode] = useState<'post' | 'discussion' | 'question' | 'poll' | 'event'>('post');
+  const [composerCategory, setComposerCategory] = useState('GENERAL');
+  const [discussionTitle, setDiscussionTitle] = useState('');
+  const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
+  const [pollDuration, setPollDuration] = useState(24);
+  const [eventTitle, setEventTitle] = useState('');
+  const [eventDate, setEventDate] = useState('');
+  const [eventLocation, setEventLocation] = useState('');
   const [posting, setPosting] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [feedTab, setFeedTab] = useState<'for_you' | 'following' | 'messages'>('for_you');
@@ -407,28 +414,53 @@ export default function Feed() {
     if (!res.canceled && res.assets[0]) setNewImage(res.assets[0].uri);
   };
 
+  const resetComposer = () => {
+    setNewPost(''); setNewImage(null); setComposerMode('post');
+    setComposerCategory('GENERAL'); setDiscussionTitle('');
+    setPollOptions(['', '']); setPollDuration(24);
+    setEventTitle(''); setEventDate(''); setEventLocation('');
+  };
+
   const submitPost = async () => {
-    // An image on its own is a perfectly good post — don't require text.
-    if (!newPost.trim() && !newImage) return;
+    // Per-type validation, mirroring web.
+    if ((composerMode === 'discussion' || composerMode === 'question') && !discussionTitle.trim()) {
+      Alert.alert('Title required', 'Please add a title.'); return;
+    }
+    if (composerMode === 'poll' && pollOptions.filter(o => o.trim()).length < 2) {
+      Alert.alert('Poll needs options', 'Add at least two options.'); return;
+    }
+    if (composerMode === 'event' && (!eventTitle.trim() || !eventDate.trim())) {
+      Alert.alert('Event needs details', 'Add a title and date.'); return;
+    }
+    if (composerMode === 'post' && !newPost.trim() && !newImage) return;
+
     setPosting(true);
     try {
-      // If there's a photo, upload it to Cloudinary FIRST and post only the URL.
-      // Sending the file through the backend hangs on Railway's timeout — this is
-      // exactly what web does, and why text posts worked but image posts didn't.
       let imageUrl: string | null = null;
       if (newImage) imageUrl = await uploadImage(newImage, 'abukonn/posts');
 
-      await apiFetch('/api/posts', {
-        method: 'POST',
-        body: JSON.stringify({
-          content: newPost.trim(),
-          category: 'GENERAL',
-          ...(imageUrl ? { image_url: imageUrl } : {}),
-        }),
-      });
+      const body: Record<string, unknown> = {
+        content: newPost.trim(),
+        category: composerCategory,
+        ...(imageUrl ? { image_url: imageUrl } : {}),
+      };
+      if (composerMode === 'discussion' || composerMode === 'question') {
+        body.post_subtype = composerMode;
+        body.discussion_title = discussionTitle.trim();
+      } else if (composerMode === 'poll') {
+        body.post_subtype = 'poll';
+        body.poll_options = JSON.stringify(pollOptions.filter(o => o.trim()));
+        body.poll_duration_hours = pollDuration;
+      } else if (composerMode === 'event') {
+        body.post_subtype = 'event';
+        body.event_title = eventTitle.trim();
+        body.event_date = eventDate.trim();
+        if (eventLocation.trim()) body.event_location = eventLocation.trim();
+      }
 
-      setNewPost('');
-      setNewImage(null);
+      await apiFetch('/api/posts', { method: 'POST', body: JSON.stringify(body) });
+
+      resetComposer();
       setComposeOpen(false);
       load();
     } catch (err) {
@@ -690,50 +722,140 @@ export default function Feed() {
         <SafeAreaView style={s.safe} edges={['bottom']}>
           <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <View style={[s.modalHeader, { paddingTop: insets.top + 12 }]}>
-              <TouchableOpacity onPress={() => setComposeOpen(false)} hitSlop={12} style={s.modalClose}>
+              <TouchableOpacity onPress={() => { resetComposer(); setComposeOpen(false); }} hitSlop={12} style={s.modalClose}>
                 <Text style={s.modalCloseText}>Cancel</Text>
               </TouchableOpacity>
               <Text style={s.modalTitle}>New post</Text>
-              <TouchableOpacity
-                onPress={submitPost}
-                disabled={posting || (!newPost.trim() && !newImage)}
-              >
+              <TouchableOpacity onPress={submitPost} disabled={posting}>
                 {posting ? <ActivityIndicator color={colors.brand} />
-                  : (
-                    <Text style={[s.post, (!newPost.trim() && !newImage) ? { opacity: 0.4 } : null]}>
-                      Post
-                    </Text>
-                  )}
+                  : <Text style={s.post}>Post</Text>}
               </TouchableOpacity>
             </View>
 
-            <TextInput
-              style={s.composeInput}
-              placeholder="What's happening on campus?"
-              placeholderTextColor={colors.muted}
-              value={newPost}
-              onChangeText={setNewPost}
-              multiline
-              autoFocus
-            />
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 24 }}>
+              {/* Post type selector */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.modeRow}>
+                {([
+                  { id: 'post', label: 'Post', icon: 'create-outline' },
+                  { id: 'discussion', label: 'Discussion', icon: 'chatbubbles-outline' },
+                  { id: 'question', label: 'Question', icon: 'help-circle-outline' },
+                  { id: 'poll', label: 'Poll', icon: 'stats-chart-outline' },
+                  { id: 'event', label: 'Event', icon: 'calendar-outline' },
+                ] as const).map(m => (
+                  <TouchableOpacity
+                    key={m.id}
+                    style={[s.modeChip, composerMode === m.id ? s.modeChipOn : null]}
+                    onPress={() => setComposerMode(m.id)}
+                  >
+                    <Ionicons name={m.icon} size={16} color={composerMode === m.id ? '#fff' : colors.textSecondary} />
+                    <Text style={composerMode === m.id ? s.modeTextOn : s.modeText}>{m.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
 
-            {newImage ? (
-              <View style={s.previewWrap}>
-                <Image source={{ uri: newImage }} style={s.preview} resizeMode="contain" />
-                <TouchableOpacity style={s.removeImg} onPress={() => setNewImage(null)}>
-                  <Text style={s.removeImgText}>✕</Text>
+              {/* Title for discussion / question */}
+              {(composerMode === 'discussion' || composerMode === 'question') ? (
+                <TextInput
+                  style={s.titleInput}
+                  placeholder={composerMode === 'question' ? 'Your question' : 'Discussion title'}
+                  placeholderTextColor={colors.muted}
+                  value={discussionTitle}
+                  onChangeText={setDiscussionTitle}
+                />
+              ) : null}
+
+              {/* Event fields */}
+              {composerMode === 'event' ? (
+                <>
+                  <TextInput style={s.titleInput} placeholder="Event title" placeholderTextColor={colors.muted} value={eventTitle} onChangeText={setEventTitle} />
+                  <TextInput style={s.fieldInput} placeholder="Date (e.g. 2026-03-15 3:00 PM)" placeholderTextColor={colors.muted} value={eventDate} onChangeText={setEventDate} />
+                  <TextInput style={s.fieldInput} placeholder="Location (optional)" placeholderTextColor={colors.muted} value={eventLocation} onChangeText={setEventLocation} />
+                </>
+              ) : null}
+
+              <TextInput
+                style={s.composeInput}
+                placeholder={
+                  composerMode === 'question' ? 'Add details (optional)'
+                  : composerMode === 'poll' ? 'Ask something...'
+                  : composerMode === 'event' ? 'Describe the event (optional)'
+                  : "What's happening on campus?"
+                }
+                placeholderTextColor={colors.muted}
+                value={newPost}
+                onChangeText={setNewPost}
+                multiline
+              />
+
+              {/* Poll options */}
+              {composerMode === 'poll' ? (
+                <View style={s.pollBox}>
+                  {pollOptions.map((opt, i) => (
+                    <View key={i} style={s.pollOptRow}>
+                      <TextInput
+                        style={s.pollInput}
+                        placeholder={`Option ${i + 1}`}
+                        placeholderTextColor={colors.muted}
+                        value={opt}
+                        onChangeText={(v) => setPollOptions(prev => prev.map((o, idx) => idx === i ? v : o))}
+                      />
+                      {pollOptions.length > 2 ? (
+                        <TouchableOpacity onPress={() => setPollOptions(prev => prev.filter((_, idx) => idx !== i))} hitSlop={8}>
+                          <Ionicons name="close-circle" size={20} color={colors.muted} />
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  ))}
+                  {pollOptions.length < 6 ? (
+                    <TouchableOpacity onPress={() => setPollOptions(prev => [...prev, ''])} style={s.addOpt}>
+                      <Ionicons name="add" size={18} color={colors.brand} />
+                      <Text style={s.addOptText}>Add option</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  <View style={s.durationRow}>
+                    <Text style={s.durationLabel}>Duration:</Text>
+                    {[24, 48, 72].map(h => (
+                      <TouchableOpacity key={h} style={[s.durChip, pollDuration === h ? s.durChipOn : null]} onPress={() => setPollDuration(h)}>
+                        <Text style={pollDuration === h ? s.durTextOn : s.durText}>{h}h</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+
+              {/* Category chips */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.catComposeRow}>
+                {POST_CATEGORIES.filter(c => c.value !== 'ALL').map(c => (
+                  <TouchableOpacity
+                    key={c.value}
+                    style={[s.catChip, composerCategory === c.value ? s.catChipOn : null]}
+                    onPress={() => setComposerCategory(c.value)}
+                  >
+                    <Text style={composerCategory === c.value ? s.catTextOn : s.catText}>{c.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {newImage ? (
+                <View style={s.previewWrap}>
+                  <Image source={{ uri: newImage }} style={s.preview} resizeMode="contain" />
+                  <TouchableOpacity style={s.removeImg} onPress={() => setNewImage(null)}>
+                    <Text style={s.removeImgText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+
+              <View style={s.composeTools}>
+                <TouchableOpacity style={s.tool} onPress={pickImage}>
+                  <Ionicons name="image-outline" size={20} color={colors.brand} />
+                  <Text style={s.toolText}>Photo</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={s.tool} onPress={takePhoto}>
+                  <Ionicons name="camera-outline" size={20} color={colors.brand} />
+                  <Text style={s.toolText}>Camera</Text>
                 </TouchableOpacity>
               </View>
-            ) : null}
-
-            <View style={s.composeTools}>
-              <TouchableOpacity style={s.tool} onPress={pickImage}>
-                <Text style={s.toolText}>🖼  Photo</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={s.tool} onPress={takePhoto}>
-                <Text style={s.toolText}>📷  Camera</Text>
-              </TouchableOpacity>
-            </View>
+            </ScrollView>
           </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
@@ -909,6 +1031,38 @@ const make_s = (colors: Palette) => StyleSheet.create({
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, minHeight: 56, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface },
   modalTitle: { fontSize: 16, fontWeight: '700', color: colors.text },
   post: { color: colors.brand, fontWeight: '700', fontSize: 15 },
+  modeRow: { paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
+  modeChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
+  },
+  modeChipOn: { backgroundColor: colors.brand, borderColor: colors.brand },
+  modeText: { fontSize: 13, color: colors.textSecondary, fontWeight: '600' },
+  modeTextOn: { fontSize: 13, color: '#fff', fontWeight: '700' },
+  titleInput: {
+    fontSize: 17, fontWeight: '700', color: colors.text,
+    paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6,
+  },
+  fieldInput: {
+    fontSize: 15, color: colors.text, backgroundColor: colors.surfaceSubtle,
+    marginHorizontal: 16, marginTop: 8, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11,
+  },
+  pollBox: { paddingHorizontal: 16, paddingTop: 8 },
+  pollOptRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  pollInput: {
+    flex: 1, fontSize: 15, color: colors.text, backgroundColor: colors.surfaceSubtle,
+    borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10,
+  },
+  addOpt: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6 },
+  addOptText: { color: colors.brand, fontWeight: '700', fontSize: 14 },
+  durationRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  durationLabel: { fontSize: 13, color: colors.textSecondary, fontWeight: '600' },
+  durChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: colors.border },
+  durChipOn: { backgroundColor: colors.brand, borderColor: colors.brand },
+  durText: { fontSize: 13, color: colors.textSecondary, fontWeight: '600' },
+  durTextOn: { fontSize: 13, color: '#fff', fontWeight: '700' },
+  catComposeRow: { paddingHorizontal: 12, paddingVertical: 12, gap: 8 },
   composeInput: { flex: 1, padding: 16, fontSize: 16, color: colors.text, textAlignVertical: 'top' },
   previewWrap: { marginHorizontal: 16, marginBottom: 12 },
   preview: { width: '100%', height: 220, borderRadius: 12, backgroundColor: '#f3f4f6' },
@@ -921,7 +1075,7 @@ const make_s = (colors: Palette) => StyleSheet.create({
     flexDirection: 'row', gap: 10, padding: 12,
     borderTopWidth: 1, borderTopColor: colors.border,
   },
-  tool: {
+  tool: { flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20,
     borderWidth: 1, borderColor: colors.border,
   },
