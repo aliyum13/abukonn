@@ -25,6 +25,7 @@ export function MenuSheet({ visible, onClose }: { visible: boolean; onClose: () 
   const router = useRouter();
   const [msgUnread, setMsgUnread] = useState(0);
   const [alertUnread, setAlertUnread] = useState(0);
+  const [isRep, setIsRep] = useState(false);
 
   // Web shows unread counts next to these — match that. Fetched each time the
   // menu opens so the numbers are fresh without polling in the background.
@@ -34,6 +35,9 @@ export function MenuSheet({ visible, onClose }: { visible: boolean; onClose: () 
       .then(d => setMsgUnread(d.count || 0)).catch(() => {});
     apiFetch<{ count: number }>('/api/notifications/unread-count')
       .then(d => setAlertUnread(d.count || 0)).catch(() => {});
+    // Only show Class Rep tools to actual reps.
+    apiFetch<{ classes: unknown[] }>('/api/class-reps/my-classes')
+      .then(d => setIsRep((d.classes?.length || 0) > 0)).catch(() => setIsRep(false));
   }, [visible]);
 
   const go = (path: string) => {
@@ -58,14 +62,27 @@ export function MenuSheet({ visible, onClose }: { visible: boolean; onClose: () 
           <View style={s.handle} />
           <Text style={s.title}>Menu</Text>
           <ScrollView>
-            {LINKS.map(l => (
-              <TouchableOpacity key={l.path} style={s.row} onPress={() => go(l.path)}>
-                <Text style={s.icon}>{l.icon}</Text>
-                <Text style={s.label}>{l.label}</Text>
-                {badgeFor(l.badge)}
-                <Text style={s.arrow}>›</Text>
-              </TouchableOpacity>
-            ))}
+            {LINKS.flatMap(l => {
+              const rows = [(
+                <TouchableOpacity key={l.path} style={s.row} onPress={() => go(l.path)}>
+                  <Text style={s.icon}>{l.icon}</Text>
+                  <Text style={s.label}>{l.label}</Text>
+                  {badgeFor(l.badge)}
+                  <Text style={s.arrow}>›</Text>
+                </TouchableOpacity>
+              )];
+              // Class Rep tools sit right after Groups, and only for actual reps.
+              if (l.path === '/groups' && isRep) {
+                rows.push(
+                  <TouchableOpacity key="/class-rep" style={s.row} onPress={() => go('/class-rep')}>
+                    <Text style={s.icon}>🎓</Text>
+                    <Text style={s.label}>Class Rep Tools</Text>
+                    <Text style={s.arrow}>›</Text>
+                  </TouchableOpacity>
+                );
+              }
+              return rows;
+            })}
           </ScrollView>
         </TouchableOpacity>
       </TouchableOpacity>
