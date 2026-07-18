@@ -3,10 +3,11 @@ import { useThemedStyles } from '../../src/theme/ThemeContext';
 import type { Palette } from '../../src/theme';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, Image,
-  TouchableOpacity, RefreshControl,
+  TouchableOpacity, RefreshControl, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../../src/lib/api';
 import { useAuth } from '../../src/context/AuthContext';
 import { colors } from '../../src/theme';
@@ -74,6 +75,58 @@ export default function UserProfile() {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Connect (mutual connection, separate from follow).
+  const [connectStatus, setConnectStatus] = useState<{ status: string; request_id?: number; initiated_by_me?: boolean } | null>(null);
+  const [connectBusy, setConnectBusy] = useState(false);
+
+  useEffect(() => {
+    apiFetch<{ status: string; request_id?: number; initiated_by_me?: boolean }>(`/api/connect/${id}/status`)
+      .then(setConnectStatus)
+      .catch(() => setConnectStatus({ status: 'none' }));
+  }, [id]);
+
+  const handleConnect = async () => {
+    if (connectBusy || !connectStatus) return;
+    setConnectBusy(true);
+    try {
+      if (connectStatus.status === 'none') {
+        const res = await apiFetch<{ request: { id: number } }>(`/api/connect/${id}`, { method: 'POST' });
+        setConnectStatus({ status: 'pending', request_id: res.request?.id, initiated_by_me: true });
+      } else if (connectStatus.status === 'pending' && connectStatus.initiated_by_me) {
+        await apiFetch(`/api/connect/${id}`, { method: 'DELETE' });
+        setConnectStatus({ status: 'none' });
+      } else if (connectStatus.status === 'pending' && !connectStatus.initiated_by_me && connectStatus.request_id) {
+        await apiFetch(`/api/connect/${connectStatus.request_id}/accept`, { method: 'PATCH' });
+        setConnectStatus({ status: 'connected' });
+      } else if (connectStatus.status === 'connected') {
+        Alert.alert('Remove connection', `Disconnect from ${user?.full_name}?`, [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Remove', style: 'destructive',
+            onPress: async () => {
+              try {
+                await apiFetch(`/api/connect/${id}/remove`, { method: 'DELETE' });
+                setConnectStatus({ status: 'none' });
+              } catch { /* ignore */ }
+            },
+          },
+        ]);
+      }
+    } catch (err) {
+      Alert.alert('Could not update connection', err instanceof Error ? err.message : '');
+    } finally {
+      setConnectBusy(false);
+    }
+  };
+
+  const declineIncoming = async () => {
+    if (!connectStatus?.request_id) return;
+    try {
+      await apiFetch(`/api/connect/${connectStatus.request_id}/decline`, { method: 'PATCH' });
+      setConnectStatus({ status: 'none' });
+    } catch { /* ignore */ }
+  };
 
   // Optimistic follow: flip immediately, roll back if the server refuses.
   const toggleFollow = async () => {
@@ -207,6 +260,42 @@ export default function UserProfile() {
               </View>
             ) : null}
 
+            {/* Connect (mutual) — separate from follow */}
+            {!isMe && connectStatus ? (
+              connectStatus.status === 'pending' && !connectStatus.initiated_by_me ? (
+                <View style={s.connectRow}>
+                  <TouchableOpacity style={s.connectBtn} onPress={handleConnect} disabled={connectBusy}>
+                    <Ionicons name="checkmark" size={16} color="#fff" />
+                    <Text style={s.connectText}>Accept</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={s.declineBtn} onPress={declineIncoming}>
+                    <Text style={s.declineText}>Decline</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={[s.connectBtnFull, connectStatus.status === 'connected' ? s.connectedBtn : null]}
+                  onPress={handleConnect}
+                  disabled={connectBusy}
+                >
+                  <Ionicons
+                    name={
+                      connectStatus.status === 'connected' ? 'people'
+                      : connectStatus.status === 'pending' ? 'time-outline'
+                      : 'person-add-outline'
+                    }
+                    size={16}
+                    color={connectStatus.status === 'connected' ? colors.brand : '#fff'}
+                  />
+                  <Text style={connectStatus.status === 'connected' ? s.connectedText : s.connectText}>
+                    {connectStatus.status === 'connected' ? 'Connected'
+                      : connectStatus.status === 'pending' ? 'Requested'
+                      : 'Connect'}
+                  </Text>
+                </TouchableOpacity>
+              )
+            ) : null}
+
             <Text style={s.sectionTitle}>Posts</Text>
           </View>
         }
@@ -256,6 +345,23 @@ const make_s = (colors: Palette) => StyleSheet.create({
   statNum: { fontSize: 17, fontWeight: '800', color: colors.text },
   statLabel: { fontSize: 12, color: colors.muted, marginTop: 2 },
   actions: { flexDirection: 'row', gap: 10, marginTop: 20, width: '100%' },
+  connectRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  connectBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: colors.brand, borderRadius: 999, paddingVertical: 10,
+  },
+  connectBtnFull: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: colors.brand, borderRadius: 999, paddingVertical: 10, marginTop: 10,
+  },
+  connectedBtn: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.brand },
+  connectText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  connectedText: { color: colors.brand, fontWeight: '700', fontSize: 14 },
+  declineBtn: {
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingVertical: 10,
+  },
+  declineText: { color: colors.textSecondary, fontWeight: '700', fontSize: 14 },
   followBtn: {
     flex: 1, backgroundColor: colors.brand, borderRadius: 10,
     paddingVertical: 11, alignItems: 'center',

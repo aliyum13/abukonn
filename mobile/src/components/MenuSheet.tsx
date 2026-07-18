@@ -12,6 +12,7 @@ const LINKS: { path: string; label: string; icon: string; badge?: 'messages' | '
   { path: '/(tabs)/messages', label: 'Messages', icon: '💬', badge: 'messages' },
   { path: '/(tabs)/notifications', label: 'Notifications', icon: '🔔', badge: 'alerts' },
   { path: '/discover', label: 'Discover People', icon: '🧭' },
+  { path: '/connect', label: 'Connections', icon: '🤝' },
   { path: '/groups', label: 'Groups', icon: '👥' },
   { path: '/timetable', label: 'Timetable', icon: '🗓️' },
   { path: '/academic-calendar', label: 'Academic Calendar', icon: '📅' },
