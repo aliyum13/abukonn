@@ -505,21 +505,33 @@ export default function Feed() {
         </View>
       ) : null}
 
-      {/* Trending hashtags */}
+      {/* Trending hashtags — vertical list with proportional bars, matching web */}
       {trending.length > 0 ? (
         <View style={s.trendWrap}>
-          <Text style={s.wtfTitle}>Trending</Text>
-          <View style={s.trendChips}>
-            {trending.map(t => (
-              <TouchableOpacity
-                key={t.tag}
-                style={s.trendChip}
-                onPress={() => router.push({ pathname: '/hashtag/[tag]', params: { tag: t.tag } })}
-              >
-                <Text style={s.trendTag}>#{t.tag}</Text>
-                <Text style={s.trendCount}>{t.post_count} {t.post_count === 1 ? 'post' : 'posts'}</Text>
-              </TouchableOpacity>
-            ))}
+          <Text style={s.trendHeading}>Trending on campus</Text>
+          <View style={s.trendList}>
+            {trending.map((t, idx) => {
+              const maxCount = trending[0]?.post_count || 1;
+              const pct = Math.max(8, (t.post_count / maxCount) * 100);
+              return (
+                <TouchableOpacity
+                  key={t.tag}
+                  style={s.trendRow}
+                  onPress={() => router.push({ pathname: '/hashtag/[tag]', params: { tag: t.tag } })}
+                >
+                  <Text style={s.trendRank}>{idx + 1}</Text>
+                  <View style={{ flex: 1 }}>
+                    <View style={s.trendTagRow}>
+                      <Text style={s.trendTag} numberOfLines={1}>#{t.tag}</Text>
+                      <Text style={s.trendCount}>{t.post_count}</Text>
+                    </View>
+                    <View style={s.trendBarTrack}>
+                      <View style={[s.trendBarFill, { width: `${pct}%` }]} />
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
       ) : null}
@@ -850,13 +862,15 @@ const make_s = (colors: Palette) => StyleSheet.create({
   bdayTitle: { fontSize: 14, fontWeight: '800', color: colors.brand },
   bdayNames: { fontSize: 14, color: colors.textSecondary, marginTop: 4, lineHeight: 20 },
   trendWrap: { paddingTop: 12, paddingBottom: 12, borderBottomWidth: 8, borderBottomColor: colors.bg },
-  trendChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16 },
-  trendChip: {
-    backgroundColor: colors.surface, borderRadius: radius.md,
-    borderWidth: 1, borderColor: colors.border, paddingVertical: 8, paddingHorizontal: 12,
-  },
-  trendTag: { fontSize: 14, fontWeight: '700', color: colors.brand },
-  trendCount: { fontSize: 11, color: colors.muted, marginTop: 1 },
+  trendHeading: { fontSize: 16, fontWeight: '800', color: colors.text, paddingHorizontal: 16, marginBottom: 8 },
+  trendList: { paddingHorizontal: 12 },
+  trendRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 4 },
+  trendRank: { fontSize: 14, fontWeight: '800', color: colors.muted, width: 18, textAlign: 'center' },
+  trendTagRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  trendTag: { fontSize: 14, fontWeight: '700', color: colors.brand, flex: 1 },
+  trendCount: { fontSize: 12, color: colors.muted, marginLeft: 8 },
+  trendBarTrack: { height: 4, borderRadius: 2, backgroundColor: colors.surfaceSubtle, marginTop: 5, overflow: 'hidden' },
+  trendBarFill: { height: '100%', borderRadius: 2, backgroundColor: colors.brand },
   modalClose: { paddingVertical: 4, paddingHorizontal: 4 },
   modalCloseText: { color: colors.brand, fontSize: 16, fontWeight: '600' },
   menuBtn: { fontSize: 24, color: colors.text },
