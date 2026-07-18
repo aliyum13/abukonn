@@ -17,7 +17,8 @@ interface Post {
   likes_count: number; comments_count: number; is_liked: boolean; created_at: string;
   discussion_title?: string | null;
 }
-interface Comment { id: number; content: string; author_name: string; created_at: string }
+interface Comment { id: number; content: string; author_name: string; created_at: string; reply_count?: number }
+interface Reply { id: number; content: string; author_name: string; created_at: string }
 
 function timeAgo(iso: string) {
   const d = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -37,6 +38,49 @@ export default function SinglePost() {
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  // Threaded replies: which comment is expanded, its loaded replies, and the
+  // comment currently being replied to.
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [repliesByComment, setRepliesByComment] = useState<Record<number, Reply[]>>({});
+  const [replyingTo, setReplyingTo] = useState<number | null>(null);
+  const [replyText, setReplyText] = useState('');
+
+  const loadReplies = useCallback(async (commentId: number) => {
+    try {
+      const d = await apiFetch<{ replies: Reply[] }>(`/api/posts/${id}/comments/${commentId}/replies`);
+      setRepliesByComment(prev => ({ ...prev, [commentId]: d.replies || [] }));
+    } catch {
+      setRepliesByComment(prev => ({ ...prev, [commentId]: [] }));
+    }
+  }, [id]);
+
+  const toggleReplies = (commentId: number) => {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(commentId)) { next.delete(commentId); }
+      else { next.add(commentId); if (!repliesByComment[commentId]) loadReplies(commentId); }
+      return next;
+    });
+  };
+
+  const sendReply = async (commentId: number) => {
+    const body = replyText.trim();
+    if (!body) return;
+    setReplyText('');
+    try {
+      const res = await apiFetch<{ reply: Reply }>(`/api/posts/${id}/comments/${commentId}/replies`, {
+        method: 'POST', body: JSON.stringify({ content: body }),
+      });
+      if (res.reply) {
+        setRepliesByComment(prev => ({ ...prev, [commentId]: [...(prev[commentId] || []), res.reply] }));
+        setComments(prev => prev.map(c => c.id === commentId ? { ...c, reply_count: (c.reply_count || 0) + 1 } : c));
+        setExpanded(prev => new Set(prev).add(commentId));
+      }
+      setReplyingTo(null);
+    } catch {
+      setReplyText(body);
+    }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -138,7 +182,50 @@ export default function SinglePost() {
               <View style={s.comment}>
                 <Text style={s.commentAuthor}>{item.author_name}</Text>
                 <Text style={s.commentText}>{item.content}</Text>
-                <Text style={s.commentTime}>{timeAgo(item.created_at)}</Text>
+                <View style={s.commentActions}>
+                  <Text style={s.commentTime}>{timeAgo(item.created_at)}</Text>
+                  <TouchableOpacity onPress={() => { setReplyingTo(replyingTo === item.id ? null : item.id); setReplyText(''); }}>
+                    <Text style={s.replyAction}>Reply</Text>
+                  </TouchableOpacity>
+                  {item.reply_count ? (
+                    <TouchableOpacity onPress={() => toggleReplies(item.id)}>
+                      <Text style={s.replyAction}>
+                        {expanded.has(item.id) ? 'Hide' : 'View'} {item.reply_count} {item.reply_count === 1 ? 'reply' : 'replies'}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+
+                {/* Reply composer for this comment */}
+                {replyingTo === item.id ? (
+                  <View style={s.replyBox}>
+                    <TextInput
+                      style={s.replyInput}
+                      value={replyText}
+                      onChangeText={setReplyText}
+                      placeholder={`Reply to ${item.author_name}...`}
+                      placeholderTextColor={colors.muted}
+                      autoFocus
+                      multiline
+                    />
+                    <TouchableOpacity style={s.replySend} onPress={() => sendReply(item.id)} disabled={!replyText.trim()}>
+                      <Ionicons name="send" size={16} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+
+                {/* Nested replies */}
+                {expanded.has(item.id) ? (
+                  <View style={s.replyThread}>
+                    {(repliesByComment[item.id] || []).map(r => (
+                      <View key={r.id} style={s.reply}>
+                        <Text style={s.commentAuthor}>{r.author_name}</Text>
+                        <Text style={s.commentText}>{r.content}</Text>
+                        <Text style={s.commentTime}>{timeAgo(r.created_at)}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
               </View>
             )}
           />
@@ -189,6 +276,16 @@ const make_s = (colors: Palette) => StyleSheet.create({
   commentAuthor: { fontSize: 14, fontWeight: '700', color: colors.text },
   commentText: { fontSize: 15, color: colors.text, marginTop: 2, lineHeight: 20 },
   commentTime: { fontSize: 12, color: colors.muted, marginTop: 4 },
+  commentActions: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 4 },
+  replyAction: { fontSize: 12, fontWeight: '700', color: colors.brand, marginTop: 4 },
+  replyBox: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 10 },
+  replyInput: {
+    flex: 1, backgroundColor: colors.bg, borderRadius: 16, borderWidth: 1, borderColor: colors.border,
+    paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, color: colors.text, maxHeight: 90,
+  },
+  replySend: { backgroundColor: colors.brand, borderRadius: 16, width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
+  replyThread: { marginTop: 10, marginLeft: 16, paddingLeft: 12, borderLeftWidth: 2, borderLeftColor: colors.border, gap: 12 },
+  reply: {},
   inputBar: {
     flexDirection: 'row', alignItems: 'flex-end', gap: 8, padding: 10,
     borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface,

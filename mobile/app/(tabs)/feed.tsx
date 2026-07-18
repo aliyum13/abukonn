@@ -869,7 +869,17 @@ export default function Feed() {
                 <Text style={s.modalCloseText}>‹ Back</Text>
               </TouchableOpacity>
               <Text style={s.modalTitle}>Comments</Text>
-              <View style={{ width: 50 }} />
+              <TouchableOpacity
+                onPress={() => {
+                  const pid = commentsFor?.id;
+                  setCommentsFor(null);
+                  if (pid) router.push({ pathname: '/post/[id]', params: { id: String(pid) } });
+                }}
+                hitSlop={8}
+                style={{ width: 50, alignItems: 'flex-end' }}
+              >
+                <Ionicons name="open-outline" size={20} color={colors.brand} />
+              </TouchableOpacity>
             </View>
 
             {commentsLoading ? (
