@@ -36,6 +36,14 @@ interface Post {
   created_at: string;
   post_subtype?: string | null;
   discussion_title?: string | null;
+  poll_options?: Array<{ id: number; option_text: string; vote_count: number }> | null;
+  voted_option_id?: number | null;
+  poll_ends_at?: string | null;
+  event_title?: string | null;
+  event_date?: string | null;
+  event_location?: string | null;
+  event_rsvp_count?: number;
+  is_attending?: boolean;
 }
 
 interface Comment {
@@ -64,9 +72,11 @@ interface PostCardProps {
   onOpenComments: (post: Post) => void;
   onRepost: (post: Post) => void;
   onMenu: (post: Post) => void;
+  onVote: (post: Post, optionId: number) => void;
+  onRSVP: (post: Post) => void;
 }
 
-const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, onToggleLike, onOpenComments, onRepost, onMenu }: PostCardProps) {
+const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, onToggleLike, onOpenComments, onRepost, onMenu, onVote, onRSVP }: PostCardProps) {
   const s = useThemedStyles(make_s);
   const { palette } = useTheme();
   return (
@@ -100,6 +110,72 @@ const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, on
         ) : null}
 
       {post.content ? <Text style={s.content}>{post.content}</Text> : null}
+
+      {/* Poll */}
+      {post.post_subtype === 'poll' && post.poll_options ? (
+        <View style={s.pollWrap}>
+          {(() => {
+            const totalVotes = post.poll_options.reduce((sum, o) => sum + o.vote_count, 0);
+            const hasVoted = post.voted_option_id != null;
+            const ended = post.poll_ends_at ? new Date(post.poll_ends_at) < new Date() : false;
+            return post.poll_options.map(opt => {
+              const pct = totalVotes > 0 ? Math.round((opt.vote_count / totalVotes) * 100) : 0;
+              const isMine = post.voted_option_id === opt.id;
+              const showResults = hasVoted || ended;
+              return (
+                <TouchableOpacity
+                  key={opt.id}
+                  style={s.pollOpt}
+                  disabled={hasVoted || ended}
+                  onPress={() => onVote(post, opt.id)}
+                  activeOpacity={0.7}
+                >
+                  {showResults ? <View style={[s.pollBar, isMine ? s.pollBarMine : null, { width: `${pct}%` }]} /> : null}
+                  <View style={s.pollOptContent}>
+                    <Text style={[s.pollOptText, isMine ? s.pollOptTextMine : null]} numberOfLines={2}>
+                      {isMine ? '✓ ' : ''}{opt.option_text}
+                    </Text>
+                    {showResults ? <Text style={s.pollPct}>{pct}%</Text> : null}
+                  </View>
+                </TouchableOpacity>
+              );
+            });
+          })()}
+          <Text style={s.pollMeta}>
+            {post.poll_options.reduce((sum, o) => sum + o.vote_count, 0)} votes
+            {post.poll_ends_at ? (new Date(post.poll_ends_at) < new Date() ? ' · ended' : ` · ends ${timeAgo(post.poll_ends_at)}`) : ''}
+          </Text>
+        </View>
+      ) : null}
+
+      {/* Event */}
+      {post.post_subtype === 'event' && post.event_title ? (
+        <View style={s.eventWrap}>
+          <View style={s.eventHeader}>
+            <Ionicons name="calendar" size={18} color={palette.brand} />
+            <Text style={s.eventTitle}>{post.event_title}</Text>
+          </View>
+          {post.event_date ? <Text style={s.eventDetail}>🗓  {post.event_date}</Text> : null}
+          {post.event_location ? <Text style={s.eventDetail}>📍  {post.event_location}</Text> : null}
+          <View style={s.eventFooter}>
+            <TouchableOpacity
+              style={[s.rsvpBtn, post.is_attending ? s.rsvpBtnOn : null]}
+              onPress={() => onRSVP(post)}
+            >
+              <Ionicons
+                name={post.is_attending ? 'checkmark-circle' : 'add-circle-outline'}
+                size={18}
+                color={post.is_attending ? '#fff' : palette.brand}
+              />
+              <Text style={post.is_attending ? s.rsvpTextOn : s.rsvpText}>
+                {post.is_attending ? 'Attending' : 'RSVP'}
+              </Text>
+            </TouchableOpacity>
+            <Text style={s.muted}>{post.event_rsvp_count || 0} going</Text>
+          </View>
+        </View>
+      ) : null}
+
       {post.image_url ? (
         <Image source={{ uri: post.image_url }} style={s.image} resizeMode="contain" />
       ) : null}
@@ -292,6 +368,46 @@ export default function Feed() {
         ...p,
         is_reposted: was,
         reposts_count: (p.reposts_count || 0) + (was ? 1 : -1),
+      }));
+    }
+  }, [mutateBoth]);
+
+  const voteOnPoll = useCallback(async (post: Post, optionId: number) => {
+    if (post.voted_option_id != null) return; // already voted
+    // Optimistic: mark voted, bump that option's count.
+    mutateBoth(post.id, p => ({
+      ...p,
+      voted_option_id: optionId,
+      poll_options: p.poll_options?.map(o => o.id === optionId ? { ...o, vote_count: o.vote_count + 1 } : o) ?? null,
+    }));
+    try {
+      await apiFetch(`/api/posts/${post.id}/vote`, { method: 'POST', body: JSON.stringify({ option_id: optionId }) });
+    } catch {
+      // revert
+      mutateBoth(post.id, p => ({
+        ...p,
+        voted_option_id: null,
+        poll_options: p.poll_options?.map(o => o.id === optionId ? { ...o, vote_count: Math.max(0, o.vote_count - 1) } : o) ?? null,
+      }));
+    }
+  }, [mutateBoth]);
+
+  const toggleRSVP = useCallback(async (post: Post) => {
+    const was = post.is_attending;
+    mutateBoth(post.id, p => ({
+      ...p,
+      is_attending: !was,
+      event_rsvp_count: Math.max(0, (p.event_rsvp_count || 0) + (was ? -1 : 1)),
+    }));
+    try {
+      const res = await apiFetch<{ attending: boolean }>(`/api/posts/${post.id}/rsvp`, { method: 'POST' });
+      // Reconcile with server truth.
+      mutateBoth(post.id, p => ({ ...p, is_attending: res.attending }));
+    } catch {
+      mutateBoth(post.id, p => ({
+        ...p,
+        is_attending: was,
+        event_rsvp_count: Math.max(0, (p.event_rsvp_count || 0) + (was ? 1 : -1)),
       }));
     }
   }, [mutateBoth]);
@@ -701,6 +817,8 @@ export default function Feed() {
               onOpenComments={openComments}
               onRepost={repost}
               onMenu={openPostMenu}
+              onVote={voteOnPoll}
+              onRSVP={toggleRSVP}
             />
           )}
           initialNumToRender={6}
@@ -1032,6 +1150,33 @@ const make_s = (colors: Palette) => StyleSheet.create({
   author: { fontSize: 14, fontWeight: '700', color: colors.text },
   title: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 4 },
   content: { fontSize: 15, color: colors.text, lineHeight: 22 },
+  pollWrap: { marginTop: 10, gap: 8 },
+  pollOpt: {
+    position: 'relative', overflow: 'hidden', borderWidth: 1, borderColor: colors.border,
+    borderRadius: 10, backgroundColor: colors.surfaceSubtle, minHeight: 44, justifyContent: 'center',
+  },
+  pollBar: { position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: colors.brand100 },
+  pollBarMine: { backgroundColor: colors.brand100 },
+  pollOptContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 11 },
+  pollOptText: { fontSize: 14, color: colors.text, flex: 1, fontWeight: '500' },
+  pollOptTextMine: { fontWeight: '800', color: colors.brand },
+  pollPct: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginLeft: 8 },
+  pollMeta: { fontSize: 12, color: colors.muted, marginTop: 2 },
+  eventWrap: {
+    marginTop: 10, borderWidth: 1, borderColor: colors.brand100, borderRadius: 12,
+    backgroundColor: colors.brand50, padding: 14, gap: 6,
+  },
+  eventHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  eventTitle: { fontSize: 16, fontWeight: '800', color: colors.text, flex: 1 },
+  eventDetail: { fontSize: 14, color: colors.textSecondary },
+  eventFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
+  rsvpBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    borderWidth: 1, borderColor: colors.brand, borderRadius: 999, paddingVertical: 8, paddingHorizontal: 18,
+  },
+  rsvpBtnOn: { backgroundColor: colors.brand, borderColor: colors.brand },
+  rsvpText: { color: colors.brand, fontWeight: '700', fontSize: 14 },
+  rsvpTextOn: { color: '#fff', fontWeight: '700', fontSize: 14 },
   image: { width: '100%', height: 300, borderRadius: 12, marginTop: 10, backgroundColor: colors.surfaceSubtle },
   actions: { flexDirection: 'row', gap: 24, marginTop: 12 },
   action: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 },
