@@ -536,6 +536,9 @@ export default function Feed() {
           resizeMode="contain"
         />
         <View style={s.headerRight}>
+          <TouchableOpacity onPress={() => router.push('/search')} hitSlop={8}>
+            <Ionicons name="search" size={22} color={colors.text} />
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => router.push('/(tabs)/notifications')} hitSlop={8} style={s.bellWrap}>
             <Ionicons name="notifications-outline" size={24} color={colors.text} />
             {notifUnread > 0 ? (
