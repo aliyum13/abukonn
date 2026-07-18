@@ -1240,6 +1240,15 @@ export default function FeedPage() {
   const commentMention = useMentionAutocomplete(token);
   const commentInputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState('');
+
+  // Auto-dismiss the error banner so it never lingers after the moment has passed
+  // (e.g. a network hiccup on one action shouldn't sit at the top of the feed
+  // while the user keeps scrolling).
+  useEffect(() => {
+    if (!error) return;
+    const t = setTimeout(() => setError(''), 8000);
+    return () => clearTimeout(t);
+  }, [error]);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
@@ -1774,6 +1783,9 @@ export default function FeedPage() {
       if (res.ok) {
         setPosts(data.posts);
         lastFetchRef.current = Date.now();
+        // Clear any stale error banner (e.g. a transient network error from a
+        // previous action) now that we've successfully loaded the feed.
+        setError(prev => (prev === 'Failed to load feed' || prev.includes('Network') ? '' : prev));
       }
     } catch {
       setError('Failed to load feed');
@@ -3494,8 +3506,15 @@ export default function FeedPage() {
           </div>
 
           {error && (
-            <div className="border-b border-border px-4 py-3 text-sm text-red-600 bg-red-50">
-              {error}
+            <div className="border-b border-border px-4 py-3 text-sm text-red-600 bg-red-50 flex items-start justify-between gap-3">
+              <span>{error}</span>
+              <button
+                onClick={() => setError('')}
+                className="shrink-0 text-red-600 hover:text-red-800 font-bold text-base leading-none"
+                aria-label="Dismiss"
+              >
+                ✕
+              </button>
             </div>
           )}
 
