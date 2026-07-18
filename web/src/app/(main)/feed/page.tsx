@@ -4,7 +4,8 @@ import { useEffect, useState, useRef, useMemo, FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { timeAgo, friendlyPreview } from '@/lib/format';
+import { timeAgo } from '@/lib/format';
+import { MessagesView } from '@/components/messages/MessagesView';
 import { cn } from '@/lib/utils';
 import { optimizedImage } from '@/lib/image';
 import { useFollow } from '@/hooks/useFollow';
@@ -1822,30 +1823,6 @@ export default function FeedPage() {
     if (feedTab === 'following' && token) fetchFollowingPosts();
   }, [feedTab, token]);
 
-  // Messages tab: load the conversation list inline (like For You/Following,
-  // the tab swaps content in place rather than navigating away).
-  const [conversations, setConversations] = useState<{
-    id: number;
-    other_user_id: number;
-    other_user_name: string;
-    other_user_department: string;
-    other_user_photo?: string | null;
-    last_message: string | null;
-    last_message_at: string | null;
-    unread_count: number;
-  }[]>([]);
-  const [conversationsLoading, setConversationsLoading] = useState(false);
-
-  useEffect(() => {
-    if (feedTab !== 'messages' || !token) return;
-    setConversationsLoading(true);
-    fetch(`${API_URL}/api/messages/conversations`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(data => setConversations(data.conversations || []))
-      .catch(() => setConversations([]))
-      .finally(() => setConversationsLoading(false));
-  }, [feedTab, token]);
-
   // Re-fetch when user returns to the tab after 5+ minutes
   useEffect(() => {
     if (!token) return;
@@ -3239,60 +3216,9 @@ export default function FeedPage() {
             )}
           </div>
 
-          {/* ── Messages tab (inline conversation list, like For You/Following) ── */}
+          {/* ── Messages tab ─ the full messaging experience, inline (tab bar stays on top) ── */}
           {feedTab === 'messages' && (
-            <div className="p-3">
-              <div className="overflow-hidden rounded-2xl border border-border bg-white dark:bg-[#0a0a0a]">
-                <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                  <span className="text-[17px] font-bold text-ink">Messages</span>
-                  <button
-                    type="button"
-                    onClick={() => router.push('/messages')}
-                    className="text-[14px] font-semibold text-brand-600 hover:opacity-80"
-                  >
-                    Open full view
-                  </button>
-                </div>
-
-                {conversationsLoading ? (
-                  <div className="px-4 py-16 text-center text-ink-muted">Loading conversations…</div>
-                ) : conversations.length === 0 ? (
-                  <div className="px-4 py-16 text-center">
-                    <p className="font-medium text-ink">No conversations yet</p>
-                    <p className="mt-1 text-[14px] text-ink-muted">Start a chat from someone&apos;s profile.</p>
-                  </div>
-                ) : (
-                  conversations.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => router.push('/messages')}
-                      className="flex w-full items-center gap-3 border-b border-border px-4 py-3 text-left transition last:border-b-0 hover:bg-surface-subtle dark:hover:bg-[#111]"
-                    >
-                      <Avatar src={c.other_user_photo} name={c.other_user_name} size="md" className="shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="truncate font-semibold text-ink">{c.other_user_name}</span>
-                          <span className="shrink-0 text-[12px] text-ink-muted">
-                            {c.last_message_at ? timeAgo(c.last_message_at) : ''}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="truncate text-[14px] text-ink-muted">
-                            {friendlyPreview(c.last_message)}
-                          </p>
-                          {c.unread_count > 0 && (
-                            <span className="ml-1 inline-flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-brand-600 px-1.5 text-[11px] font-bold text-white">
-                              {c.unread_count > 9 ? '9+' : c.unread_count}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </button>
-                  ))
-                )}
-              </div>
-            </div>
+            <MessagesView />
           )}
 
           {/* ── Following tab ── */}
