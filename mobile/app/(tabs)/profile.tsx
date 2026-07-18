@@ -185,11 +185,14 @@ export default function Profile() {
                 </View>
               </View>
             ) : (
-              <View style={s.post}>
+              <TouchableOpacity
+                style={s.post}
+                onPress={() => router.push({ pathname: '/post/[id]', params: { id: String((item as ProfileReply).post_id) } })}
+              >
                 <Text style={s.replyLabel}>Replied</Text>
                 <Text style={s.postContent}>{item.content}</Text>
                 <Text style={s.muted}>{timeAgo(item.created_at)}</Text>
-              </View>
+              </TouchableOpacity>
             )
           )}
         />
