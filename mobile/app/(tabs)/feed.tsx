@@ -549,9 +549,6 @@ export default function Feed() {
               <View style={s.bellBadge}><Text style={s.bellBadgeText}>{notifUnread > 9 ? '9+' : notifUnread}</Text></View>
             ) : null}
           </TouchableOpacity>
-          <TouchableOpacity style={s.newBtn} onPress={() => setComposeOpen(true)}>
-            <Text style={s.newBtnText}>+ Post</Text>
-          </TouchableOpacity>
         </View>
       </View>
 
@@ -668,6 +665,13 @@ export default function Feed() {
           removeClippedSubviews
         />
       )}
+
+      {/* Floating compose button — only on the post feeds, not Messages */}
+      {feedTab !== 'messages' ? (
+        <TouchableOpacity style={s.fab} onPress={() => setComposeOpen(true)} activeOpacity={0.85}>
+          <Ionicons name="add" size={30} color="#fff" />
+        </TouchableOpacity>
+      ) : null}
 
       {/* Compose */}
       <Modal visible={composeOpen} animationType="slide" onRequestClose={() => setComposeOpen(false)}>
@@ -856,8 +860,12 @@ const make_s = (colors: Palette) => StyleSheet.create({
   modalClose: { paddingVertical: 4, paddingHorizontal: 4 },
   modalCloseText: { color: colors.brand, fontSize: 16, fontWeight: '600' },
   menuBtn: { fontSize: 24, color: colors.text },
-  newBtn: { backgroundColor: colors.brand, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20 },
-  newBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  fab: {
+    position: 'absolute', right: 18, bottom: 24,
+    width: 56, height: 56, borderRadius: 28, backgroundColor: colors.brand,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.25, shadowRadius: 5, elevation: 6,
+  },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   error: { color: colors.danger, fontSize: 15, textAlign: 'center', marginBottom: 6 },
   muted: { color: colors.muted, fontSize: 12 },

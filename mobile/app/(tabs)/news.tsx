@@ -5,7 +5,7 @@ import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl,
   Image, TouchableOpacity, Modal, ScrollView,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiFetch } from '../../src/lib/api';
 import { colors, radius, shadow } from '../../src/theme';
 import { useTabScrollToTop } from '../../src/lib/useScrollToTop';
@@ -40,6 +40,7 @@ function timeAgo(iso: string) {
 }
 
 export default function News() {
+  const insets = useSafeAreaInsets();
   const s = useThemedStyles(make_s);
   const { ref: listRef, setRefresh } = useTabScrollToTop<Article>();
   const [news, setNews] = useState<Article[]>([]);
@@ -121,8 +122,8 @@ export default function News() {
 
       {/* Full article */}
       <Modal visible={!!open} animationType="slide" onRequestClose={() => setOpen(null)}>
-        <SafeAreaView style={s.safe} edges={['top']}>
-          <View style={s.modalHeader}>
+        <SafeAreaView style={s.safe} edges={['bottom']}>
+          <View style={[s.modalHeader, { paddingTop: insets.top + 12 }]}>
             <TouchableOpacity onPress={() => setOpen(null)} hitSlop={10}>
               <Text style={s.back}>‹ Back</Text>
             </TouchableOpacity>
