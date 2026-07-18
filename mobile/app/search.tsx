@@ -167,10 +167,13 @@ export default function Search() {
           keyExtractor={h => h.tag}
           ListEmptyComponent={<View style={s.center}><Text style={s.muted}>No hashtags found</Text></View>}
           renderItem={({ item }) => (
-            <View style={s.hashRow}>
+            <TouchableOpacity
+              style={s.hashRow}
+              onPress={() => router.push({ pathname: '/hashtag/[tag]', params: { tag: item.tag } })}
+            >
               <Text style={s.hashTag}>#{item.tag}</Text>
               <Text style={s.muted}>{item.post_count} {item.post_count === 1 ? 'post' : 'posts'}</Text>
-            </View>
+            </TouchableOpacity>
           )}
         />
       )}

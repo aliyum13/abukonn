@@ -511,10 +511,14 @@ export default function Feed() {
           <Text style={s.wtfTitle}>Trending</Text>
           <View style={s.trendChips}>
             {trending.map(t => (
-              <View key={t.tag} style={s.trendChip}>
+              <TouchableOpacity
+                key={t.tag}
+                style={s.trendChip}
+                onPress={() => router.push({ pathname: '/hashtag/[tag]', params: { tag: t.tag } })}
+              >
                 <Text style={s.trendTag}>#{t.tag}</Text>
                 <Text style={s.trendCount}>{t.post_count} {t.post_count === 1 ? 'post' : 'posts'}</Text>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         </View>
