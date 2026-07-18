@@ -51,3 +51,25 @@ export function formatLevel(level: string | null | undefined): string {
   // Anything else (e.g. "Postgraduate") — leave alone.
   return trimmed;
 }
+
+/**
+ * Returns a friendly preview string for a conversation's last message.
+ *
+ * Some messages are stored as JSON (shared posts, story replies, message
+ * replies) rather than plain text. Rendering the raw JSON in the conversation
+ * list looks broken (e.g. `{"type":"message_reply",...}`), so this normalises
+ * them to a short human string. Mirrors the messages page's own preview logic so
+ * the inline Messages tab in the feed reads identically.
+ */
+export function friendlyPreview(content: string | null | undefined): string {
+  if (!content) return 'No messages yet';
+  try {
+    const data = JSON.parse(content);
+    if (data && typeof data === 'object') {
+      if (data.type === 'shared_post') return '📌 Shared a post';
+      if (data.type === 'story_reply') return `↩ ${data.reply ?? ''}`.trim();
+      if (data.type === 'message_reply') return `↩ ${data.reply ?? ''}`.trim();
+    }
+  } catch { /* not JSON — fall through to plain text */ }
+  return content;
+}
