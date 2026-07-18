@@ -61,6 +61,22 @@ function timeAgo(iso: string) {
   return `${Math.floor(s / 86400)}d`;
 }
 
+// Countdown label for an admin highlight, mirroring web.
+function highlightCountdown(startDate: string | null): string {
+  if (!startDate) return '';
+  const diffDays = Math.ceil((new Date(startDate).getTime() - Date.now()) / 86400000);
+  if (diffDays < 0) return 'Ongoing';
+  if (diffDays === 0) return 'Today!';
+  if (diffDays === 1) return 'Tomorrow';
+  return `in ${diffDays} days`;
+}
+
+// Soft background tint per highlight color name.
+const HL_TINT: Record<string, string> = {
+  blue: '#eff6ff', red: '#fef2f2', orange: '#fff7ed', green: '#f0fdf4',
+  purple: '#faf5ff', pink: '#fdf2f8', yellow: '#fefce8', teal: '#f0fdfa', gray: '#f9fafb',
+};
+
 // Memoized so a row only re-renders when its own post changes (like/comment
 // counts), not when any other post or unrelated state updates. This is the fix
 // for the VirtualizedList slow-update warning on a large feed.
@@ -264,6 +280,11 @@ export default function Feed() {
   const [category, setCategory] = useState('ALL');
   const [suggestions, setSuggestions] = useState<{ id: number; full_name: string; department: string | null; level: string | null; profile_photo_url: string | null }[]>([]);
   const [trending, setTrending] = useState<{ tag: string; post_count: number }[]>([]);
+  const [highlights, setHighlights] = useState<{
+    id: number; title: string; description: string | null; icon: string;
+    color: string; start_date: string | null;
+  }[]>([]);
+  const [showHighlights, setShowHighlights] = useState(false);
   const [birthdays, setBirthdays] = useState<{ id: number; full_name: string; profile_photo_url: string | null }[]>([]);
 
   const [commentsFor, setCommentsFor] = useState<Post | null>(null);
@@ -328,6 +349,8 @@ export default function Feed() {
       .then(d => setSuggestions(d.suggestions || [])).catch(() => {});
     apiFetch<{ hashtags: typeof trending }>('/api/hashtags/trending?limit=6')
       .then(d => setTrending(d.hashtags || [])).catch(() => {});
+    apiFetch<{ highlights: typeof highlights }>('/api/highlights')
+      .then(d => setHighlights(d.highlights || [])).catch(() => {});
     apiFetch<{ users: typeof birthdays }>('/api/users/birthdays/today')
       .then(d => setBirthdays(d.users || [])).catch(() => {});
   }, [refreshBadges]);
@@ -703,6 +726,12 @@ export default function Feed() {
           <TouchableOpacity onPress={() => router.push('/search')} hitSlop={8}>
             <Ionicons name="search" size={22} color={colors.text} />
           </TouchableOpacity>
+          {highlights.length > 0 ? (
+            <TouchableOpacity onPress={() => setShowHighlights(true)} hitSlop={8} style={s.bellWrap}>
+              <Ionicons name="star" size={22} color={colors.brand} />
+              <View style={s.bellBadge}><Text style={s.bellBadgeText}>{highlights.length > 9 ? '9+' : highlights.length}</Text></View>
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity onPress={() => router.push('/(tabs)/notifications')} hitSlop={8} style={s.bellWrap}>
             <Ionicons name="notifications-outline" size={24} color={colors.text} />
             {notifUnread > 0 ? (
@@ -827,6 +856,35 @@ export default function Feed() {
           removeClippedSubviews
         />
       )}
+
+      {/* Today's Highlights popup */}
+      <Modal visible={showHighlights} animationType="fade" transparent onRequestClose={() => setShowHighlights(false)}>
+        <TouchableOpacity style={s.hlOverlay} activeOpacity={1} onPress={() => setShowHighlights(false)}>
+          <View style={s.hlSheet}>
+            <View style={s.hlHeader}>
+              <Text style={s.hlTitle}>Today&apos;s Highlights</Text>
+              <TouchableOpacity onPress={() => setShowHighlights(false)} hitSlop={10}>
+                <Ionicons name="close" size={22} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 8 }}>
+              {highlights.map(h => {
+                const countdown = highlightCountdown(h.start_date);
+                return (
+                  <View key={h.id} style={[s.hlCard, { backgroundColor: HL_TINT[h.color] || HL_TINT.blue }]}>
+                    <View style={s.hlCardTop}>
+                      <Text style={s.hlIcon}>{h.icon || '📌'}</Text>
+                      {countdown ? <Text style={s.hlCountdown}>{countdown}</Text> : null}
+                    </View>
+                    <Text style={s.hlCardTitle}>{h.title}</Text>
+                    {h.description ? <Text style={s.hlDesc}>{h.description}</Text> : null}
+                  </View>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Floating compose button — only on the post feeds, not Messages */}
       {feedTab !== 'messages' ? (
@@ -1130,6 +1188,16 @@ const make_s = (colors: Palette) => StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.25, shadowRadius: 5, elevation: 6,
   },
+  hlOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
+  hlSheet: { backgroundColor: colors.surface, borderRadius: 20, padding: 18, maxHeight: '75%' },
+  hlHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  hlTitle: { fontSize: 17, fontWeight: '800', color: colors.text },
+  hlCard: { borderRadius: 16, padding: 16, gap: 6 },
+  hlCardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  hlIcon: { fontSize: 26 },
+  hlCountdown: { fontSize: 12, fontWeight: '800', color: '#374151', backgroundColor: 'rgba(255,255,255,0.7)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, overflow: 'hidden' },
+  hlCardTitle: { fontSize: 16, fontWeight: '800', color: '#1f2937' },
+  hlDesc: { fontSize: 14, color: '#374151', lineHeight: 20 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   error: { color: colors.danger, fontSize: 15, textAlign: 'center', marginBottom: 6 },
   muted: { color: colors.muted, fontSize: 12 },
