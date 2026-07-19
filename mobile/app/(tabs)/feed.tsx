@@ -338,7 +338,12 @@ export default function Feed() {
     other_user_photo: string | null; last_message: string | null;
     last_message_at: string | null; unread_count: number;
   }[]>([]);
+  const [msgGroups, setMsgGroups] = useState<{
+    id: number; name: string; member_count: number;
+    last_message: string | null; last_message_at: string | null;
+  }[]>([]);
   const [conversationsLoading, setConversationsLoading] = useState(false);
+  const [convoSearch, setConvoSearch] = useState('');
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifUnread, setNotifUnread] = useState(0);
   const [category, setCategory] = useState('ALL');
@@ -390,16 +395,37 @@ export default function Feed() {
   const loadConversations = useCallback(async () => {
     setConversationsLoading(true);
     try {
-      const data = await apiFetch<{ conversations: typeof conversations }>('/api/messages/conversations');
-      setConversations(data.conversations || []);
+      const [convData, grpData] = await Promise.all([
+        apiFetch<{ conversations: typeof conversations }>('/api/messages/conversations'),
+        apiFetch<{ groups: typeof msgGroups }>('/api/groups').catch(() => ({ groups: [] as typeof msgGroups })),
+      ]);
+      setConversations(convData.conversations || []);
+      setMsgGroups(grpData.groups || []);
     } catch {
       setConversations([]);
+      setMsgGroups([]);
     } finally {
       setConversationsLoading(false);
     }
   }, []);
 
   useEffect(() => { if (feedTab === 'messages') loadConversations(); }, [feedTab, loadConversations]);
+
+  // Merge DMs + groups into one list sorted by last activity, matching web.
+  type MsgListItem =
+    | { kind: 'dm'; id: number; name: string; photo: string | null; last_message: string | null; last_message_at: string | null; unread_count: number; other_user_name: string }
+    | { kind: 'group'; id: number; name: string; member_count: number; last_message: string | null; last_message_at: string | null };
+  const messageListItems: MsgListItem[] = [
+    ...conversations.map(c => ({ kind: 'dm' as const, id: c.id, name: c.other_user_name, photo: c.other_user_photo, last_message: c.last_message, last_message_at: c.last_message_at, unread_count: c.unread_count, other_user_name: c.other_user_name })),
+    ...msgGroups.map(g => ({ kind: 'group' as const, id: g.id, name: g.name, member_count: g.member_count, last_message: g.last_message, last_message_at: g.last_message_at })),
+  ].sort((a, b) => {
+    const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+    const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+    return tb - ta;
+  });
+  const filteredMessageItems = convoSearch.trim()
+    ? messageListItems.filter(i => i.name.toLowerCase().includes(convoSearch.toLowerCase()))
+    : messageListItems;
 
   // Unread badges + who-to-follow (matches web).
   const refreshBadges = useCallback(() => {
@@ -836,8 +862,26 @@ export default function Feed() {
         <View style={s.center}><ActivityIndicator size="large" color={colors.brand} /></View>
       ) : feedTab === 'messages' ? (
         <FlatList
-          data={conversations}
-          keyExtractor={c => String(c.id)}
+          data={filteredMessageItems}
+          keyExtractor={i => `${i.kind}-${i.id}`}
+          keyboardShouldPersistTaps="handled"
+          ListHeaderComponent={
+            <View style={s.convoSearchWrap}>
+              <Ionicons name="search" size={18} color={colors.muted} />
+              <TextInput
+                style={s.convoSearchInput}
+                placeholder="Search conversations"
+                placeholderTextColor={colors.muted}
+                value={convoSearch}
+                onChangeText={setConvoSearch}
+              />
+              {convoSearch ? (
+                <TouchableOpacity onPress={() => setConvoSearch('')} hitSlop={8}>
+                  <Ionicons name="close-circle" size={18} color={colors.muted} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          }
           refreshControl={
             <RefreshControl refreshing={conversationsLoading}
               onRefresh={loadConversations} tintColor={colors.brand} />
@@ -845,31 +889,37 @@ export default function Feed() {
           ListEmptyComponent={
             conversationsLoading ? null : (
               <View style={s.center}>
-                <Text style={s.muted}>No conversations yet</Text>
-                <Text style={s.mutedSmall}>Start a chat from someone&apos;s profile</Text>
+                <Text style={s.muted}>{convoSearch ? 'No matches' : 'No conversations yet'}</Text>
+                {!convoSearch ? <Text style={s.mutedSmall}>Start a chat from someone&apos;s profile</Text> : null}
               </View>
             )
           }
           renderItem={({ item }) => (
             <TouchableOpacity
               style={s.convoRow}
-              onPress={() => router.push({ pathname: '/chat/[id]', params: { id: String(item.id), name: item.other_user_name } })}
+              onPress={() => item.kind === 'group'
+                ? router.push({ pathname: '/group/[id]', params: { id: String(item.id), name: item.name } })
+                : router.push({ pathname: '/chat/[id]', params: { id: String(item.id), name: item.name } })}
             >
-              {item.other_user_photo ? (
-                <Image source={{ uri: item.other_user_photo }} style={s.convoAvatar} />
+              {item.kind === 'dm' && item.photo ? (
+                <Image source={{ uri: item.photo }} style={s.convoAvatar} />
               ) : (
                 <View style={[s.convoAvatar, s.fallback]}>
-                  <Text style={s.letter}>{item.other_user_name?.charAt(0).toUpperCase()}</Text>
+                  {item.kind === 'group'
+                    ? <Ionicons name="people" size={20} color={colors.muted} />
+                    : <Text style={s.letter}>{item.name?.charAt(0).toUpperCase()}</Text>}
                 </View>
               )}
               <View style={{ flex: 1 }}>
                 <View style={s.convoTop}>
-                  <Text style={s.convoName} numberOfLines={1}>{item.other_user_name}</Text>
+                  <Text style={s.convoName} numberOfLines={1}>{item.name}</Text>
                   <Text style={s.mutedSmall}>{item.last_message_at ? timeAgo(item.last_message_at) : ''}</Text>
                 </View>
-                <Text style={s.convoPreview} numberOfLines={1}>{friendlyPreview(item.last_message)}</Text>
+                <Text style={s.convoPreview} numberOfLines={1}>
+                  {item.kind === 'group' && !item.last_message ? `${item.member_count} members` : friendlyPreview(item.last_message)}
+                </Text>
               </View>
-              {item.unread_count > 0 ? (
+              {item.kind === 'dm' && item.unread_count > 0 ? (
                 <View style={s.convoBadge}><Text style={s.convoBadgeText}>{item.unread_count > 9 ? '9+' : item.unread_count}</Text></View>
               ) : null}
             </TouchableOpacity>
@@ -1194,6 +1244,12 @@ const make_s = (colors: Palette) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
     backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border,
   },
+  convoSearchWrap: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginHorizontal: 14, marginVertical: 10, paddingHorizontal: 12, paddingVertical: 9,
+    borderRadius: radius.full, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+  },
+  convoSearchInput: { flex: 1, fontSize: 15, color: colors.text, padding: 0 },
   convoAvatar: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.brand100 },
   convoTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   convoName: { fontSize: 15, fontWeight: '700', color: colors.text, flex: 1 },
