@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { apiFetch } from '../../src/lib/api';
 import { uploadImage } from '../../src/lib/upload';
+import { MessageBody } from '../../src/components/MessageBody';
 import { getSocket } from '../../src/lib/socket';
 import type { Socket } from 'socket.io-client';
 import { useAuth } from '../../src/context/AuthContext';
@@ -199,7 +200,7 @@ export default function Chat() {
                     <Image source={{ uri: item.image_url }} style={s.msgImage} resizeMode="contain" />
                   ) : null}
                   {item.content ? (
-                    <Text style={mine ? s.mineText : s.theirsText}>{item.content}</Text>
+                    <MessageBody content={item.content} mine={mine} />
                   ) : null}
                 </View>
               );
