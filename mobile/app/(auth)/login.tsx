@@ -50,6 +50,15 @@ export default function Login() {
           {busy ? <ActivityIndicator color="#fff" /> : <Text style={s.buttonText}>Log in</Text>}
         </TouchableOpacity>
 
+        <TouchableOpacity style={s.forgotRow} onPress={() => router.push('/(auth)/forgot-password')}>
+          <Text style={s.link}>Forgot password?</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={s.signupRow} onPress={() => router.push('/(auth)/register')}>
+          <Text style={s.linkMuted}>New to ABUkonn? </Text>
+          <Text style={s.link}>Create an account</Text>
+        </TouchableOpacity>
+
         {/* Deliberate: if login fails, the first thing to check is whether the
             app is pointing at the right backend. */}
         <Text style={s.debug}>{API_URL}</Text>
@@ -66,5 +75,9 @@ const make_s = (colors: Palette) => StyleSheet.create({
   button: { backgroundColor: colors.brand, borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
   buttonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   error: { color: colors.danger, fontSize: 14, marginBottom: 8, textAlign: 'center' },
+  forgotRow: { alignItems: 'center', marginTop: 16 },
+  signupRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
+  linkMuted: { color: colors.muted, fontSize: 14 },
+  link: { color: colors.brand, fontSize: 14, fontWeight: '700' },
   debug: { fontSize: 11, color: colors.muted, textAlign: 'center', marginTop: 24 },
 });

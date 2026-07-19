@@ -61,6 +61,42 @@ export function login(email: string, password: string) {
   );
 }
 
+export function register(input: {
+  full_name: string; email: string; department: string; level: string; password: string;
+}) {
+  return apiFetch<{ token: string; user: ApiUser }>(
+    '/api/auth/register',
+    { method: 'POST', body: JSON.stringify(input) },
+    false,
+  );
+}
+
+// Password reset is a 3-step flow: request an OTP by email, verify it, then set a
+// new password. Mirrors the web client.
+export function forgotPassword(email: string) {
+  return apiFetch<{ message: string }>(
+    '/api/auth/forgot-password',
+    { method: 'POST', body: JSON.stringify({ email }) },
+    false,
+  );
+}
+
+export function verifyOtp(email: string, otp: string) {
+  return apiFetch<{ valid: boolean; reset_token: string }>(
+    '/api/auth/verify-otp',
+    { method: 'POST', body: JSON.stringify({ email, otp }) },
+    false,
+  );
+}
+
+export function resetPassword(input: { reset_token: string; new_password: string }) {
+  return apiFetch<{ message: string }>(
+    '/api/auth/reset-password',
+    { method: 'POST', body: JSON.stringify(input) },
+    false,
+  );
+}
+
 // NOTE: the current-user endpoint is /api/users/me — there is no /api/auth/me.
 export function fetchMe() {
   return apiFetch<{ user: ApiUser }>('/api/users/me');

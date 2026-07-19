@@ -1,13 +1,18 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { login as apiLogin, fetchMe, ApiUser } from '../lib/api';
+import { login as apiLogin, register as apiRegister, fetchMe, ApiUser } from '../lib/api';
 import { saveToken, getToken, clearToken } from '../lib/storage';
 import { registerForPush, unregisterPush } from '../lib/push';
 import { disconnectSocket } from '../lib/socket';
+
+interface RegisterInput {
+  full_name: string; email: string; department: string; level: string; password: string;
+}
 
 interface AuthState {
   user: ApiUser | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
+  signUp: (input: RegisterInput) => Promise<void>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
 }
@@ -47,6 +52,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     registerForPush();
   }, []);
 
+  const signUp = useCallback(async (input: RegisterInput) => {
+    // Register returns a token + user, same shape as login — so a new user is
+    // signed straight in, no separate login step.
+    const res = await apiRegister(input);
+    await saveToken(res.token);
+    setUser(res.user);
+    registerForPush();
+  }, []);
+
   // Re-pull the current user from the server (e.g. after editing the profile).
   const refresh = useCallback(async () => {
     try {
@@ -67,7 +81,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signOut, refresh }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut, refresh }}>
       {children}
     </AuthContext.Provider>
   );
