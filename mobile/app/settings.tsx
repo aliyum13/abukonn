@@ -115,6 +115,12 @@ export default function SettingsScreen() {
   const [pwConfirm, setPwConfirm] = useState('');
   const [savingPw, setSavingPw] = useState(false);
 
+  // Change email
+  const [newEmail, setNewEmail] = useState('');
+  const [emailPassword, setEmailPassword] = useState('');
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [deactivating, setDeactivating] = useState(false);
+
   const loadSettings = useCallback(async () => {
     try {
       const d = await apiFetch<{ settings: Settings }>('/api/settings');
@@ -223,6 +229,49 @@ export default function SettingsScreen() {
     } finally {
       setSavingPw(false);
     }
+  };
+
+  const changeEmail = async () => {
+    if (!newEmail.trim() || !emailPassword) { Alert.alert('Enter your new email and current password'); return; }
+    setSavingEmail(true);
+    try {
+      await apiFetch('/api/settings/email', {
+        method: 'PATCH',
+        body: JSON.stringify({ email: newEmail.trim().toLowerCase(), password: emailPassword }),
+      });
+      setNewEmail(''); setEmailPassword('');
+      Alert.alert('Done', 'Your email has been updated.');
+      loadSettings();
+    } catch (err) {
+      Alert.alert('Could not change email', err instanceof Error ? err.message : '');
+    } finally {
+      setSavingEmail(false);
+    }
+  };
+
+  const deactivate = () => {
+    Alert.alert(
+      'Deactivate account',
+      'Your account will be hidden until you log in again. You can reactivate anytime by logging back in. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Deactivate', style: 'destructive',
+          onPress: async () => {
+            setDeactivating(true);
+            try {
+              await apiFetch('/api/settings/deactivate', { method: 'POST' });
+              await signOut();
+              router.replace('/(auth)/login');
+            } catch (err) {
+              Alert.alert('Could not deactivate', err instanceof Error ? err.message : '');
+            } finally {
+              setDeactivating(false);
+            }
+          },
+        },
+      ],
+    );
   };
 
   const onLogout = () => {
@@ -369,6 +418,25 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Change email */}
+          <Text style={s.sectionTitle}>Change Email</Text>
+          <View style={s.card}>
+            <TextInput style={s.input} value={newEmail} onChangeText={setNewEmail} placeholder="New email" placeholderTextColor={colors.muted} autoCapitalize="none" keyboardType="email-address" autoCorrect={false} />
+            <TextInput style={s.input} value={emailPassword} onChangeText={setEmailPassword} placeholder="Confirm with your password" placeholderTextColor={colors.muted} secureTextEntry />
+            <TouchableOpacity style={s.saveBtn} onPress={changeEmail} disabled={savingEmail}>
+              {savingEmail ? <ActivityIndicator color={colors.white} /> : <Text style={s.saveText}>Update email</Text>}
+            </TouchableOpacity>
+          </View>
+
+          {/* Danger zone */}
+          <Text style={s.sectionTitle}>Danger Zone</Text>
+          <View style={s.card}>
+            <Text style={s.dangerNote}>Deactivating hides your account until you log in again. You can reactivate anytime.</Text>
+            <TouchableOpacity style={s.dangerBtn} onPress={deactivate} disabled={deactivating}>
+              {deactivating ? <ActivityIndicator color={colors.danger} /> : <Text style={s.dangerBtnText}>Deactivate account</Text>}
+            </TouchableOpacity>
+          </View>
+
           {/* Logout */}
           <TouchableOpacity style={s.logout} onPress={onLogout}>
             <Text style={s.logoutText}>Log out</Text>
@@ -421,6 +489,9 @@ const make_s = (colors: Palette) => StyleSheet.create({
     borderRadius: radius.md, paddingVertical: 13, alignItems: 'center',
   },
   logoutText: { color: colors.danger, fontWeight: '700', fontSize: 15 },
+  dangerNote: { fontSize: 13, color: colors.muted, marginBottom: 12, lineHeight: 18 },
+  dangerBtn: { borderWidth: 1, borderColor: colors.danger, borderRadius: radius.md, paddingVertical: 12, alignItems: 'center' },
+  dangerBtnText: { color: colors.danger, fontWeight: '700', fontSize: 15 },
   emptyText: { color: colors.muted, fontSize: 14, paddingVertical: 4 },
   blockedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12 },
   blockedName: { fontSize: 15, fontWeight: '600', color: colors.text },
