@@ -7,6 +7,7 @@ import {
   ActivityIndicator, Pressable, FlatList,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../lib/api';
 import { uploadImage } from '../lib/upload';
 import { colors } from '../theme';
@@ -127,6 +128,11 @@ export function StoryBar() {
           onChangeGroup={setViewing}
           onClose={() => { setViewing(null); load(); }}
           onDeleted={() => { setViewing(null); load(); }}
+          onToggleMute={(userId, muted) => {
+            setGroups(prev => prev.map(g => g.user_id === userId ? { ...g, muted } : g));
+            setOrder(prev => prev.map(g => g.user_id === userId ? { ...g, muted } : g));
+            setViewing(v => v && v.user_id === userId ? { ...v, muted } : v);
+          }}
         />
       ) : null}
 
@@ -142,7 +148,7 @@ export function StoryBar() {
 
 // ── Full-screen viewer ───────────────────────────────────────────────────────
 function StoryViewer({
-  group, order, seen, onSeen, onChangeGroup, onClose, onDeleted,
+  group, order, seen, onSeen, onChangeGroup, onClose, onDeleted, onToggleMute,
 }: {
   group: StoryGroup;
   order: StoryGroup[];
@@ -151,6 +157,7 @@ function StoryViewer({
   onChangeGroup: (g: StoryGroup) => void;
   onClose: () => void;
   onDeleted: () => void;
+  onToggleMute: (userId: number, muted: boolean) => void;
 }) {
   const s = useThemedStyles(make_s);
   const v = useThemedStyles(make_v);
@@ -165,6 +172,19 @@ function StoryViewer({
   const [viewersLoading, setViewersLoading] = useState(false);
 
   const story = group.stories[idx];
+
+  const toggleMute = async () => {
+    if (!group || group.is_own) return;
+    const willMute = !group.muted;
+    try {
+      await apiFetch(`/api/stories/mute/${group.user_id}`, { method: willMute ? 'POST' : 'DELETE' });
+      onToggleMute(group.user_id, willMute);
+      Alert.alert(willMute ? 'Muted' : 'Unmuted',
+        willMute ? `You won't be notified about ${group.user_name}'s stories.` : `You'll see ${group.user_name}'s stories normally again.`);
+    } catch (err) {
+      Alert.alert('Could not update', err instanceof Error ? err.message : '');
+    }
+  };
 
   const deleteStory = () => {
     if (!story) return;
@@ -344,7 +364,15 @@ function StoryViewer({
               <TouchableOpacity onPress={deleteStory} hitSlop={12}>
                 <Text style={v.close}>🗑</Text>
               </TouchableOpacity>
-            ) : null}
+            ) : (
+              <TouchableOpacity onPress={toggleMute} hitSlop={12}>
+                <Ionicons
+                  name={group.muted ? 'notifications-off-outline' : 'notifications-outline'}
+                  size={20}
+                  color="#fff"
+                />
+              </TouchableOpacity>
+            )}
             <TouchableOpacity onPress={onClose} hitSlop={12}>
               <Text style={v.close}>✕</Text>
             </TouchableOpacity>
