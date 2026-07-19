@@ -22,6 +22,7 @@ export interface Story {
   story_type: 'image' | 'video' | 'text';
   text_content: string | null;
   bg_color: string | null;
+  font_style?: string | null;
   caption: string | null;
   view_count: number | null;
   viewed?: boolean;
@@ -125,6 +126,7 @@ export function StoryBar() {
           onSeen={id => setSeen(prev => new Set([...prev, id]))}
           onChangeGroup={setViewing}
           onClose={() => { setViewing(null); load(); }}
+          onDeleted={() => { setViewing(null); load(); }}
         />
       ) : null}
 
@@ -140,7 +142,7 @@ export function StoryBar() {
 
 // ── Full-screen viewer ───────────────────────────────────────────────────────
 function StoryViewer({
-  group, order, seen, onSeen, onChangeGroup, onClose,
+  group, order, seen, onSeen, onChangeGroup, onClose, onDeleted,
 }: {
   group: StoryGroup;
   order: StoryGroup[];
@@ -148,6 +150,7 @@ function StoryViewer({
   onSeen: (id: number) => void;
   onChangeGroup: (g: StoryGroup) => void;
   onClose: () => void;
+  onDeleted: () => void;
 }) {
   const s = useThemedStyles(make_s);
   const v = useThemedStyles(make_v);
@@ -158,6 +161,25 @@ function StoryViewer({
   const [reply, setReply] = useState('');
 
   const story = group.stories[idx];
+
+  const deleteStory = () => {
+    if (!story) return;
+    Alert.alert('Delete story', 'This story will be permanently removed.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: async () => {
+          try {
+            await apiFetch(`/api/stories/${story.id}`, { method: 'DELETE' });
+            onDeleted();
+            onClose();
+          } catch (err) {
+            Alert.alert('Could not delete', err instanceof Error ? err.message : '');
+          }
+        },
+      },
+    ]);
+  };
 
   const goGroup = (dir: 1 | -1) => {
     const i = order.findIndex(g => g.user_id === group.user_id);
@@ -234,7 +256,7 @@ function StoryViewer({
         <View style={v.content} pointerEvents="none">
           {story.story_type === 'text' ? (
             <View style={[v.textStory, { backgroundColor: story.bg_color || colors.brand }]}>
-              <Text style={v.storyText}>{story.text_content}</Text>
+              <Text style={[v.storyText, storyFontStyle(story.font_style)]}>{story.text_content}</Text>
             </View>
           ) : story.media_url ? (
             <Image source={{ uri: story.media_url }} style={v.media} resizeMode="contain" />
@@ -272,9 +294,16 @@ function StoryViewer({
         {/* Header */}
         <View style={v.header}>
           <Text style={v.author}>{group.is_own ? 'Your story' : group.user_name}</Text>
-          <TouchableOpacity onPress={onClose} hitSlop={12}>
-            <Text style={v.close}>✕</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 18 }}>
+            {group.is_own ? (
+              <TouchableOpacity onPress={deleteStory} hitSlop={12}>
+                <Text style={v.close}>🗑</Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity onPress={onClose} hitSlop={12}>
+              <Text style={v.close}>✕</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Footer */}
@@ -314,18 +343,54 @@ function StoryViewer({
 // ── Composer ─────────────────────────────────────────────────────────────────
 const BG_COLORS = ['#16a34a', '#0ea5e9', '#8b5cf6', '#f43f5e', '#f59e0b', '#0a0a0a'];
 
+// Text-story fonts — keys match the backend whitelist (STORY_FONTS). Mapped to
+// React Native text styles (RN has no CSS classes).
+const STORY_FONTS: { key: string; label: string; style: object }[] = [
+  { key: 'classic', label: 'Aa', style: {} },
+  { key: 'bold', label: 'Aa', style: { fontWeight: '800' as const } },
+  { key: 'serif', label: 'Aa', style: { fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif' } },
+  { key: 'mono', label: 'Aa', style: { fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' } },
+  { key: 'script', label: 'Aa', style: { fontStyle: 'italic' as const, fontFamily: Platform.OS === 'ios' ? 'Snell Roundhand' : 'sans-serif' } },
+];
+
+function storyFontStyle(fontKey: string | null | undefined): object {
+  return STORY_FONTS.find(f => f.key === fontKey)?.style ?? {};
+}
+
 function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: () => void }) {
   const s = useThemedStyles(make_s);
   const c = useThemedStyles(make_c);
   const [mode, setMode] = useState<'text' | 'image'>('text');
   const [text, setText] = useState('');
   const [bg, setBg] = useState(BG_COLORS[0]);
+  const [font, setFont] = useState('classic');
   const [image, setImage] = useState<string | null>(null);
+  const [linkPreview, setLinkPreview] = useState<{ title: string | null; description: string | null; image: string | null; site_name: string | null } | null>(null);
   const [audience, setAudience] = useState<'all' | 'only' | 'except'>('all');
   const [picking, setPicking] = useState(false);
   const [following, setFollowing] = useState<{ id: number; full_name: string; profile_photo_url: string | null }[]>([]);
   const [chosen, setChosen] = useState<Set<number>>(new Set());
   const [busy, setBusy] = useState(false);
+
+  // Detect a URL in the text story and fetch a preview (composer courtesy — the
+  // preview isn't saved with the story, mirroring web).
+  useEffect(() => {
+    if (mode !== 'text') { setLinkPreview(null); return; }
+    const match = text.match(/https?:\/\/[^\s]+/);
+    if (!match) { setLinkPreview(null); return; }
+    const url = match[0];
+    let live = true;
+    const t = setTimeout(async () => {
+      try {
+        const res = await apiFetch<{ title: string | null; description: string | null; image: string | null; site_name: string | null }>(
+          `/api/stories/link-preview?url=${encodeURIComponent(url)}`);
+        if (live) setLinkPreview(res);
+      } catch {
+        if (live) setLinkPreview(null);
+      }
+    }, 600);
+    return () => { live = false; clearTimeout(t); };
+  }, [text, mode]);
 
   // Load who you follow, so 'only'/'except' can name specific people.
   const loadFollowing = async () => {
@@ -372,6 +437,7 @@ function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: (
             story_type: 'text',
             text_content: text.trim(),
             bg_color: bg,
+            font_style: font,
             audience,
             audience_user_ids: audienceIds,
           }),
@@ -417,7 +483,7 @@ function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: (
           <Image source={{ uri: image }} style={c.preview} resizeMode="contain" />
         ) : (
           <TextInput
-            style={c.textInput}
+            style={[c.textInput, storyFontStyle(font)]}
             placeholder="Type something..."
             placeholderTextColor="rgba(255,255,255,0.6)"
             value={text}
@@ -426,6 +492,18 @@ function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: (
             autoFocus
           />
         )}
+
+        {mode === 'text' && linkPreview && (linkPreview.title || linkPreview.image) ? (
+          <View style={c.linkCard}>
+            {linkPreview.image ? (
+              <Image source={{ uri: linkPreview.image }} style={c.linkImage} resizeMode="cover" />
+            ) : null}
+            <View style={{ flex: 1 }}>
+              {linkPreview.site_name ? <Text style={c.linkSite}>{linkPreview.site_name}</Text> : null}
+              {linkPreview.title ? <Text style={c.linkTitle} numberOfLines={2}>{linkPreview.title}</Text> : null}
+            </View>
+          </View>
+        ) : null}
 
         <View style={c.audienceRow}>
           <TouchableOpacity
@@ -469,6 +547,20 @@ function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: (
                   onPress={() => setBg(col)}
                   style={[c.swatch, { backgroundColor: col }, bg === col ? c.swatchOn : null]}
                 />
+              ))}
+            </ScrollView>
+          ) : null}
+
+          {mode === 'text' ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginTop: 10 }}>
+              {STORY_FONTS.map(f => (
+                <TouchableOpacity
+                  key={f.key}
+                  onPress={() => setFont(f.key)}
+                  style={[c.fontChip, font === f.key ? c.fontChipOn : null]}
+                >
+                  <Text style={[{ color: '#fff', fontSize: 16 }, f.style]}>{f.label}</Text>
+                </TouchableOpacity>
               ))}
             </ScrollView>
           ) : null}
@@ -588,6 +680,19 @@ const make_c = (colors: Palette) => StyleSheet.create({
   tools: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, paddingBottom: 34 },
   swatch: { width: 32, height: 32, borderRadius: 16, borderWidth: 2, borderColor: 'transparent' },
   swatchOn: { borderColor: '#fff' },
+  fontChip: {
+    minWidth: 40, height: 34, borderRadius: 8, paddingHorizontal: 10,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  fontChipOn: { borderColor: '#fff', backgroundColor: 'rgba(255,255,255,0.25)' },
+  linkCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12,
+    backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, padding: 8,
+  },
+  linkImage: { width: 48, height: 48, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.1)' },
+  linkSite: { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '600' },
+  linkTitle: { color: '#fff', fontSize: 13, fontWeight: '700' },
   photoBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' },
   photoText: { color: '#fff', fontWeight: '600', fontSize: 13 },
   pickerRoot: { flex: 1, backgroundColor: '#0a0a0a' },

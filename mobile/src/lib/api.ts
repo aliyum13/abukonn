@@ -16,6 +16,7 @@ export interface ApiUser {
   level: string | null;
   profile_photo_url: string | null;
   bio?: string | null;
+  date_of_birth?: string | null;
   role?: string;
 }
 

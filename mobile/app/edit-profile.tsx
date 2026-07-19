@@ -22,6 +22,7 @@ export default function EditProfile() {
   const [bio, setBio] = useState(user?.bio ?? '');
   const [department, setDepartment] = useState(user?.department ?? '');
   const [level, setLevel] = useState(user?.level ?? '');
+  const [dob, setDob] = useState(user?.date_of_birth ? String(user.date_of_birth).split('T')[0] : '');
   const [photo, setPhoto] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -55,6 +56,7 @@ export default function EditProfile() {
           bio: bio.trim(),
           department: department.trim() || null,
           level: level.trim() || null,
+          date_of_birth: dob.trim() || null,
         }),
       });
 
@@ -127,6 +129,9 @@ export default function EditProfile() {
 
           <Text style={s.label}>Level</Text>
           <TextInput style={s.input} value={level} onChangeText={setLevel} placeholder="e.g. 300 Level" placeholderTextColor={colors.muted} />
+
+          <Text style={s.label}>Date of birth <Text style={s.labelHint}>(for birthday wishes)</Text></Text>
+          <TextInput style={s.input} value={dob} onChangeText={setDob} placeholder="YYYY-MM-DD" placeholderTextColor={colors.muted} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -149,6 +154,7 @@ const make_s = (colors: Palette) => StyleSheet.create({
   letter: { fontSize: 36, fontWeight: '800', color: colors.brand },
   changePhoto: { color: colors.brand, fontWeight: '600', fontSize: 14, marginTop: 10 },
   label: { fontSize: 13, fontWeight: '700', color: colors.muted, marginBottom: 6, marginTop: 14 },
+  labelHint: { color: colors.muted, fontWeight: '400', fontSize: 12 },
   input: {
     borderWidth: 1, borderColor: colors.border, borderRadius: 12,
     paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: colors.text,
