@@ -167,9 +167,15 @@ export default function Search() {
           {users.length === 0 && posts.length === 0 && hashtags.length === 0 ? (
             <View style={s.center}><Text style={s.muted}>No results found</Text></View>
           ) : null}
+          {hashtags.length > 0 ? (
+            <>
+              <Text style={s.sectionHeader}>Hashtags ({hashtags.length})</Text>
+              {hashtags.slice(0, 5).map((item, index) => renderHashtagRow(item, index, hashtags))}
+            </>
+          ) : null}
           {users.length > 0 ? (
             <>
-              <Text style={s.sectionHeader}>Students</Text>
+              <Text style={s.sectionHeader}>Students ({users.length})</Text>
               {users.slice(0, 3).map(item => (
                 <View key={`u${item.id}`} style={s.row}>
                   <TouchableOpacity style={s.person} onPress={() => router.push({ pathname: '/user/[id]', params: { id: String(item.id) } })}>
@@ -192,7 +198,7 @@ export default function Search() {
           ) : null}
           {posts.length > 0 ? (
             <>
-              <Text style={s.sectionHeader}>Posts</Text>
+              <Text style={s.sectionHeader}>Posts ({posts.length})</Text>
               {posts.slice(0, 3).map(item => (
                 <View key={`p${item.id}`} style={s.postRow}>
                   <TouchableOpacity onPress={() => router.push({ pathname: '/user/[id]', params: { id: String(item.user_id) } })} style={s.postAuthor}>
@@ -206,12 +212,6 @@ export default function Search() {
                   <PostContent content={item.content} style={s.postContent} numberOfLines={3} />
                 </View>
               ))}
-            </>
-          ) : null}
-          {hashtags.length > 0 ? (
-            <>
-              <Text style={s.sectionHeader}>Hashtags</Text>
-              {hashtags.slice(0, 5).map((item, index) => renderHashtagRow(item, index, hashtags))}
             </>
           ) : null}
         </ScrollView>
