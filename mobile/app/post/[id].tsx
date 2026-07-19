@@ -9,6 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../../src/lib/api';
+import { PostContent } from '../../src/components/PostContent';
 import { colors } from '../../src/theme';
 
 interface Post {
@@ -162,7 +163,7 @@ export default function SinglePost() {
                   </View>
                 </View>
                 {post.discussion_title ? <Text style={s.postTitle}>{post.discussion_title}</Text> : null}
-                {post.content ? <Text style={s.content}>{post.content}</Text> : null}
+                {post.content ? <PostContent content={post.content} style={s.content} /> : null}
                 {post.image_url ? <Image source={{ uri: post.image_url }} style={s.image} resizeMode="contain" /> : null}
                 <View style={s.actions}>
                   <TouchableOpacity style={s.action} onPress={toggleLike}>
@@ -181,7 +182,7 @@ export default function SinglePost() {
             renderItem={({ item }) => (
               <View style={s.comment}>
                 <Text style={s.commentAuthor}>{item.author_name}</Text>
-                <Text style={s.commentText}>{item.content}</Text>
+                <PostContent content={item.content} style={s.commentText} />
                 <View style={s.commentActions}>
                   <Text style={s.commentTime}>{timeAgo(item.created_at)}</Text>
                   <TouchableOpacity onPress={() => { setReplyingTo(replyingTo === item.id ? null : item.id); setReplyText(''); }}>

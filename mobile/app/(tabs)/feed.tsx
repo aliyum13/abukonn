@@ -16,6 +16,7 @@ import { apiFetch, API_URL } from '../../src/lib/api';
 import { getToken } from '../../src/lib/storage';
 import { colors, radius, shadow } from '../../src/theme';
 import { StoryBar } from '../../src/components/Stories';
+import { PostContent } from '../../src/components/PostContent';
 import { useAuth } from '../../src/context/AuthContext';
 import { friendlyPreview } from '../../src/lib/messagePreview';
 
@@ -125,7 +126,7 @@ const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, on
           <Text style={s.title}>{post.discussion_title}</Text>
         ) : null}
 
-      {post.content ? <Text style={s.content}>{post.content}</Text> : null}
+      {post.content ? <PostContent content={post.content} style={s.content} /> : null}
 
       {/* Poll */}
       {post.post_subtype === 'poll' && post.poll_options ? (

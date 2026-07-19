@@ -7,6 +7,7 @@ import type { Palette } from '../../src/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { apiFetch } from '../../src/lib/api';
+import { PostContent } from '../../src/components/PostContent';
 import { colors } from '../../src/theme';
 
 interface Post {
@@ -82,7 +83,7 @@ export default function HashtagFeed() {
                 </View>
               </TouchableOpacity>
               {item.discussion_title ? <Text style={s.postTitle}>{item.discussion_title}</Text> : null}
-              {item.content ? <Text style={s.content} numberOfLines={4}>{item.content}</Text> : null}
+              {item.content ? <PostContent content={item.content} style={s.content} /> : null}
               {item.image_url ? <Image source={{ uri: item.image_url }} style={s.image} resizeMode="contain" /> : null}
               <Text style={s.meta}>{'\u2665'} {item.likes_count}   {'\uD83D\uDCAC'} {item.comments_count}</Text>
             </TouchableOpacity>
