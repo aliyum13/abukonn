@@ -259,7 +259,14 @@ function StoryViewer({
               <Text style={[v.storyText, storyFontStyle(story.font_style)]}>{story.text_content}</Text>
             </View>
           ) : story.media_url ? (
-            <Image source={{ uri: story.media_url }} style={v.media} resizeMode="contain" />
+            <>
+              <Image source={{ uri: story.media_url }} style={v.media} resizeMode="contain" />
+              {story.caption ? (
+                <View style={v.captionWrap}>
+                  <Text style={v.caption} numberOfLines={3}>{story.caption}</Text>
+                </View>
+              ) : null}
+            </>
           ) : null}
         </View>
 
@@ -374,6 +381,22 @@ function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: (
 
   // Detect a URL in the text story and fetch a preview (composer courtesy — the
   // preview isn't saved with the story, mirroring web).
+  // Load the saved story audience preference (web remembers it between posts).
+  useEffect(() => {
+    let live = true;
+    apiFetch<{ audience: 'all' | 'only' | 'except'; user_ids: number[] }>('/api/stories/audience')
+      .then(pref => {
+        if (!live) return;
+        if (pref?.audience) setAudience(pref.audience);
+        if (pref?.user_ids?.length) {
+          setChosen(new Set(pref.user_ids));
+          loadFollowing();
+        }
+      })
+      .catch(() => {});
+    return () => { live = false; };
+  }, []);
+
   useEffect(() => {
     if (mode !== 'text') { setLinkPreview(null); return; }
     const match = text.match(/https?:\/\/[^\s]+/);
@@ -652,6 +675,8 @@ const make_v = (colors: Palette) => StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000' },
   content: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', zIndex: 1 },
   media: { width: W, height: H * 0.8 },
+  captionWrap: { position: 'absolute', bottom: 90, left: 0, right: 0, paddingHorizontal: 20, alignItems: 'center' },
+  caption: { color: '#fff', fontSize: 16, fontWeight: '600', textAlign: 'center', backgroundColor: 'rgba(0,0,0,0.45)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, overflow: 'hidden' },
   textStory: { width: W, height: H * 0.75, alignItems: 'center', justifyContent: 'center', padding: 32 },
   storyText: { color: '#fff', fontSize: 26, fontWeight: '700', textAlign: 'center' },
   zoneLeft: { position: 'absolute', left: 0, top: 100, bottom: 100, width: W * 0.35, zIndex: 10 },
