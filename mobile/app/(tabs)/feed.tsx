@@ -30,10 +30,17 @@ interface Post {
   author_name: string;
   author_department: string | null;
   author_photo: string | null;
+  author_is_verified?: boolean;
+  author_is_content_creator?: boolean;
   likes_count: number;
   comments_count: number;
   is_liked: boolean;
   is_reposted?: boolean;
+  is_repost?: boolean;
+  original_author_name?: string | null;
+  original_author_full_name?: string | null;
+  original_author_photo?: string | null;
+  original_author_id?: number | null;
   reposts_count?: number;
   created_at: string;
   post_subtype?: string | null;
@@ -95,28 +102,63 @@ interface PostCardProps {
   onRSVP: (post: Post) => void;
 }
 
+const CATEGORY_CHIP: Record<string, { bg: string; fg: string; label: string }> = {
+  EXAMINATION:  { bg: 'rgba(239,68,68,0.12)',  fg: '#dc2626', label: 'Examination' },
+  REGISTRATION: { bg: 'rgba(249,115,22,0.12)', fg: '#ea580c', label: 'Registration' },
+  ACADEMIC:     { bg: 'rgba(59,130,246,0.12)', fg: '#2563eb', label: 'Academic' },
+  SPORTS:       { bg: 'rgba(234,179,8,0.12)',  fg: '#a16207', label: 'Sports' },
+  EVENTS:       { bg: 'rgba(168,85,247,0.12)', fg: '#9333ea', label: 'Events' },
+  CAMPUS_LIFE:  { bg: 'rgba(22,163,74,0.12)',  fg: '#16a34a', label: 'Campus Life' },
+};
+
 const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, onToggleLike, onOpenComments, onRepost, onShare, onMenu, onVote, onRSVP }: PostCardProps) {
   const s = useThemedStyles(make_s);
   const { palette } = useTheme();
   const [expanded, setExpanded] = useState(false);
   const longContent = (post.content?.length ?? 0) > 280;
+  // For reposts, the card body shows the ORIGINAL author; the reposter is named
+  // in the banner above.
+  const displayName = post.is_repost && post.original_author_full_name ? post.original_author_full_name : post.author_name;
+  const displayPhoto = post.is_repost && post.original_author_photo !== undefined && post.original_author_photo !== null ? post.original_author_photo : post.author_photo;
+  const displayAuthorId = post.is_repost && post.original_author_id ? post.original_author_id : post.user_id;
   return (
     <View style={s.card}>
+      {post.is_repost ? (
+        <TouchableOpacity style={s.repostBanner} onPress={() => onOpenProfile(post.user_id)} activeOpacity={0.7}>
+          <Ionicons name="repeat" size={14} color={palette.textSecondary} />
+          <Text style={s.repostBannerText}>{post.author_name} reposted</Text>
+        </TouchableOpacity>
+      ) : null}
       <View style={s.row}>
         <TouchableOpacity
           style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
           activeOpacity={0.7}
-          onPress={() => onOpenProfile(post.user_id)}
+          onPress={() => onOpenProfile(displayAuthorId)}
         >
-          {post.author_photo ? (
-            <Image source={{ uri: post.author_photo }} style={s.avatar} />
+          {displayPhoto ? (
+            <Image source={{ uri: displayPhoto }} style={s.avatar} />
           ) : (
             <View style={[s.avatar, s.fallback]}>
-              <Text style={s.letter}>{post.author_name?.charAt(0).toUpperCase()}</Text>
+              <Text style={s.letter}>{displayName?.charAt(0).toUpperCase()}</Text>
             </View>
           )}
           <View style={{ flex: 1 }}>
-            <Text style={s.author}>{post.author_name}</Text>
+            <View style={s.authorRow}>
+              <Text style={s.author} numberOfLines={1}>{displayName}</Text>
+              {post.author_is_verified ? (
+                <Ionicons name="checkmark-circle" size={15} color="#3b82f6" style={{ marginLeft: 3 }} />
+              ) : null}
+              {post.author_is_content_creator ? (
+                <View style={s.creatorBadge}><Text style={s.creatorBadgeText}>✎</Text></View>
+              ) : null}
+              {post.category && post.category !== 'GENERAL' && CATEGORY_CHIP[post.category] ? (
+                <View style={[s.postCatChip, { backgroundColor: CATEGORY_CHIP[post.category].bg }]}>
+                  <Text style={[s.postCatChipText, { color: CATEGORY_CHIP[post.category].fg }]}>
+                    {CATEGORY_CHIP[post.category].label}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
             <Text style={s.muted}>{post.author_department} · {timeAgo(post.created_at)}</Text>
           </View>
         </TouchableOpacity>
@@ -1241,7 +1283,17 @@ const make_s = (colors: Palette) => StyleSheet.create({
   avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#dcfce7' },
   fallback: { alignItems: 'center', justifyContent: 'center' },
   letter: { color: colors.brand, fontWeight: '700', fontSize: 15 },
-  author: { fontSize: 14, fontWeight: '700', color: colors.text },
+  author: { fontSize: 14, fontWeight: '700', color: colors.text, flexShrink: 1 },
+  authorRow: { flexDirection: 'row', alignItems: 'center' },
+  repostBanner: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8, marginLeft: 4 },
+  repostBannerText: { fontSize: 12, color: colors.textSecondary, fontWeight: '600' },
+  postCatChip: { marginLeft: 6, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
+  postCatChipText: { fontSize: 10, fontWeight: '700' },
+  creatorBadge: {
+    marginLeft: 4, width: 16, height: 16, borderRadius: 8,
+    backgroundColor: 'rgba(217,119,6,0.15)', alignItems: 'center', justifyContent: 'center',
+  },
+  creatorBadgeText: { fontSize: 10, color: '#d97706', fontWeight: '800' },
   title: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 4 },
   content: { fontSize: 15, color: colors.text, lineHeight: 22 },
   showMore: { fontSize: 14, fontWeight: '600', color: colors.brand, marginTop: 2 },
