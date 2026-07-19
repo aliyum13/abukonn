@@ -3,7 +3,7 @@ import { useThemedStyles } from '../../src/theme/ThemeContext';
 import type { Palette } from '../../src/theme';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, TextInput,
-  TouchableOpacity, KeyboardAvoidingView, Platform, Image, Alert } from 'react-native';
+  TouchableOpacity, KeyboardAvoidingView, Platform, Image, Alert, Modal, Clipboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,6 +11,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { apiFetch } from '../../src/lib/api';
 import { uploadImage } from '../../src/lib/upload';
 import { useAuth } from '../../src/context/AuthContext';
+import { plainText } from '../../src/lib/messagePreview';
 import { colors } from '../../src/theme';
 
 interface GroupMsg {
@@ -35,6 +36,10 @@ export default function GroupChat() {
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
   const [sendingImage, setSendingImage] = useState(false);
+  const [forwardMsg, setForwardMsg] = useState<GroupMsg | null>(null);
+  const [forwardConvos, setForwardConvos] = useState<{ id: number; other_user_name: string; other_user_id: number }[]>([]);
+  const [forwardingTo, setForwardingTo] = useState<number | null>(null);
+  const [forwardedTo, setForwardedTo] = useState<Set<number>>(new Set());
   const listRef = useRef<FlatList<GroupMsg>>(null);
 
   const load = useCallback(async () => {
@@ -72,6 +77,63 @@ export default function GroupChat() {
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
     } catch {
       setText(body); // put it back
+    }
+  };
+
+  const deleteMessage = (m: GroupMsg) => {
+    Alert.alert('Delete message', 'This message will be removed.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: async () => {
+          setMessages(prev => prev.filter(x => x.id !== m.id));
+          try {
+            await apiFetch(`/api/groups/${id}/messages/${m.id}`, { method: 'DELETE' });
+          } catch {
+            setMessages(prev => [...prev, m].sort((a, b) => a.id - b.id));
+            Alert.alert('Could not delete', 'The message could not be removed.');
+          }
+        },
+      },
+    ]);
+  };
+
+  const openMessageMenu = (m: GroupMsg) => {
+    const mine = m.sender_id === user?.id;
+    const options: { text: string; style?: 'destructive' | 'cancel'; onPress?: () => void }[] = [
+      { text: 'Forward', onPress: () => setForwardMsg(m) },
+    ];
+    if (m.content) options.push({ text: 'Copy', onPress: () => Clipboard.setString(plainText(m.content)) });
+    if (mine) options.push({ text: 'Delete', style: 'destructive', onPress: () => deleteMessage(m) });
+    options.push({ text: 'Cancel', style: 'cancel' });
+    Alert.alert('Message', undefined, options);
+  };
+
+  useEffect(() => {
+    if (!forwardMsg) return;
+    setForwardedTo(new Set());
+    apiFetch<{ conversations: { id: number; other_user_name: string; other_user_id: number }[] }>('/api/messages/conversations')
+      .then(d => setForwardConvos(d.conversations || []))
+      .catch(() => setForwardConvos([]));
+  }, [forwardMsg]);
+
+  const forwardToConversation = async (conversationId: number) => {
+    if (!forwardMsg || forwardingTo !== null) return;
+    setForwardingTo(conversationId);
+    try {
+      await apiFetch('/api/messages', {
+        method: 'POST',
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          content: plainText(forwardMsg.content),
+          image_url: forwardMsg.image_url ?? undefined,
+        }),
+      });
+      setForwardedTo(prev => new Set([...prev, conversationId]));
+    } catch (err) {
+      Alert.alert('Could not forward', err instanceof Error ? err.message : '');
+    } finally {
+      setForwardingTo(null);
     }
   };
 
@@ -145,7 +207,7 @@ export default function GroupChat() {
                       </View>
                     )
                   ) : null}
-                  <View style={[s.bubble, mine ? s.mine : s.theirs]}>
+                  <TouchableOpacity activeOpacity={0.85} onLongPress={() => openMessageMenu(item)} delayLongPress={250} style={[s.bubble, mine ? s.mine : s.theirs]}>
                     {!mine ? <Text style={s.senderName}>{item.sender_name}</Text> : null}
                     {item.image_url ? (
                       <Image source={{ uri: item.image_url }} style={s.msgImage} resizeMode="contain" />
@@ -153,7 +215,7 @@ export default function GroupChat() {
                     {item.content ? (
                       <Text style={mine ? s.mineText : s.theirsText}>{item.content}</Text>
                     ) : null}
-                  </View>
+                  </TouchableOpacity>
                 </View>
               );
             }}
@@ -179,6 +241,42 @@ export default function GroupChat() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Forward sheet */}
+      <Modal visible={forwardMsg !== null} animationType="slide" transparent onRequestClose={() => setForwardMsg(null)}>
+        <View style={s.fwdBackdrop}>
+          <View style={s.fwdSheet}>
+            <View style={s.fwdHeader}>
+              <Text style={s.fwdTitle}>Forward to</Text>
+              <TouchableOpacity onPress={() => setForwardMsg(null)} hitSlop={12}><Text style={s.fwdClose}>✕</Text></TouchableOpacity>
+            </View>
+            <FlatList
+              data={forwardConvos}
+              keyExtractor={c => String(c.id)}
+              style={{ maxHeight: 360 }}
+              ListEmptyComponent={<Text style={s.fwdEmpty}>No conversations yet.</Text>}
+              renderItem={({ item }) => {
+                const done = forwardedTo.has(item.id);
+                return (
+                  <View style={s.fwdRow}>
+                    <View style={s.fwdAvatar}><Text style={s.fwdInit}>{item.other_user_name.charAt(0)}</Text></View>
+                    <Text style={s.fwdName} numberOfLines={1}>{item.other_user_name}</Text>
+                    <TouchableOpacity
+                      style={[s.fwdBtn, done ? s.fwdBtnDone : null]}
+                      onPress={() => forwardToConversation(item.id)}
+                      disabled={done || forwardingTo === item.id}
+                    >
+                      {forwardingTo === item.id
+                        ? <ActivityIndicator size="small" />
+                        : <Text style={done ? s.fwdBtnDoneText : s.fwdBtnText}>{done ? 'Sent' : 'Send'}</Text>}
+                    </TouchableOpacity>
+                  </View>
+                );
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -215,4 +313,18 @@ const make_s = (colors: Palette) => StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 10, color: colors.text, maxHeight: 100,
   },
   send: { color: colors.brand, fontWeight: '700', fontSize: 15 },
+  fwdBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  fwdSheet: { backgroundColor: colors.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 34 },
+  fwdHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  fwdTitle: { fontSize: 18, fontWeight: '800', color: colors.text },
+  fwdClose: { fontSize: 20, color: colors.muted },
+  fwdEmpty: { textAlign: 'center', color: colors.muted, marginTop: 24, fontSize: 14 },
+  fwdRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 9 },
+  fwdAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
+  fwdInit: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  fwdName: { flex: 1, fontSize: 15, fontWeight: '600', color: colors.text },
+  fwdBtn: { borderWidth: 1, borderColor: colors.brand, borderRadius: 20, paddingHorizontal: 18, paddingVertical: 7 },
+  fwdBtnText: { color: colors.brand, fontWeight: '700', fontSize: 14 },
+  fwdBtnDone: { borderColor: colors.border },
+  fwdBtnDoneText: { color: colors.muted, fontWeight: '700', fontSize: 14 },
 });
