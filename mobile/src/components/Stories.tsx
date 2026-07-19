@@ -159,6 +159,10 @@ function StoryViewer({
   const [paused, setPaused] = useState(false);
   const [progress, setProgress] = useState(0);
   const [reply, setReply] = useState('');
+  const [reaction, setReaction] = useState<{ count: number; is_liked: boolean }>({ count: 0, is_liked: false });
+  const [viewersOpen, setViewersOpen] = useState(false);
+  const [viewers, setViewers] = useState<{ user_id: number; user_name: string; user_photo: string | null; department: string | null }[]>([]);
+  const [viewersLoading, setViewersLoading] = useState(false);
 
   const story = group.stories[idx];
 
@@ -200,6 +204,17 @@ function StoryViewer({
   };
 
   // Progress + auto-advance.
+  // Fetch reaction state (count + whether you've liked) for the current story,
+  // matching web which shows a live count and filled heart.
+  useEffect(() => {
+    if (!story) return;
+    let live = true;
+    apiFetch<{ count: number; is_liked: boolean }>(`/api/stories/${story.id}/reactions`)
+      .then(d => { if (live) setReaction({ count: d.count ?? 0, is_liked: !!d.is_liked }); })
+      .catch(() => { if (live) setReaction({ count: 0, is_liked: false }); });
+    return () => { live = false; };
+  }, [story?.id]);
+
   useEffect(() => {
     setProgress(0);
     if (paused || !story) return;
@@ -240,9 +255,32 @@ function StoryViewer({
     }
   };
 
+  const openViewers = async () => {
+    if (!story) return;
+    setPaused(true);
+    setViewersOpen(true);
+    setViewersLoading(true);
+    try {
+      const d = await apiFetch<{ viewers: { user_id: number; user_name: string; user_photo: string | null; department: string | null }[] }>(`/api/stories/${story.id}/viewers`);
+      setViewers(d.viewers || []);
+    } catch {
+      setViewers([]);
+    } finally {
+      setViewersLoading(false);
+    }
+  };
+
   const react = async () => {
     if (!story) return;
-    try { await apiFetch(`/api/stories/${story.id}/react`, { method: 'POST' }); } catch { /* best effort */ }
+    // Optimistic toggle, then reconcile with the server's authoritative count.
+    setReaction(r => ({ count: r.is_liked ? r.count - 1 : r.count + 1, is_liked: !r.is_liked }));
+    try {
+      const res = await apiFetch<{ liked: boolean; count: number }>(`/api/stories/${story.id}/react`, { method: 'POST' });
+      setReaction({ count: res.count, is_liked: res.liked });
+    } catch {
+      // Revert on failure.
+      setReaction(r => ({ count: r.is_liked ? r.count - 1 : r.count + 1, is_liked: !r.is_liked }));
+    }
   };
 
   if (!story) return null;
@@ -320,7 +358,11 @@ function StoryViewer({
         >
           <View style={v.footer}>
             {group.is_own ? (
-              <Text style={v.views}>👁 {story.view_count ?? 0} views</Text>
+              <TouchableOpacity onPress={openViewers} hitSlop={8}>
+                <Text style={v.views}>
+                  👁 {story.view_count ?? 0}{reaction.count > 0 ? `   ♥ ${reaction.count}` : ''}
+                </Text>
+              </TouchableOpacity>
             ) : (
               <>
                 <TextInput
@@ -335,19 +377,53 @@ function StoryViewer({
                 <TouchableOpacity onPress={sendReply} hitSlop={10}>
                   <Text style={v.send}>Send</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={react} hitSlop={10}>
-                  <Text style={v.heart}>♥</Text>
+                <TouchableOpacity onPress={react} hitSlop={10} style={v.reactBtn}>
+                  <Text style={[v.heart, reaction.is_liked ? v.heartOn : null]}>♥</Text>
+                  {reaction.count > 0 ? <Text style={v.reactCount}>{reaction.count}</Text> : null}
                 </TouchableOpacity>
               </>
             )}
           </View>
         </KeyboardAvoidingView>
       </View>
+
+      {/* Viewers sheet — owner only */}
+      <Modal visible={viewersOpen} animationType="slide" transparent onRequestClose={() => { setViewersOpen(false); setPaused(false); }}>
+        <View style={v.viewersBackdrop}>
+          <View style={v.viewersSheet}>
+            <View style={v.viewersHeader}>
+              <Text style={v.viewersTitle}>Viewed by {viewers.length}</Text>
+              <TouchableOpacity onPress={() => { setViewersOpen(false); setPaused(false); }} hitSlop={12}>
+                <Text style={v.viewersClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            {viewersLoading ? (
+              <ActivityIndicator style={{ marginTop: 24 }} />
+            ) : (
+              <FlatList
+                data={viewers}
+                keyExtractor={i => String(i.user_id)}
+                style={{ maxHeight: 360 }}
+                ListEmptyComponent={<Text style={v.viewersEmpty}>No views yet</Text>}
+                renderItem={({ item }) => (
+                  <View style={v.viewerRow}>
+                    {item.user_photo
+                      ? <Image source={{ uri: item.user_photo }} style={v.viewerAvatar} />
+                      : <View style={[v.viewerAvatar, v.viewerAvatarStub]}><Text style={v.viewerInit}>{item.user_name.charAt(0)}</Text></View>}
+                    <View style={{ flex: 1 }}>
+                      <Text style={v.viewerName} numberOfLines={1}>{item.user_name}</Text>
+                      {item.department ? <Text style={v.viewerDept} numberOfLines={1}>{item.department}</Text> : null}
+                    </View>
+                  </View>
+                )}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
     </Modal>
   );
 }
-
-// ── Composer ─────────────────────────────────────────────────────────────────
 const BG_COLORS = ['#16a34a', '#0ea5e9', '#8b5cf6', '#f43f5e', '#f59e0b', '#0a0a0a'];
 
 // Text-story fonts — keys match the backend whitelist (STORY_FONTS). Mapped to
@@ -692,6 +768,21 @@ const make_v = (colors: Palette) => StyleSheet.create({
   replyInput: { flex: 1, borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)', borderRadius: 22, paddingHorizontal: 16, paddingVertical: 10, color: '#fff' },
   send: { color: '#fff', fontWeight: '700' },
   heart: { color: '#fff', fontSize: 22 },
+  heartOn: { color: '#ef4444' },
+  reactBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  reactCount: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  viewersBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  viewersSheet: { backgroundColor: colors.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 34 },
+  viewersHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  viewersTitle: { fontSize: 17, fontWeight: '800', color: colors.text },
+  viewersClose: { fontSize: 20, color: colors.muted },
+  viewersEmpty: { textAlign: 'center', color: colors.muted, marginTop: 24, fontSize: 14 },
+  viewerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 9 },
+  viewerAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.border },
+  viewerAvatarStub: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brand },
+  viewerInit: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  viewerName: { fontSize: 15, fontWeight: '600', color: colors.text },
+  viewerDept: { fontSize: 12, color: colors.muted },
   views: { color: '#fff', fontSize: 14 },
 });
 
