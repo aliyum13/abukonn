@@ -11,7 +11,7 @@ import { apiFetch } from '../lib/api';
  * - @name -> resolves the username to a user id, then opens their profile
  * Plain text (including newlines) renders normally.
  */
-export function PostContent({ content, style }: { content: string; style?: object }) {
+export function PostContent({ content, style, numberOfLines }: { content: string; style?: object; numberOfLines?: number }) {
   const s = useThemedStyles(make_s);
   const router = useRouter();
 
@@ -31,7 +31,7 @@ export function PostContent({ content, style }: { content: string; style?: objec
   const parts = content.split(/(#[a-zA-Z0-9_]+|@[a-zA-Z0-9_]{2,30})/g);
 
   return (
-    <Text style={style}>
+    <Text style={style} numberOfLines={numberOfLines}>
       {parts.map((part, i) => {
         if (/^#[a-zA-Z0-9_]+$/.test(part)) {
           return (

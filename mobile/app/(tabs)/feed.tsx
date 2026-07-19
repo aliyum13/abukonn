@@ -17,6 +17,7 @@ import { getToken } from '../../src/lib/storage';
 import { colors, radius, shadow } from '../../src/theme';
 import { StoryBar } from '../../src/components/Stories';
 import { PostContent } from '../../src/components/PostContent';
+import { ShareSheet } from '../../src/components/ShareSheet';
 import { useAuth } from '../../src/context/AuthContext';
 import { friendlyPreview } from '../../src/lib/messagePreview';
 
@@ -88,14 +89,17 @@ interface PostCardProps {
   onToggleLike: (post: Post) => void;
   onOpenComments: (post: Post) => void;
   onRepost: (post: Post) => void;
+  onShare: (post: Post) => void;
   onMenu: (post: Post) => void;
   onVote: (post: Post, optionId: number) => void;
   onRSVP: (post: Post) => void;
 }
 
-const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, onToggleLike, onOpenComments, onRepost, onMenu, onVote, onRSVP }: PostCardProps) {
+const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, onToggleLike, onOpenComments, onRepost, onShare, onMenu, onVote, onRSVP }: PostCardProps) {
   const s = useThemedStyles(make_s);
   const { palette } = useTheme();
+  const [expanded, setExpanded] = useState(false);
+  const longContent = (post.content?.length ?? 0) > 280;
   return (
     <View style={s.card}>
       <View style={s.row}>
@@ -126,7 +130,20 @@ const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, on
           <Text style={s.title}>{post.discussion_title}</Text>
         ) : null}
 
-      {post.content ? <PostContent content={post.content} style={s.content} /> : null}
+      {post.content ? (
+        <>
+          <PostContent
+            content={post.content}
+            style={s.content}
+            numberOfLines={!expanded && longContent ? 3 : undefined}
+          />
+          {longContent ? (
+            <Text style={s.showMore} onPress={() => setExpanded(v => !v)}>
+              {expanded ? 'Show less' : 'Show more'}
+            </Text>
+          ) : null}
+        </>
+      ) : null}
 
       {/* Poll */}
       {post.post_subtype === 'poll' && post.poll_options ? (
@@ -214,6 +231,9 @@ const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, on
           <Ionicons name="repeat-outline" size={20} color={post.is_reposted ? palette.brand : palette.textSecondary} />
           {post.reposts_count ? <Text style={[s.actionText, post.is_reposted ? { color: palette.brand } : null]}>{post.reposts_count}</Text> : null}
         </TouchableOpacity>
+        <TouchableOpacity style={s.action} onPress={() => onShare(post)}>
+          <Ionicons name="paper-plane-outline" size={19} color={palette.textSecondary} />
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -289,6 +309,7 @@ export default function Feed() {
   const [birthdays, setBirthdays] = useState<{ id: number; full_name: string; profile_photo_url: string | null }[]>([]);
 
   const [commentsFor, setCommentsFor] = useState<Post | null>(null);
+  const [sharePost, setSharePost] = useState<Post | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentText, setCommentText] = useState('');
   const [commentsLoading, setCommentsLoading] = useState(false);
@@ -743,6 +764,7 @@ export default function Feed() {
       </View>
 
       <MenuSheet visible={menuOpen} onClose={() => setMenuOpen(false)} />
+      <ShareSheet post={sharePost} onClose={() => setSharePost(null)} />
 
       {/* For You / Following / Messages — matches web */}
       <View style={s.tabBar}>
@@ -846,6 +868,7 @@ export default function Feed() {
               onToggleLike={toggleLike}
               onOpenComments={openComments}
               onRepost={repost}
+              onShare={setSharePost}
               onMenu={openPostMenu}
               onVote={voteOnPoll}
               onRSVP={toggleRSVP}
@@ -944,7 +967,7 @@ export default function Feed() {
               {/* Event fields */}
               {composerMode === 'event' ? (
                 <>
-                  <TextInput style={s.titleInput} placeholder="Event title" placeholderTextColor={colors.muted} value={eventTitle} onChangeText={setEventTitle} />
+                  <TextInput style={s.titleInput} placeholder="Event title" placeholderTextColor={colors.muted} value={eventTitle} onChangeText={setEventTitle} maxLength={200} />
                   <TextInput style={s.fieldInput} placeholder="Date (e.g. 2026-03-15 3:00 PM)" placeholderTextColor={colors.muted} value={eventDate} onChangeText={setEventDate} />
                   <TextInput style={s.fieldInput} placeholder="Location (optional)" placeholderTextColor={colors.muted} value={eventLocation} onChangeText={setEventLocation} />
                 </>
@@ -983,7 +1006,7 @@ export default function Feed() {
                       ) : null}
                     </View>
                   ))}
-                  {pollOptions.length < 6 ? (
+                  {pollOptions.length < 4 ? (
                     <TouchableOpacity onPress={() => setPollOptions(prev => [...prev, ''])} style={s.addOpt}>
                       <Ionicons name="add" size={18} color={colors.brand} />
                       <Text style={s.addOptText}>Add option</Text>
@@ -991,9 +1014,11 @@ export default function Feed() {
                   ) : null}
                   <View style={s.durationRow}>
                     <Text style={s.durationLabel}>Duration:</Text>
-                    {[24, 48, 72].map(h => (
+                    {[24, 48, 72, 168].map(h => (
                       <TouchableOpacity key={h} style={[s.durChip, pollDuration === h ? s.durChipOn : null]} onPress={() => setPollDuration(h)}>
-                        <Text style={pollDuration === h ? s.durTextOn : s.durText}>{h}h</Text>
+                        <Text style={pollDuration === h ? s.durTextOn : s.durText}>
+                          {h === 24 ? '1 day' : h === 48 ? '2 days' : h === 72 ? '3 days' : '1 week'}
+                        </Text>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -1219,6 +1244,7 @@ const make_s = (colors: Palette) => StyleSheet.create({
   author: { fontSize: 14, fontWeight: '700', color: colors.text },
   title: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 4 },
   content: { fontSize: 15, color: colors.text, lineHeight: 22 },
+  showMore: { fontSize: 14, fontWeight: '600', color: colors.brand, marginTop: 2 },
   pollWrap: { marginTop: 10, gap: 8 },
   pollOpt: {
     position: 'relative', overflow: 'hidden', borderWidth: 1, borderColor: colors.border,
