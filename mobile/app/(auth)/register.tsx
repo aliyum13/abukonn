@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator,
-  KeyboardAvoidingView, Platform, ScrollView, Modal, FlatList,
+  KeyboardAvoidingView, Platform, ScrollView, Modal, FlatList, Linking,
 } from 'react-native';
 import { useThemedStyles } from '../../src/theme/ThemeContext';
 import type { Palette } from '../../src/theme';
@@ -9,8 +9,7 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 import { colors } from '../../src/theme';
 import { DEPARTMENTS, LEVELS } from '../../src/lib/departments';
-
-const COMMON_WEAK = new Set(['password', '123456', '12345678', 'qwerty', 'abc123', '111111', 'password1']);
+import { getPasswordStrength, STRENGTH_META, COMMON_PASSWORDS } from '../../src/lib/passwordStrength';
 
 export default function Register() {
   const s = useThemedStyles(make_s);
@@ -22,6 +21,7 @@ export default function Register() {
   const [department, setDepartment] = useState('');
   const [level, setLevel] = useState('');
   const [password, setPassword] = useState('');
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -34,8 +34,16 @@ export default function Register() {
     if (!fullName.trim() || !email.trim() || !department || !level || !password) {
       setError('Please fill in all fields.'); return;
     }
-    if (password.length < 6) { setError('Password must be at least 6 characters.'); return; }
-    if (COMMON_WEAK.has(password.toLowerCase())) { setError('That password is too common. Choose a stronger one.'); return; }
+    // Same rules as web, in the same order.
+    if (COMMON_PASSWORDS.has(password.toLowerCase())) {
+      setError('This password is too common. Please choose a unique password.'); return;
+    }
+    if (getPasswordStrength(password) === 'weak') {
+      setError('Password is too weak. Please choose a stronger password.'); return;
+    }
+    if (!agreedToTerms) {
+      setError('Please agree to the Terms and Privacy Policy to continue.'); return;
+    }
 
     setBusy(true);
     try {
@@ -64,7 +72,7 @@ export default function Register() {
         <TextInput style={s.input} placeholder="Full name" placeholderTextColor={colors.muted}
           value={fullName} onChangeText={setFullName} autoCapitalize="words" />
 
-        <TextInput style={s.input} placeholder="Email" placeholderTextColor={colors.muted}
+        <TextInput style={s.input} placeholder="you@abu.edu.ng" placeholderTextColor={colors.muted}
           value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" />
 
         <TouchableOpacity style={s.select} onPress={() => { setPicker('department'); setPickerQuery(''); }}>
@@ -83,6 +91,35 @@ export default function Register() {
 
         <TextInput style={s.input} placeholder="Password (min 6 characters)" placeholderTextColor={colors.muted}
           value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" />
+
+        {/* Password strength meter — same thresholds as web */}
+        {password ? (() => {
+          const strength = getPasswordStrength(password);
+          const meta = STRENGTH_META[strength];
+          return (
+            <View style={s.meterWrap}>
+              <View style={s.meterBars}>
+                {[1, 2, 3, 4].map(i => (
+                  <View key={i} style={[s.meterBar, { backgroundColor: i <= meta.bars ? meta.color : colors.border }]} />
+                ))}
+              </View>
+              <Text style={[s.meterLabel, { color: meta.color }]}>{meta.label}</Text>
+            </View>
+          );
+        })() : null}
+
+        {/* Terms agreement — required, like web */}
+        <TouchableOpacity style={s.termsRow} onPress={() => setAgreedToTerms(v => !v)} activeOpacity={0.7}>
+          <View style={[s.checkbox, agreedToTerms ? s.checkboxOn : null]}>
+            {agreedToTerms ? <Text style={s.checkmark}>✓</Text> : null}
+          </View>
+          <Text style={s.termsText}>
+            I agree to the{' '}
+            <Text style={s.link} onPress={() => Linking.openURL('https://abukonn.com/terms')}>Terms</Text>
+            {' '}and{' '}
+            <Text style={s.link} onPress={() => Linking.openURL('https://abukonn.com/privacy')}>Privacy Policy</Text>
+          </Text>
+        </TouchableOpacity>
 
         {error ? <Text style={s.error}>{error}</Text> : null}
 
@@ -153,6 +190,18 @@ const make_s = (colors: Palette) => StyleSheet.create({
   button: { backgroundColor: colors.brand, borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
   buttonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   error: { color: colors.danger, fontSize: 14, marginBottom: 8, textAlign: 'center' },
+  meterWrap: { marginBottom: 12, marginTop: -4, gap: 6 },
+  meterBars: { flexDirection: 'row', gap: 4 },
+  meterBar: { flex: 1, height: 5, borderRadius: 3 },
+  meterLabel: { fontSize: 12, fontWeight: '600' },
+  termsRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 16 },
+  checkbox: {
+    width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: colors.border,
+    alignItems: 'center', justifyContent: 'center', marginTop: 1,
+  },
+  checkboxOn: { backgroundColor: colors.brand, borderColor: colors.brand },
+  checkmark: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  termsText: { flex: 1, fontSize: 14, color: colors.textSecondary, lineHeight: 20 },
   linkRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
   linkMuted: { color: colors.muted, fontSize: 14 },
   link: { color: colors.brand, fontSize: 14, fontWeight: '700' },

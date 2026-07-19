@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator,
   KeyboardAvoidingView, Platform, ScrollView, Alert,
@@ -22,6 +22,23 @@ export default function ForgotPassword() {
   const [newPassword, setNewPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [cooldown, setCooldown] = useState(0); // seconds until resend allowed
+  const cooldownTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const RESEND_COOLDOWN = 60;
+
+  useEffect(() => () => { if (cooldownTimer.current) clearInterval(cooldownTimer.current); }, []);
+
+  const startCooldown = () => {
+    setCooldown(RESEND_COOLDOWN);
+    if (cooldownTimer.current) clearInterval(cooldownTimer.current);
+    cooldownTimer.current = setInterval(() => {
+      setCooldown(c => {
+        if (c <= 1) { if (cooldownTimer.current) clearInterval(cooldownTimer.current); return 0; }
+        return c - 1;
+      });
+    }, 1000);
+  };
 
   const requestCode = async () => {
     setError('');
@@ -32,6 +49,7 @@ export default function ForgotPassword() {
       // Backend always returns the same message (doesn't reveal if the email
       // exists), so we simply advance to the code step.
       setStep('otp');
+      startCooldown();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not send code');
     } finally {
@@ -41,7 +59,7 @@ export default function ForgotPassword() {
 
   const submitCode = async () => {
     setError('');
-    if (otp.trim().length < 4) { setError('Enter the code from your email.'); return; }
+    if (otp.trim().length !== 6) { setError('Enter the 6-digit code from your email.'); return; }
     setBusy(true);
     try {
       const res = await verifyOtp(email.trim().toLowerCase(), otp.trim());
@@ -97,8 +115,10 @@ export default function ForgotPassword() {
             <TouchableOpacity style={[s.button, busy && { opacity: 0.6 }]} onPress={submitCode} disabled={busy}>
               {busy ? <ActivityIndicator color="#fff" /> : <Text style={s.buttonText}>Verify code</Text>}
             </TouchableOpacity>
-            <TouchableOpacity style={s.resend} onPress={requestCode} disabled={busy}>
-              <Text style={s.link}>Resend code</Text>
+            <TouchableOpacity style={s.resend} onPress={requestCode} disabled={busy || cooldown > 0}>
+              <Text style={[s.link, cooldown > 0 ? { color: colors.muted } : null]}>
+                {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend code'}
+              </Text>
             </TouchableOpacity>
           </>
         ) : (
