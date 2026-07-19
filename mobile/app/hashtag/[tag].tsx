@@ -6,6 +6,7 @@ import { useThemedStyles } from '../../src/theme/ThemeContext';
 import type { Palette } from '../../src/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../../src/lib/api';
 import { PostContent } from '../../src/components/PostContent';
 import { colors } from '../../src/theme';
@@ -13,7 +14,7 @@ import { colors } from '../../src/theme';
 interface Post {
   id: number; user_id: number; content: string; image_url: string | null;
   author_name: string; author_department: string | null; author_photo: string | null;
-  likes_count: number; comments_count: number; created_at: string;
+  likes_count: number; comments_count: number; created_at: string; is_liked?: boolean;
   discussion_title?: string | null;
 }
 
@@ -31,18 +32,33 @@ export default function HashtagFeed() {
   const { tag } = useLocalSearchParams<{ tag: string }>();
 
   const [posts, setPosts] = useState<Post[]>([]);
+  const [postCount, setPostCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     try {
-      const d = await apiFetch<{ posts: Post[] }>(`/api/hashtags/${encodeURIComponent(tag)}/posts`);
+      const d = await apiFetch<{ posts: Post[]; meta?: { post_count?: number } }>(`/api/hashtags/${encodeURIComponent(tag)}/posts`);
       setPosts(d.posts || []);
+      setPostCount(d.meta?.post_count ?? d.posts?.length ?? 0);
     } catch {
       setPosts([]);
     } finally {
       setLoading(false);
     }
   }, [tag]);
+
+  const toggleLike = async (postId: number, wasLiked: boolean) => {
+    setPosts(prev => prev.map(p => p.id === postId
+      ? { ...p, is_liked: !wasLiked, likes_count: p.likes_count + (wasLiked ? -1 : 1) }
+      : p));
+    try {
+      await apiFetch(`/api/posts/${postId}/like`, { method: 'POST' });
+    } catch {
+      setPosts(prev => prev.map(p => p.id === postId
+        ? { ...p, is_liked: wasLiked, likes_count: p.likes_count + (wasLiked ? 1 : -1) }
+        : p));
+    }
+  };
 
   useEffect(() => { load(); }, [load]);
 
@@ -52,7 +68,12 @@ export default function HashtagFeed() {
         <TouchableOpacity onPress={() => router.back()} hitSlop={12} style={{ width: 60 }}>
           <Text style={s.backText}>‹ Back</Text>
         </TouchableOpacity>
-        <Text style={s.title} numberOfLines={1}>#{tag}</Text>
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          <Text style={s.title} numberOfLines={1}>#{tag}</Text>
+          {postCount != null ? (
+            <Text style={s.postCount}>{postCount.toLocaleString()} {postCount === 1 ? 'post' : 'posts'}</Text>
+          ) : null}
+        </View>
         <View style={{ width: 60 }} />
       </View>
 
@@ -85,7 +106,16 @@ export default function HashtagFeed() {
               {item.discussion_title ? <Text style={s.postTitle}>{item.discussion_title}</Text> : null}
               {item.content ? <PostContent content={item.content} style={s.content} /> : null}
               {item.image_url ? <Image source={{ uri: item.image_url }} style={s.image} resizeMode="contain" /> : null}
-              <Text style={s.meta}>{'\u2665'} {item.likes_count}   {'\uD83D\uDCAC'} {item.comments_count}</Text>
+              <View style={s.actions}>
+                <TouchableOpacity style={s.actionBtn} onPress={() => toggleLike(item.id, !!item.is_liked)}>
+                  <Ionicons name={item.is_liked ? 'heart' : 'heart-outline'} size={19} color={item.is_liked ? colors.danger : colors.textSecondary} />
+                  <Text style={[s.actionText, item.is_liked ? { color: colors.danger } : null]}>{item.likes_count}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={s.actionBtn} onPress={() => router.push({ pathname: '/post/[id]', params: { id: String(item.id) } })}>
+                  <Ionicons name="chatbubble-outline" size={18} color={colors.textSecondary} />
+                  <Text style={s.actionText}>{item.comments_count}</Text>
+                </TouchableOpacity>
+              </View>
             </TouchableOpacity>
           )}
         />
@@ -103,6 +133,7 @@ const make_s = (colors: Palette) => StyleSheet.create({
   },
   backText: { color: colors.brand, fontSize: 16, fontWeight: '600' },
   title: { fontSize: 18, fontWeight: '800', color: colors.brand },
+  postCount: { fontSize: 12, color: colors.textSecondary, marginTop: 1 },
   center: { paddingVertical: 48, alignItems: 'center' },
   muted: { fontSize: 13, color: colors.muted },
   post: {
@@ -117,5 +148,7 @@ const make_s = (colors: Palette) => StyleSheet.create({
   postTitle: { fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 4 },
   content: { fontSize: 15, color: colors.text, lineHeight: 21 },
   image: { width: '100%', height: 240, borderRadius: 10, marginTop: 10, backgroundColor: colors.surfaceSubtle },
-  meta: { fontSize: 13, color: colors.muted, marginTop: 10 },
+  actions: { flexDirection: 'row', gap: 22, marginTop: 12 },
+  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  actionText: { fontSize: 14, color: colors.textSecondary, fontWeight: '600' },
 });
