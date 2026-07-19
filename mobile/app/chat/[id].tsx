@@ -12,6 +12,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { apiFetch } from '../../src/lib/api';
 import { uploadImage } from '../../src/lib/upload';
 import { MessageBody } from '../../src/components/MessageBody';
+import { friendlyPreview } from '../../src/lib/messagePreview';
 import { getSocket } from '../../src/lib/socket';
 import type { Socket } from 'socket.io-client';
 import { useAuth } from '../../src/context/AuthContext';
@@ -36,6 +37,7 @@ export default function Chat() {
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
   const [theyreTyping, setTheyreTyping] = useState(false);
+  const [replyTo, setReplyTo] = useState<{ id: number; senderName: string; preview: string } | null>(null);
   const [sendingImage, setSendingImage] = useState(false);
   const listRef = useRef<FlatList<Msg>>(null);
   const socketRef = useRef<Socket | null>(null);
@@ -129,23 +131,34 @@ export default function Chat() {
     const body = text.trim();
     if (!body) return;
     setText('');
+    // If replying, wrap as a message_reply payload (rendered by MessageBody).
+    const outgoing = replyTo
+      ? JSON.stringify({ type: 'message_reply', quoted_sender: replyTo.senderName, quoted_text: replyTo.preview, reply: body })
+      : body;
+    setReplyTo(null);
     try {
       const socket = socketRef.current;
       if (socket?.connected) {
         // Real-time path — the server saves it and broadcasts back to the room,
         // where our receive_message handler (deduped) will add it.
-        socket.emit('send_message', { conversationId: Number(id), content: body });
+        socket.emit('send_message', { conversationId: Number(id), content: outgoing });
       } else {
         // Socket down — fall back to REST so a message is never lost.
         const res = await apiFetch<{ data: Msg }>('/api/messages', {
           method: 'POST',
-          body: JSON.stringify({ conversation_id: Number(id), content: body }),
+          body: JSON.stringify({ conversation_id: Number(id), content: outgoing }),
         });
         addMessage(res.data);
       }
     } catch {
       setText(body); // put it back so nothing is lost
     }
+  };
+
+  const startReply = (m: Msg) => {
+    const senderName = m.sender_id === user?.id ? 'You' : (name || 'Them');
+    const preview = m.content ? friendlyPreview(m.content) : (m.image_url ? '📷 Photo' : '');
+    setReplyTo({ id: m.id, senderName, preview });
   };
 
   // Emit typing_start as the user types, and typing_stop after a short pause.
@@ -213,14 +226,16 @@ export default function Chat() {
               const showReceipt = mine && item.id === lastSentId;
               return (
                 <View style={{ alignItems: mine ? 'flex-end' : 'flex-start' }}>
-                  <View style={[s.bubble, mine ? s.mine : s.theirs]}>
-                    {item.image_url ? (
-                      <Image source={{ uri: item.image_url }} style={s.msgImage} resizeMode="contain" />
-                    ) : null}
-                    {item.content ? (
-                      <MessageBody content={item.content} mine={mine} />
-                    ) : null}
-                  </View>
+                  <TouchableOpacity activeOpacity={0.8} onLongPress={() => startReply(item)} delayLongPress={250}>
+                    <View style={[s.bubble, mine ? s.mine : s.theirs]}>
+                      {item.image_url ? (
+                        <Image source={{ uri: item.image_url }} style={s.msgImage} resizeMode="contain" />
+                      ) : null}
+                      {item.content ? (
+                        <MessageBody content={item.content} mine={mine} />
+                      ) : null}
+                    </View>
+                  </TouchableOpacity>
                   {showReceipt ? (
                     <Text style={s.receipt}>{item.is_read ? '✓✓ Read' : '✓ Delivered'}</Text>
                   ) : null}
@@ -232,6 +247,18 @@ export default function Chat() {
 
         {theyreTyping ? (
           <Text style={s.typing}>{name} is typing…</Text>
+        ) : null}
+
+        {replyTo ? (
+          <View style={s.replyPreview}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.replyPreviewSender} numberOfLines={1}>Replying to {replyTo.senderName}</Text>
+              <Text style={s.replyPreviewText} numberOfLines={1}>{replyTo.preview}</Text>
+            </View>
+            <TouchableOpacity onPress={() => setReplyTo(null)} hitSlop={10}>
+              <Ionicons name="close" size={20} color={colors.muted} />
+            </TouchableOpacity>
+          </View>
         ) : null}
 
         <View style={s.bar}>
@@ -271,6 +298,9 @@ const make_s = (colors: Palette) => StyleSheet.create({
   msgImage: { width: 200, height: 200, borderRadius: 12, marginBottom: 4, backgroundColor: 'rgba(0,0,0,0.05)' },
   typing: { fontSize: 13, color: colors.muted, fontStyle: 'italic', paddingHorizontal: 16, paddingBottom: 4 },
   receipt: { fontSize: 11, color: colors.muted, marginTop: 2, marginBottom: 4, marginRight: 4 },
+  replyPreview: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface },
+  replyPreviewSender: { fontSize: 12, fontWeight: '700', color: colors.brand },
+  replyPreviewText: { fontSize: 13, color: colors.muted },
   bar: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderTopWidth: 1, borderTopColor: colors.border },
   input: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, color: colors.text, maxHeight: 100 },
   send: { color: colors.brand, fontWeight: '700', fontSize: 15 },
