@@ -22,6 +22,7 @@ interface Msg {
   sender_id: number;
   content: string;
   image_url?: string | null;
+  is_read?: boolean;
   created_at: string;
 }
 
@@ -70,12 +71,23 @@ export default function Chat() {
       if (!socket || !live) return;
       socketRef.current = socket;
       socket.emit('join_conversation', Number(id));
+      // Mark the other person's messages as read now that we're viewing.
+      socket.emit('mark_read', { conversationId: Number(id) });
       const onReceive = (msg: Msg & { conversation_id?: number }) => {
         // Server broadcasts to the room; guard against cross-room bleed.
         if (msg.conversation_id && String(msg.conversation_id) !== String(id)) return;
         addMessage(msg);
+        // A new incoming message while we're here is immediately read.
+        socket.emit('mark_read', { conversationId: Number(id) });
       };
       socket.on('receive_message', onReceive);
+
+      // When the other side reads, mark our sent messages as read (✓✓).
+      const onRead = ({ conversationId }: { conversationId: number }) => {
+        if (String(conversationId) !== String(id)) return;
+        setMessages(prev => prev.map(m => ({ ...m, is_read: true })));
+      };
+      socket.on('messages_read', onRead);
 
       // Typing indicator — the server broadcasts these to everyone else in the
       // room, so anything we receive is the OTHER person typing.
@@ -95,6 +107,7 @@ export default function Chat() {
 
       cleanup = () => {
         socket.off('receive_message', onReceive);
+        socket.off('messages_read', onRead);
         socket.off('user_typing', onTyping);
         socket.off('user_stopped_typing', onStopTyping);
       };
@@ -168,6 +181,9 @@ export default function Chat() {
     }
   };
 
+  // The read receipt shows only under the most recent message I sent.
+  const lastSentId = [...messages].reverse().find(m => m.sender_id === user?.id)?.id;
+
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
       <View style={s.header}>
@@ -194,13 +210,19 @@ export default function Chat() {
             onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
             renderItem={({ item }) => {
               const mine = item.sender_id === user?.id;
+              const showReceipt = mine && item.id === lastSentId;
               return (
-                <View style={[s.bubble, mine ? s.mine : s.theirs]}>
-                  {item.image_url ? (
-                    <Image source={{ uri: item.image_url }} style={s.msgImage} resizeMode="contain" />
-                  ) : null}
-                  {item.content ? (
-                    <MessageBody content={item.content} mine={mine} />
+                <View style={{ alignItems: mine ? 'flex-end' : 'flex-start' }}>
+                  <View style={[s.bubble, mine ? s.mine : s.theirs]}>
+                    {item.image_url ? (
+                      <Image source={{ uri: item.image_url }} style={s.msgImage} resizeMode="contain" />
+                    ) : null}
+                    {item.content ? (
+                      <MessageBody content={item.content} mine={mine} />
+                    ) : null}
+                  </View>
+                  {showReceipt ? (
+                    <Text style={s.receipt}>{item.is_read ? '✓✓ Read' : '✓ Delivered'}</Text>
                   ) : null}
                 </View>
               );
@@ -248,6 +270,7 @@ const make_s = (colors: Palette) => StyleSheet.create({
   theirsText: { color: colors.text, fontSize: 15 },
   msgImage: { width: 200, height: 200, borderRadius: 12, marginBottom: 4, backgroundColor: 'rgba(0,0,0,0.05)' },
   typing: { fontSize: 13, color: colors.muted, fontStyle: 'italic', paddingHorizontal: 16, paddingBottom: 4 },
+  receipt: { fontSize: 11, color: colors.muted, marginTop: 2, marginBottom: 4, marginRight: 4 },
   bar: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderTopWidth: 1, borderTopColor: colors.border },
   input: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, color: colors.text, maxHeight: 100 },
   send: { color: colors.brand, fontWeight: '700', fontSize: 15 },
