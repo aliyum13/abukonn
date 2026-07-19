@@ -18,6 +18,7 @@ import { colors, radius, shadow } from '../../src/theme';
 import { StoryBar } from '../../src/components/Stories';
 import { PostContent } from '../../src/components/PostContent';
 import { ShareSheet } from '../../src/components/ShareSheet';
+import { ReportModal } from '../../src/components/ReportModal';
 import { useAuth } from '../../src/context/AuthContext';
 import { friendlyPreview } from '../../src/lib/messagePreview';
 
@@ -352,6 +353,7 @@ export default function Feed() {
 
   const [commentsFor, setCommentsFor] = useState<Post | null>(null);
   const [sharePost, setSharePost] = useState<Post | null>(null);
+  const [reportTarget, setReportTarget] = useState<{ type: 'post' | 'user'; id: number; name: string } | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentText, setCommentText] = useState('');
   const [commentsLoading, setCommentsLoading] = useState(false);
@@ -519,32 +521,7 @@ export default function Feed() {
   }, [load]);
 
   const reportPost = useCallback((post: Post) => {
-    const reasons: { label: string; value: string }[] = [
-      { label: 'Spam', value: 'spam' },
-      { label: 'Harassment', value: 'harassment' },
-      { label: 'Hate speech', value: 'hate_speech' },
-      { label: 'Misinformation', value: 'misinformation' },
-      { label: 'Inappropriate content', value: 'inappropriate_content' },
-    ];
-    Alert.alert('Report post', 'Why are you reporting this?',
-      [
-        ...reasons.map(r => ({
-          text: r.label,
-          onPress: async () => {
-            try {
-              await apiFetch(`/api/moderation/report/post/${post.id}`, {
-                method: 'POST',
-                body: JSON.stringify({ reason: r.value }),
-              });
-              Alert.alert('Thanks', 'Your report has been submitted.');
-            } catch (err) {
-              const m = err instanceof Error ? err.message : '';
-              Alert.alert(m.includes('already') ? 'Already reported' : 'Could not report', m);
-            }
-          },
-        })),
-        { text: 'Cancel', style: 'cancel' as const },
-      ]);
+    setReportTarget({ type: 'post', id: post.id, name: post.author_name });
   }, []);
 
   const openPostMenu = useCallback((post: Post) => {
@@ -807,6 +784,7 @@ export default function Feed() {
 
       <MenuSheet visible={menuOpen} onClose={() => setMenuOpen(false)} />
       <ShareSheet post={sharePost} onClose={() => setSharePost(null)} />
+      <ReportModal target={reportTarget} onClose={() => setReportTarget(null)} />
 
       {/* For You / Following / Messages — matches web */}
       <View style={s.tabBar}>
