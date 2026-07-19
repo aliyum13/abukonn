@@ -524,6 +524,29 @@ export default function Feed() {
     setReportTarget({ type: 'post', id: post.id, name: post.author_name });
   }, []);
 
+  const blockUser = useCallback((post: Post) => {
+    Alert.alert(
+      `Block ${post.author_name}?`,
+      "You won't see their posts or messages, and they won't see yours. You can unblock them later in Settings.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block', style: 'destructive',
+          onPress: async () => {
+            try {
+              await apiFetch(`/api/moderation/block/${post.user_id}`, { method: 'POST' });
+              setPosts(prev => prev.filter(p => p.user_id !== post.user_id));
+              setFollowingPosts(prev => prev.filter(p => p.user_id !== post.user_id));
+              Alert.alert('Blocked', `You've blocked ${post.author_name}.`);
+            } catch (err) {
+              Alert.alert('Could not block', err instanceof Error ? err.message : '');
+            }
+          },
+        },
+      ],
+    );
+  }, []);
+
   const openPostMenu = useCallback((post: Post) => {
     const isOwn = user?.id === post.user_id;
     if (isOwn) {
@@ -533,11 +556,13 @@ export default function Feed() {
       ]);
     } else {
       Alert.alert('Post options', undefined, [
-        { text: 'Report post', style: 'destructive', onPress: () => reportPost(post) },
+        { text: 'Report post', onPress: () => reportPost(post) },
+        { text: 'Report user', onPress: () => setReportTarget({ type: 'user', id: post.user_id, name: post.author_name }) },
+        { text: 'Block user', style: 'destructive', onPress: () => blockUser(post) },
         { text: 'Cancel', style: 'cancel' },
       ]);
     }
-  }, [user, deletePost, reportPost]);
+  }, [user, deletePost, reportPost, blockUser]);
 
 
   const openComments = useCallback(async (post: Post) => {
