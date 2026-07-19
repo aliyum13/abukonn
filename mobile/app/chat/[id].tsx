@@ -3,11 +3,14 @@ import { useThemedStyles } from '../../src/theme/ThemeContext';
 import type { Palette } from '../../src/theme';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, TextInput,
-  TouchableOpacity, KeyboardAvoidingView, Platform,
+  TouchableOpacity, KeyboardAvoidingView, Platform, Image, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { apiFetch } from '../../src/lib/api';
+import { uploadImage } from '../../src/lib/upload';
 import { getSocket } from '../../src/lib/socket';
 import type { Socket } from 'socket.io-client';
 import { useAuth } from '../../src/context/AuthContext';
@@ -17,6 +20,7 @@ interface Msg {
   id: number;
   sender_id: number;
   content: string;
+  image_url?: string | null;
   created_at: string;
 }
 
@@ -29,8 +33,12 @@ export default function Chat() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
+  const [theyreTyping, setTheyreTyping] = useState(false);
+  const [sendingImage, setSendingImage] = useState(false);
   const listRef = useRef<FlatList<Msg>>(null);
   const socketRef = useRef<Socket | null>(null);
+  const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const theyStopTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -67,7 +75,28 @@ export default function Chat() {
         addMessage(msg);
       };
       socket.on('receive_message', onReceive);
-      cleanup = () => socket.off('receive_message', onReceive);
+
+      // Typing indicator — the server broadcasts these to everyone else in the
+      // room, so anything we receive is the OTHER person typing.
+      const onTyping = ({ conversationId }: { conversationId: number }) => {
+        if (String(conversationId) !== String(id)) return;
+        setTheyreTyping(true);
+        if (theyStopTimeout.current) clearTimeout(theyStopTimeout.current);
+        // Auto-clear in case we miss the stop event.
+        theyStopTimeout.current = setTimeout(() => setTheyreTyping(false), 4000);
+      };
+      const onStopTyping = ({ conversationId }: { conversationId: number }) => {
+        if (String(conversationId) !== String(id)) return;
+        setTheyreTyping(false);
+      };
+      socket.on('user_typing', onTyping);
+      socket.on('user_stopped_typing', onStopTyping);
+
+      cleanup = () => {
+        socket.off('receive_message', onReceive);
+        socket.off('user_typing', onTyping);
+        socket.off('user_stopped_typing', onStopTyping);
+      };
     })();
     return () => {
       live = false;
@@ -105,6 +134,39 @@ export default function Chat() {
     }
   };
 
+  // Emit typing_start as the user types, and typing_stop after a short pause.
+  const onChangeText = (v: string) => {
+    setText(v);
+    const socket = socketRef.current;
+    if (!socket?.connected) return;
+    socket.emit('typing_start', { conversationId: Number(id) });
+    if (typingTimeout.current) clearTimeout(typingTimeout.current);
+    typingTimeout.current = setTimeout(() => {
+      socket.emit('typing_stop', { conversationId: Number(id) });
+    }, 1500);
+  };
+
+  const sendImage = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) { Alert.alert('Permission needed', 'Allow photo access to send an image.'); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
+    if (result.canceled || !result.assets?.[0]) return;
+    setSendingImage(true);
+    try {
+      const url = await uploadImage(result.assets[0].uri, 'abukonn/messages');
+      // Images go via REST — the socket send_message handler only carries text.
+      const res = await apiFetch<{ data: Msg }>('/api/messages', {
+        method: 'POST',
+        body: JSON.stringify({ conversation_id: Number(id), image_url: url, content: '' }),
+      });
+      addMessage(res.data);
+    } catch (err) {
+      Alert.alert('Could not send image', err instanceof Error ? err.message : '');
+    } finally {
+      setSendingImage(false);
+    }
+  };
+
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
       <View style={s.header}>
@@ -133,20 +195,34 @@ export default function Chat() {
               const mine = item.sender_id === user?.id;
               return (
                 <View style={[s.bubble, mine ? s.mine : s.theirs]}>
-                  <Text style={mine ? s.mineText : s.theirsText}>{item.content}</Text>
+                  {item.image_url ? (
+                    <Image source={{ uri: item.image_url }} style={s.msgImage} resizeMode="contain" />
+                  ) : null}
+                  {item.content ? (
+                    <Text style={mine ? s.mineText : s.theirsText}>{item.content}</Text>
+                  ) : null}
                 </View>
               );
             }}
           />
         )}
 
+        {theyreTyping ? (
+          <Text style={s.typing}>{name} is typing…</Text>
+        ) : null}
+
         <View style={s.bar}>
+          <TouchableOpacity onPress={sendImage} disabled={sendingImage} hitSlop={8}>
+            {sendingImage
+              ? <ActivityIndicator color={colors.brand} size="small" />
+              : <Ionicons name="image-outline" size={26} color={colors.brand} />}
+          </TouchableOpacity>
           <TextInput
             style={s.input}
             placeholder="Message..."
             placeholderTextColor={colors.muted}
             value={text}
-            onChangeText={setText}
+            onChangeText={onChangeText}
             multiline
           />
           <TouchableOpacity onPress={send} disabled={!text.trim()}>
@@ -169,6 +245,8 @@ const make_s = (colors: Palette) => StyleSheet.create({
   theirs: { alignSelf: 'flex-start', backgroundColor: '#f3f4f6' },
   mineText: { color: '#fff', fontSize: 15 },
   theirsText: { color: colors.text, fontSize: 15 },
+  msgImage: { width: 200, height: 200, borderRadius: 12, marginBottom: 4, backgroundColor: 'rgba(0,0,0,0.05)' },
+  typing: { fontSize: 13, color: colors.muted, fontStyle: 'italic', paddingHorizontal: 16, paddingBottom: 4 },
   bar: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderTopWidth: 1, borderTopColor: colors.border },
   input: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, color: colors.text, maxHeight: 100 },
   send: { color: colors.brand, fontWeight: '700', fontSize: 15 },

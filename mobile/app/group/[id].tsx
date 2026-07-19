@@ -3,12 +3,13 @@ import { useThemedStyles } from '../../src/theme/ThemeContext';
 import type { Palette } from '../../src/theme';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, TextInput,
-  TouchableOpacity, KeyboardAvoidingView, Platform, Image,
-} from 'react-native';
+  TouchableOpacity, KeyboardAvoidingView, Platform, Image, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { apiFetch } from '../../src/lib/api';
+import { uploadImage } from '../../src/lib/upload';
 import { useAuth } from '../../src/context/AuthContext';
 import { colors } from '../../src/theme';
 
@@ -33,6 +34,7 @@ export default function GroupChat() {
   const [memberCount, setMemberCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
+  const [sendingImage, setSendingImage] = useState(false);
   const listRef = useRef<FlatList<GroupMsg>>(null);
 
   const load = useCallback(async () => {
@@ -72,6 +74,28 @@ export default function GroupChat() {
       setText(body); // put it back
     }
   };
+
+  const sendImage = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) { Alert.alert('Permission needed', 'Allow photo access to send an image.'); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
+    if (result.canceled || !result.assets?.[0]) return;
+    setSendingImage(true);
+    try {
+      const url = await uploadImage(result.assets[0].uri, 'abukonn/groups');
+      const res = await apiFetch<{ message: GroupMsg }>(`/api/groups/${id}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({ image_url: url, content: '' }),
+      });
+      setMessages(prev => [...prev, res.message]);
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
+    } catch (err) {
+      Alert.alert('Could not send image', err instanceof Error ? err.message : '');
+    } finally {
+      setSendingImage(false);
+    }
+  };
+
 
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
@@ -137,6 +161,11 @@ export default function GroupChat() {
         )}
 
         <View style={s.bar}>
+          <TouchableOpacity onPress={sendImage} disabled={sendingImage} hitSlop={8}>
+            {sendingImage
+              ? <ActivityIndicator color={colors.brand} size="small" />
+              : <Ionicons name="image-outline" size={26} color={colors.brand} />}
+          </TouchableOpacity>
           <TextInput
             style={s.input}
             placeholder="Message the group..."
