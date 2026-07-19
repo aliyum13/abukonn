@@ -18,3 +18,20 @@ export function friendlyPreview(content: string | null | undefined): string {
   }
   return content;
 }
+
+// Clean, human-readable text for copy/forward — strips JSON envelopes to their
+// underlying text (no emoji prefixes). Mirrors web's plainMessageText.
+export function plainText(content: string | null | undefined): string {
+  if (!content) return '';
+  try {
+    const data = JSON.parse(content);
+    if (data && typeof data === 'object') {
+      if (data.type === 'shared_post') return data.content ?? '';
+      if (data.type === 'story_reply') return data.reply ?? '';
+      if (data.type === 'message_reply') return data.reply ?? '';
+    }
+  } catch {
+    // not JSON — plain text
+  }
+  return content;
+}

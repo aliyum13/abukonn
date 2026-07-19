@@ -71,7 +71,7 @@ export default function Messages() {
               style={s.row}
               onPress={() => router.push({
                 pathname: '/chat/[id]',
-                params: { id: String(item.id), name: item.other_user_name },
+                params: { id: String(item.id), name: item.other_user_name, otherId: String(item.other_user_id) },
               })}
             >
               {item.other_user_photo ? (

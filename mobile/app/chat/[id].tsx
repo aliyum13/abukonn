@@ -2,8 +2,8 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useThemedStyles } from '../../src/theme/ThemeContext';
 import type { Palette } from '../../src/theme';
 import {
-  View, Text, FlatList, StyleSheet, ActivityIndicator, TextInput,
-  TouchableOpacity, KeyboardAvoidingView, Platform, Image, Alert,
+  View, Text, FlatList, StyleSheet, ActivityIndicator, TextInput, Modal,
+  TouchableOpacity, KeyboardAvoidingView, Platform, Image, Alert, Clipboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -12,7 +12,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { apiFetch } from '../../src/lib/api';
 import { uploadImage } from '../../src/lib/upload';
 import { MessageBody } from '../../src/components/MessageBody';
-import { friendlyPreview } from '../../src/lib/messagePreview';
+import { friendlyPreview, plainText } from '../../src/lib/messagePreview';
 import { getSocket } from '../../src/lib/socket';
 import type { Socket } from 'socket.io-client';
 import { useAuth } from '../../src/context/AuthContext';
@@ -39,6 +39,10 @@ export default function Chat() {
   const [theyreTyping, setTheyreTyping] = useState(false);
   const [replyTo, setReplyTo] = useState<{ id: number; senderName: string; preview: string } | null>(null);
   const [sendingImage, setSendingImage] = useState(false);
+  const [forwardMsg, setForwardMsg] = useState<Msg | null>(null);
+  const [forwardConvos, setForwardConvos] = useState<{ id: number; other_user_name: string; other_user_id: number }[]>([]);
+  const [forwardingTo, setForwardingTo] = useState<number | null>(null);
+  const [forwardedTo, setForwardedTo] = useState<Set<number>>(new Set());
   const listRef = useRef<FlatList<Msg>>(null);
   const socketRef = useRef<Socket | null>(null);
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -161,6 +165,71 @@ export default function Chat() {
     setReplyTo({ id: m.id, senderName, preview });
   };
 
+  const deleteMessage = (m: Msg) => {
+    Alert.alert('Delete message', 'This message will be removed.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: async () => {
+          setMessages(prev => prev.filter(x => x.id !== m.id));
+          try {
+            await apiFetch(`/api/messages/${m.id}`, { method: 'DELETE' });
+          } catch {
+            // Put it back if the server rejects (e.g. not your message).
+            setMessages(prev => [...prev, m].sort((a, b) => a.id - b.id));
+            Alert.alert('Could not delete', 'The message could not be removed.');
+          }
+        },
+      },
+    ]);
+  };
+
+  const openMessageMenu = (m: Msg) => {
+    const mine = m.sender_id === user?.id;
+    const options: { text: string; style?: 'destructive' | 'cancel'; onPress?: () => void }[] = [
+      { text: 'Reply', onPress: () => startReply(m) },
+      { text: 'Forward', onPress: () => setForwardMsg(m) },
+    ];
+    if (m.content) {
+      options.push({ text: 'Copy', onPress: () => Clipboard.setString(plainText(m.content)) });
+    }
+    if (mine) {
+      options.push({ text: 'Delete', style: 'destructive', onPress: () => deleteMessage(m) });
+    }
+    options.push({ text: 'Cancel', style: 'cancel' });
+    Alert.alert('Message', undefined, options);
+  };
+
+  // Load conversations when the forward sheet opens.
+  useEffect(() => {
+    if (!forwardMsg) return;
+    setForwardedTo(new Set());
+    apiFetch<{ conversations: { id: number; other_user_name: string; other_user_id: number }[] }>('/api/messages/conversations')
+      .then(d => setForwardConvos(d.conversations || []))
+      .catch(() => setForwardConvos([]));
+  }, [forwardMsg]);
+
+  const forwardToConversation = async (conversationId: number) => {
+    if (!forwardMsg || forwardingTo !== null) return;
+    setForwardingTo(conversationId);
+    try {
+      // Forward the underlying text and any image, as plain content (no reply envelope).
+      await apiFetch('/api/messages', {
+        method: 'POST',
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          content: plainText(forwardMsg.content),
+          image_url: forwardMsg.image_url ?? undefined,
+        }),
+      });
+      setForwardedTo(prev => new Set([...prev, conversationId]));
+    } catch (err) {
+      Alert.alert('Could not forward', err instanceof Error ? err.message : '');
+    } finally {
+      setForwardingTo(null);
+    }
+  };
+
   // Emit typing_start as the user types, and typing_stop after a short pause.
   const onChangeText = (v: string) => {
     setText(v);
@@ -226,7 +295,7 @@ export default function Chat() {
               const showReceipt = mine && item.id === lastSentId;
               return (
                 <View style={{ alignItems: mine ? 'flex-end' : 'flex-start' }}>
-                  <TouchableOpacity activeOpacity={0.8} onLongPress={() => startReply(item)} delayLongPress={250}>
+                  <TouchableOpacity activeOpacity={0.8} onLongPress={() => openMessageMenu(item)} delayLongPress={250}>
                     <View style={[s.bubble, mine ? s.mine : s.theirs]}>
                       {item.image_url ? (
                         <Image source={{ uri: item.image_url }} style={s.msgImage} resizeMode="contain" />
@@ -280,6 +349,42 @@ export default function Chat() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Forward sheet */}
+      <Modal visible={forwardMsg !== null} animationType="slide" transparent onRequestClose={() => setForwardMsg(null)}>
+        <View style={s.fwdBackdrop}>
+          <View style={s.fwdSheet}>
+            <View style={s.fwdHeader}>
+              <Text style={s.fwdTitle}>Forward to</Text>
+              <TouchableOpacity onPress={() => setForwardMsg(null)} hitSlop={12}><Text style={s.fwdClose}>✕</Text></TouchableOpacity>
+            </View>
+            <FlatList
+              data={forwardConvos}
+              keyExtractor={c => String(c.id)}
+              style={{ maxHeight: 360 }}
+              ListEmptyComponent={<Text style={s.fwdEmpty}>No conversations yet.</Text>}
+              renderItem={({ item }) => {
+                const done = forwardedTo.has(item.id);
+                return (
+                  <View style={s.fwdRow}>
+                    <View style={[s.fwdAvatar]}><Text style={s.fwdInit}>{item.other_user_name.charAt(0)}</Text></View>
+                    <Text style={s.fwdName} numberOfLines={1}>{item.other_user_name}</Text>
+                    <TouchableOpacity
+                      style={[s.fwdBtn, done ? s.fwdBtnDone : null]}
+                      onPress={() => forwardToConversation(item.id)}
+                      disabled={done || forwardingTo === item.id}
+                    >
+                      {forwardingTo === item.id
+                        ? <ActivityIndicator size="small" />
+                        : <Text style={done ? s.fwdBtnDoneText : s.fwdBtnText}>{done ? 'Sent' : 'Send'}</Text>}
+                    </TouchableOpacity>
+                  </View>
+                );
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -297,6 +402,20 @@ const make_s = (colors: Palette) => StyleSheet.create({
   theirsText: { color: colors.text, fontSize: 15 },
   msgImage: { width: 200, height: 200, borderRadius: 12, marginBottom: 4, backgroundColor: 'rgba(0,0,0,0.05)' },
   typing: { fontSize: 13, color: colors.muted, fontStyle: 'italic', paddingHorizontal: 16, paddingBottom: 4 },
+  fwdBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  fwdSheet: { backgroundColor: colors.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 34 },
+  fwdHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  fwdTitle: { fontSize: 18, fontWeight: '800', color: colors.text },
+  fwdClose: { fontSize: 20, color: colors.muted },
+  fwdEmpty: { textAlign: 'center', color: colors.muted, marginTop: 24, fontSize: 14 },
+  fwdRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 9 },
+  fwdAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
+  fwdInit: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  fwdName: { flex: 1, fontSize: 15, fontWeight: '600', color: colors.text },
+  fwdBtn: { borderWidth: 1, borderColor: colors.brand, borderRadius: 20, paddingHorizontal: 18, paddingVertical: 7 },
+  fwdBtnText: { color: colors.brand, fontWeight: '700', fontSize: 14 },
+  fwdBtnDone: { borderColor: colors.border },
+  fwdBtnDoneText: { color: colors.muted, fontWeight: '700', fontSize: 14 },
   receipt: { fontSize: 11, color: colors.muted, marginTop: 2, marginBottom: 4, marginRight: 4 },
   replyPreview: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface },
   replyPreviewSender: { fontSize: 12, fontWeight: '700', color: colors.brand },
