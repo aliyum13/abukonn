@@ -37,6 +37,13 @@ interface Post {
   discussion_title?: string | null;
 }
 
+interface ProfileReply {
+  id: number;
+  content: string;
+  post_id: number;
+  created_at: string;
+}
+
 function timeAgo(iso: string) {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
   if (s < 60) return 'now';
@@ -53,6 +60,8 @@ export default function UserProfile() {
 
   const [user, setUser] = useState<ProfileUser | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [replies, setReplies] = useState<ProfileReply[]>([]);
+  const [tab, setTab] = useState<'posts' | 'replies'>('posts');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -62,9 +71,10 @@ export default function UserProfile() {
 
   const load = useCallback(async () => {
     try {
-      const data = await apiFetch<{ user: ProfileUser; posts: Post[] }>(`/api/users/${id}`);
+      const data = await apiFetch<{ user: ProfileUser; posts: Post[]; replies?: ProfileReply[] }>(`/api/users/${id}`);
       setUser(data.user);
       setPosts(data.posts || []);
+      setReplies(data.replies || []);
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load profile');
@@ -201,8 +211,8 @@ export default function UserProfile() {
       </View>
 
       <FlatList
-        data={posts}
-        keyExtractor={p => String(p.id)}
+        data={(tab === 'posts' ? posts : replies) as (Post | ProfileReply)[]}
+        keyExtractor={item => `${tab}-${item.id}`}
         refreshControl={
           <RefreshControl refreshing={refreshing}
             onRefresh={() => { setRefreshing(true); load(); }}
@@ -296,26 +306,48 @@ export default function UserProfile() {
               )
             ) : null}
 
-            <Text style={s.sectionTitle}>Posts</Text>
+            <View style={s.profileTabs}>
+              {(['posts', 'replies'] as const).map(t => (
+                <TouchableOpacity key={t} style={s.profileTab} onPress={() => setTab(t)}>
+                  <Text style={tab === t ? s.profileTabOn : s.profileTabOff}>
+                    {t === 'posts'
+                      ? `Posts${posts.length > 0 ? ` (${posts.length})` : ''}`
+                      : `Replies${replies.length > 0 ? ` (${replies.length})` : ''}`}
+                  </Text>
+                  {tab === t ? <View style={s.profileTabUnderline} /> : null}
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
         }
         ListEmptyComponent={
-          <View style={s.center}><Text style={s.muted}>No posts yet</Text></View>
+          <View style={s.center}><Text style={s.muted}>{tab === 'posts' ? 'No posts yet' : 'No replies yet'}</Text></View>
         }
         renderItem={({ item }) => (
-          <View style={s.card}>
-            {(item.post_subtype === 'question' || item.post_subtype === 'discussion')
-              && item.discussion_title ? (
-                <Text style={s.postTitle}>{item.discussion_title}</Text>
+          tab === 'replies' ? (
+            <TouchableOpacity
+              style={s.card}
+              onPress={() => router.push({ pathname: '/post/[id]', params: { id: String((item as unknown as ProfileReply).post_id) } })}
+            >
+              <Text style={s.replyLabel}>Replied</Text>
+              <Text style={s.content}>{item.content}</Text>
+              <Text style={s.meta}>{timeAgo(item.created_at)}</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={s.card}>
+              {((item as Post).post_subtype === 'question' || (item as Post).post_subtype === 'discussion')
+                && (item as Post).discussion_title ? (
+                  <Text style={s.postTitle}>{(item as Post).discussion_title}</Text>
+                ) : null}
+              {item.content ? <Text style={s.content}>{item.content}</Text> : null}
+              {(item as Post).image_url ? (
+                <Image source={{ uri: (item as Post).image_url! }} style={s.image} resizeMode="contain" />
               ) : null}
-            {item.content ? <Text style={s.content}>{item.content}</Text> : null}
-            {item.image_url ? (
-              <Image source={{ uri: item.image_url }} style={s.image} resizeMode="contain" />
-            ) : null}
-            <Text style={s.meta}>
-              {item.likes_count} likes · {item.comments_count} comments · {timeAgo(item.created_at)}
-            </Text>
-          </View>
+              <Text style={s.meta}>
+                {(item as Post).likes_count} likes · {(item as Post).comments_count} comments · {timeAgo(item.created_at)}
+              </Text>
+            </View>
+          )
         )}
       />
     </SafeAreaView>
@@ -378,6 +410,12 @@ const make_s = (colors: Palette) => StyleSheet.create({
     alignSelf: 'flex-start', fontSize: 15, fontWeight: '700',
     color: colors.text, marginTop: 26, marginBottom: 4,
   },
+  profileTabs: { flexDirection: 'row', gap: 28, marginTop: 22, alignSelf: 'stretch', paddingHorizontal: 4 },
+  profileTab: { paddingBottom: 8 },
+  profileTabOn: { fontSize: 15, fontWeight: '800', color: colors.brand },
+  profileTabOff: { fontSize: 15, fontWeight: '600', color: colors.textSecondary },
+  profileTabUnderline: { height: 2, backgroundColor: colors.brand, borderRadius: 1, marginTop: 6 },
+  replyLabel: { fontSize: 12, fontWeight: '700', color: colors.textSecondary, marginBottom: 4 },
   card: { padding: 16, borderTopWidth: 1, borderTopColor: colors.border },
   postTitle: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 4 },
   content: { fontSize: 15, color: colors.text, lineHeight: 22 },
