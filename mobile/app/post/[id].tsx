@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity, Image, FlatList,
-  ActivityIndicator, KeyboardAvoidingView, Platform,
+  ActivityIndicator, KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
 import { useThemedStyles } from '../../src/theme/ThemeContext';
 import type { Palette } from '../../src/theme';
@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../../src/lib/api';
 import { PostContent } from '../../src/components/PostContent';
 import { ShareSheet } from '../../src/components/ShareSheet';
+import { useAuth } from '../../src/context/AuthContext';
 import { colors } from '../../src/theme';
 
 const CATEGORY_CHIP: Record<string, { bg: string; fg: string; label: string }> = {
@@ -36,7 +37,7 @@ interface Post {
   is_repost?: boolean; original_author_name?: string | null;
   original_author_full_name?: string | null; original_author_photo?: string | null; original_author_id?: number | null;
 }
-interface Comment { id: number; content: string; author_name: string; created_at: string; reply_count?: number }
+interface Comment { id: number; user_id?: number; content: string; author_name: string; created_at: string; reply_count?: number; likes_count?: number; is_liked?: boolean }
 interface Reply { id: number; content: string; author_name: string; created_at: string }
 
 function timeAgo(iso: string) {
@@ -51,6 +52,8 @@ export default function SinglePost() {
   const s = useThemedStyles(make_s);
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { user } = useAuth();
+  const currentUserId = user?.id;
 
   const [post, setPost] = useState<Post | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -207,6 +210,37 @@ export default function SinglePost() {
     );
   };
 
+  const likeComment = async (commentId: number) => {
+    setComments(prev => prev.map(c => c.id === commentId
+      ? { ...c, is_liked: !c.is_liked, likes_count: (c.likes_count ?? 0) + (c.is_liked ? -1 : 1) }
+      : c));
+    try {
+      await apiFetch(`/api/posts/${id}/comments/${commentId}/like`, { method: 'POST' });
+    } catch {
+      setComments(prev => prev.map(c => c.id === commentId
+        ? { ...c, is_liked: !c.is_liked, likes_count: (c.likes_count ?? 0) + (c.is_liked ? 1 : -1) }
+        : c));
+    }
+  };
+
+  const deleteComment = (commentId: number) => {
+    Alert.alert('Delete comment', 'This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: async () => {
+          setComments(prev => prev.filter(c => c.id !== commentId));
+          setPost(p => p ? { ...p, comments_count: Math.max(0, p.comments_count - 1) } : p);
+          try {
+            await apiFetch(`/api/posts/${id}/comments/${commentId}`, { method: 'DELETE' });
+          } catch {
+            load(); // restore on failure
+          }
+        },
+      },
+    ]);
+  };
+
   const addComment = async () => {
     const body = text.trim();
     if (!body || !post) return;
@@ -310,9 +344,18 @@ export default function SinglePost() {
                 <PostContent content={item.content} style={s.commentText} />
                 <View style={s.commentActions}>
                   <Text style={s.commentTime}>{timeAgo(item.created_at)}</Text>
+                  <TouchableOpacity style={s.commentLikeBtn} onPress={() => likeComment(item.id)}>
+                    <Ionicons name={item.is_liked ? 'heart' : 'heart-outline'} size={14} color={item.is_liked ? colors.danger : colors.textSecondary} />
+                    {item.likes_count ? <Text style={[s.commentLikeCount, item.is_liked ? { color: colors.danger } : null]}>{item.likes_count}</Text> : null}
+                  </TouchableOpacity>
                   <TouchableOpacity onPress={() => { setReplyingTo(replyingTo === item.id ? null : item.id); setReplyText(''); }}>
                     <Text style={s.replyAction}>Reply</Text>
                   </TouchableOpacity>
+                  {item.user_id === currentUserId ? (
+                    <TouchableOpacity onPress={() => deleteComment(item.id)}>
+                      <Text style={s.deleteAction}>Delete</Text>
+                    </TouchableOpacity>
+                  ) : null}
                   {item.reply_count ? (
                     <TouchableOpacity onPress={() => toggleReplies(item.id)}>
                       <Text style={s.replyAction}>
@@ -433,6 +476,9 @@ const make_s = (colors: Palette) => StyleSheet.create({
   commentText: { fontSize: 15, color: colors.text, marginTop: 2, lineHeight: 20 },
   commentTime: { fontSize: 12, color: colors.muted, marginTop: 4 },
   commentActions: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 4 },
+  commentLikeBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4 },
+  commentLikeCount: { fontSize: 12, fontWeight: '700', color: colors.textSecondary },
+  deleteAction: { fontSize: 12, fontWeight: '700', color: colors.danger, marginTop: 4 },
   replyAction: { fontSize: 12, fontWeight: '700', color: colors.brand, marginTop: 4 },
   replyBox: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 10 },
   replyInput: {
