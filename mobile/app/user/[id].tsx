@@ -10,6 +10,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../../src/lib/api';
 import { useAuth } from '../../src/context/AuthContext';
+import { RoleBadge, usesFollowSystem } from '../../src/components/RoleBadge';
 import { colors } from '../../src/theme';
 
 interface ProfileUser {
@@ -24,6 +25,9 @@ interface ProfileUser {
   following_count: number;
   is_following: boolean;
   is_verified?: boolean;
+  is_content_creator?: boolean;
+  is_admin?: boolean;
+  role?: string;
 }
 
 interface Post {
@@ -228,9 +232,13 @@ export default function UserProfile() {
               </View>
             )}
 
-            <Text style={s.name}>
-              {user.full_name}{user.is_verified ? ' ✓' : ''}
-            </Text>
+            <Text style={s.name}>{user.full_name}</Text>
+            <View style={s.badgeRow}>
+              <RoleBadge role={user.role || (user.is_admin ? 'admin' : user.is_verified ? 'verified' : 'user')} />
+              {user.is_content_creator ? (
+                <View style={s.creatorBadge}><Text style={s.creatorBadgeText}>✎ Creator</Text></View>
+              ) : null}
+            </View>
             {user.department ? (
               <Text style={s.muted}>
                 {user.department}{user.level ? ` · ${user.level}` : ''}
@@ -255,23 +263,25 @@ export default function UserProfile() {
 
             {!isMe ? (
               <View style={s.actions}>
-                <TouchableOpacity
-                  style={[s.followBtn, user.is_following ? s.followingBtn : null]}
-                  onPress={toggleFollow}
-                  disabled={busy}
-                >
-                  <Text style={user.is_following ? s.followingText : s.followText}>
-                    {user.is_following ? 'Following' : 'Follow'}
-                  </Text>
-                </TouchableOpacity>
+                {usesFollowSystem(user.role || (user.is_admin ? 'admin' : user.is_verified ? 'verified' : 'user')) ? (
+                  <TouchableOpacity
+                    style={[s.followBtn, user.is_following ? s.followingBtn : null]}
+                    onPress={toggleFollow}
+                    disabled={busy}
+                  >
+                    <Text style={user.is_following ? s.followingText : s.followText}>
+                      {user.is_following ? 'Following' : 'Follow'}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
                 <TouchableOpacity style={s.msgBtn} onPress={message}>
                   <Text style={s.msgText}>Message</Text>
                 </TouchableOpacity>
               </View>
             ) : null}
 
-            {/* Connect (mutual) — separate from follow */}
-            {!isMe && connectStatus ? (
+            {/* Connect (mutual) — only for regular users, matching web's either/or */}
+            {!isMe && connectStatus && !usesFollowSystem(user.role || (user.is_admin ? 'admin' : user.is_verified ? 'verified' : 'user')) ? (
               connectStatus.status === 'pending' && !connectStatus.initiated_by_me ? (
                 <View style={s.connectRow}>
                   <TouchableOpacity style={s.connectBtn} onPress={handleConnect} disabled={connectBusy}>
@@ -370,6 +380,9 @@ const make_s = (colors: Palette) => StyleSheet.create({
   fallback: { alignItems: 'center', justifyContent: 'center' },
   letter: { fontSize: 32, fontWeight: '800', color: colors.brand },
   name: { fontSize: 20, fontWeight: '800', color: colors.text, marginTop: 12 },
+  badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
+  creatorBadge: { backgroundColor: 'rgba(217,119,6,0.15)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
+  creatorBadgeText: { fontSize: 11, fontWeight: '700', color: '#d97706' },
   muted: { fontSize: 14, color: colors.muted, marginTop: 4, textAlign: 'center' },
   bio: { fontSize: 14, color: colors.text, marginTop: 10, textAlign: 'center', lineHeight: 20 },
   stats: { flexDirection: 'row', gap: 32, marginTop: 18 },
