@@ -6,6 +6,7 @@
     "orientation": "portrait",
     "scheme": "abukonn",
     "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.abukonn.app"
@@ -13,9 +14,9 @@
     "android": {
       "package": "com.abukonn.app",
       "adaptiveIcon": {
+        "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundColor": "#16a34a"
-      },
-      "googleServicesFile": "./google-services.json"
+      }
     },
     "plugins": [
       "expo-router",
