@@ -6,6 +6,7 @@ import {
   TouchableOpacity, TextInput, Linking, Alert, Modal, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../../src/lib/api';
 import { colors, radius, shadow } from '../../src/theme';
@@ -46,6 +47,7 @@ const TYPE_ICON: Record<string, string> = {
 
 export default function Library() {
   const s = useThemedStyles(make_s);
+  const router = useRouter();
   const { ref: listRef, setRefresh } = useTabScrollToTop<Material>();
   const [materials, setMaterials] = useState<Material[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,6 +105,25 @@ export default function Library() {
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
       <View style={s.header}><Text style={s.title}>Library</Text></View>
+
+      <View style={s.quickRow}>
+        <TouchableOpacity style={s.quickCard} onPress={() => router.push('/academic-calendar')}>
+          <View style={s.quickIcon}><Ionicons name="calendar-outline" size={22} color={colors.brand} /></View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.quickTitle}>Academic Calendar</Text>
+            <Text style={s.quickSub} numberOfLines={1}>Semester dates, exams & breaks</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+        </TouchableOpacity>
+        <TouchableOpacity style={s.quickCard} onPress={() => router.push('/timetable')}>
+          <View style={s.quickIcon}><Ionicons name="time-outline" size={22} color={colors.brand} /></View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.quickTitle}>Timetable</Text>
+            <Text style={s.quickSub} numberOfLines={1}>Your department's class schedule</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+        </TouchableOpacity>
+      </View>
 
       <TextInput
         style={s.search}
@@ -223,6 +244,15 @@ const make_s = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, backgroundColor: colors.surface },
   title: { fontSize: 20, fontWeight: '800', color: colors.text },
+  quickRow: { paddingHorizontal: 16, gap: 10, marginBottom: 12 },
+  quickCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: colors.surface, borderRadius: radius.md, padding: 14,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  quickIcon: { width: 44, height: 44, borderRadius: radius.md, backgroundColor: colors.brand100, alignItems: 'center', justifyContent: 'center' },
+  quickTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
+  quickSub: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
   search: {
     marginHorizontal: 16, marginBottom: 10, borderWidth: 1, borderColor: colors.border,
     borderRadius: radius.md, paddingHorizontal: 16, paddingVertical: 11, fontSize: 15,

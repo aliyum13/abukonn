@@ -22,6 +22,22 @@ import { ReportModal } from '../../src/components/ReportModal';
 import { useAuth } from '../../src/context/AuthContext';
 import { friendlyPreview } from '../../src/lib/messagePreview';
 
+interface TodayClass {
+  id: number | string;
+  course_code: string | null;
+  course_title: string;
+  start_time: string;
+  end_time: string;
+  venue: string | null;
+  lecturer: string | null;
+  status?: 'holding' | 'cancelled';
+  override?: {
+    kind: 'add' | 'edit' | 'cancel';
+    note?: string | null;
+    new?: { start_time?: string; end_time?: string; course_code?: string | null; course_title?: string; venue?: string | null; lecturer?: string | null };
+  } | null;
+}
+
 interface Post {
   id: number;
   user_id: number;
@@ -348,6 +364,8 @@ export default function Feed() {
   const [notifUnread, setNotifUnread] = useState(0);
   const [category, setCategory] = useState('ALL');
   const [suggestions, setSuggestions] = useState<{ id: number; full_name: string; department: string | null; level: string | null; profile_photo_url: string | null }[]>([]);
+  const [todayClasses, setTodayClasses] = useState<TodayClass[]>([]);
+  const [noTimetableProfile, setNoTimetableProfile] = useState(false);
   const [trending, setTrending] = useState<{ tag: string; post_count: number }[]>([]);
   const [highlights, setHighlights] = useState<{
     id: number; title: string; description: string | null; icon: string;
@@ -445,6 +463,9 @@ export default function Feed() {
       .then(d => setHighlights(d.highlights || [])).catch(() => {});
     apiFetch<{ users: typeof birthdays }>('/api/users/birthdays/today')
       .then(d => setBirthdays(d.users || [])).catch(() => {});
+    apiFetch<{ classes: TodayClass[]; no_profile?: boolean }>('/api/timetable/today')
+      .then(d => { setTodayClasses(d.classes || []); setNoTimetableProfile(!!d.no_profile); })
+      .catch(() => {});
   }, [refreshBadges]);
 
   // Re-check unread counts whenever the feed regains focus — e.g. after you open
@@ -704,6 +725,67 @@ export default function Feed() {
   const forYouHeader = (
     <View>
       <StoryBar />
+
+      {/* Your Classes Today — mirrors web's feed widget, uses /api/timetable/today */}
+      {(todayClasses.length > 0 || noTimetableProfile) ? (
+        <View style={s.tcWrap}>
+          <View style={s.tcHead}>
+            <Text style={s.tcHeadTitle}>YOUR CLASSES TODAY 📚</Text>
+            <TouchableOpacity onPress={() => router.push('/timetable')}>
+              <Text style={s.tcLink}>View full timetable →</Text>
+            </TouchableOpacity>
+          </View>
+          {noTimetableProfile ? (
+            <TouchableOpacity onPress={() => router.push('/settings')}>
+              <Text style={s.tcNoProfile}>Set your department in Settings to see your timetable</Text>
+            </TouchableOpacity>
+          ) : (
+            <FlatList
+              data={todayClasses}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={c => String(c.id)}
+              contentContainerStyle={{ paddingHorizontal: 12, gap: 10 }}
+              renderItem={({ item }) => {
+                const ov = item.override;
+                const isCancelled = item.status === 'cancelled' || ov?.kind === 'cancel';
+                const isAdded = ov?.kind === 'add';
+                const isEdited = ov?.kind === 'edit';
+                const nv = isEdited ? ov?.new : null;
+                return (
+                  <View style={[s.tcCard, isCancelled ? s.tcCardCancel : (isAdded || isEdited) ? s.tcCardAmber : s.tcCardNormal]}>
+                    <View style={s.tcCardTop}>
+                      <Text style={[s.tcCourse, isCancelled ? s.tcStrike : null]} numberOfLines={2}>
+                        {item.course_code ? `${item.course_code} ` : ''}{item.course_title}
+                      </Text>
+                      <View style={[s.tcBadge, isCancelled ? s.tcBadgeRed : isAdded ? s.tcBadgeAmber : s.tcBadgeGreen]}>
+                        <Text style={[s.tcBadgeText, isCancelled ? s.tcBadgeTextRed : isAdded ? s.tcBadgeTextAmber : s.tcBadgeTextGreen]}>
+                          {isCancelled ? 'Cancelled' : isAdded ? 'Extra class' : 'Holding'}
+                        </Text>
+                      </View>
+                    </View>
+                    {isEdited && nv ? (
+                      <>
+                        <Text style={s.tcTimeStrike}>{item.start_time} – {item.end_time}</Text>
+                        <Text style={s.tcTimeAmber}>{nv.start_time} – {nv.end_time}</Text>
+                      </>
+                    ) : (
+                      <Text style={[s.tcTime, isCancelled ? s.tcTimeRed : null]}>{item.start_time} – {item.end_time}</Text>
+                    )}
+                    {isEdited && nv?.venue ? (
+                      <Text style={s.tcVenueAmber}>📍 {nv.venue}</Text>
+                    ) : item.venue ? (
+                      <Text style={[s.tcVenue, isCancelled ? s.tcTimeRed : null]}>📍 {item.venue}</Text>
+                    ) : null}
+                    {item.lecturer && !isEdited ? <Text style={s.tcVenue}>👤 {item.lecturer}</Text> : null}
+                    {ov?.note ? <Text style={s.tcNote}>{ov.note}</Text> : null}
+                  </View>
+                );
+              }}
+            />
+          )}
+        </View>
+      ) : null}
 
       {/* Category filter — matches web's post categories */}
       <FlatList
@@ -1217,6 +1299,34 @@ export default function Feed() {
 
 const make_s = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
+  // Your Classes Today widget
+  tcWrap: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
+  tcHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, marginBottom: 10 },
+  tcHeadTitle: { fontSize: 11, fontWeight: '800', color: colors.textSecondary, letterSpacing: 0.6 },
+  tcLink: { fontSize: 11, fontWeight: '700', color: colors.brand },
+  tcNoProfile: { fontSize: 12, color: colors.brand, paddingHorizontal: 16, textDecorationLine: 'underline' },
+  tcCard: { width: 210, borderRadius: 16, padding: 14, gap: 6 },
+  tcCardCancel: { backgroundColor: '#fef2f2' },
+  tcCardAmber: { backgroundColor: '#fffbeb' },
+  tcCardNormal: { backgroundColor: '#eef2ff' },
+  tcCardTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
+  tcCourse: { flex: 1, fontSize: 13, fontWeight: '800', color: '#3730a3', lineHeight: 17 },
+  tcStrike: { color: '#991b1b', textDecorationLine: 'line-through' },
+  tcBadge: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
+  tcBadgeRed: { backgroundColor: '#fee2e2' },
+  tcBadgeAmber: { backgroundColor: '#fef3c7' },
+  tcBadgeGreen: { backgroundColor: '#dcfce7' },
+  tcBadgeText: { fontSize: 10, fontWeight: '800' },
+  tcBadgeTextRed: { color: '#b91c1c' },
+  tcBadgeTextAmber: { color: '#b45309' },
+  tcBadgeTextGreen: { color: '#15803d' },
+  tcTime: { fontSize: 11, fontWeight: '700', color: '#4f46e5' },
+  tcTimeRed: { color: '#dc2626' },
+  tcTimeStrike: { fontSize: 11, fontWeight: '700', color: colors.textSecondary, textDecorationLine: 'line-through' },
+  tcTimeAmber: { fontSize: 11, fontWeight: '700', color: '#b45309' },
+  tcVenue: { fontSize: 11, color: '#6366f1' },
+  tcVenueAmber: { fontSize: 11, color: '#b45309' },
+  tcNote: { fontSize: 11, color: colors.textSecondary, fontStyle: 'italic' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   logoImg: { width: 26, height: 26, borderRadius: 6 },

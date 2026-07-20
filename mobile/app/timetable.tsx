@@ -5,6 +5,7 @@ import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl, TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { apiFetch } from '../src/lib/api';
 import { colors, radius, shadow } from '../src/theme';
 
@@ -37,6 +38,7 @@ const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
 
 export default function Timetable() {
   const s = useThemedStyles(make_s);
+  const router = useRouter();
   const [mode, setMode] = useState<'today' | 'week'>('today');
   const [today, setToday] = useState<ClassItem[]>([]);
   const [todayName, setTodayName] = useState<string | null>(null);
@@ -123,6 +125,9 @@ export default function Timetable() {
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
       <View style={s.header}>
+        <TouchableOpacity onPress={() => router.back()} hitSlop={10}>
+          <Text style={s.back}>‹ Back</Text>
+        </TouchableOpacity>
         <Text style={s.title}>Timetable</Text>
         <View style={s.toggle}>
           <TouchableOpacity
@@ -202,7 +207,8 @@ const make_s = (colors: Palette) => StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 12,
     borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface,
   },
-  title: { fontSize: 20, fontWeight: '800', color: colors.text },
+  back: { color: colors.brand, fontSize: 16, fontWeight: '600' },
+  title: { fontSize: 18, fontWeight: '800', color: colors.text },
   toggle: { flexDirection: 'row', backgroundColor: '#f3f4f6', borderRadius: 10, padding: 2 },
   toggleBtn: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 8 },
   toggleOn: { backgroundColor: colors.surface },
