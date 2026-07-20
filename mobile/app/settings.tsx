@@ -249,6 +249,43 @@ export default function SettingsScreen() {
     }
   };
 
+  const deleteAccount = () => {
+    Alert.alert(
+      'Delete account',
+      'This permanently deletes your account and all your data. This cannot be undone. Are you absolutely sure?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete forever', style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Final confirmation',
+              'Tap "Delete my account" to permanently remove your account.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Delete my account', style: 'destructive',
+                  onPress: async () => {
+                    setDeactivating(true);
+                    try {
+                      await apiFetch('/api/settings/account', { method: 'DELETE', body: JSON.stringify({ confirmation: 'DELETE' }) });
+                      await signOut();
+                      router.replace('/(auth)/login');
+                    } catch (err) {
+                      Alert.alert('Could not delete', err instanceof Error ? err.message : '');
+                    } finally {
+                      setDeactivating(false);
+                    }
+                  },
+                },
+              ],
+            );
+          },
+        },
+      ],
+    );
+  };
+
   const deactivate = () => {
     Alert.alert(
       'Deactivate account',
@@ -435,6 +472,10 @@ export default function SettingsScreen() {
             <TouchableOpacity style={s.dangerBtn} onPress={deactivate} disabled={deactivating}>
               {deactivating ? <ActivityIndicator color={colors.danger} /> : <Text style={s.dangerBtnText}>Deactivate account</Text>}
             </TouchableOpacity>
+            <Text style={[s.dangerNote, { marginTop: 16 }]}>Deleting permanently removes your account and all your data. This cannot be undone.</Text>
+            <TouchableOpacity style={[s.dangerBtn, s.deleteBtn]} onPress={deleteAccount} disabled={deactivating}>
+              <Text style={s.deleteBtnText}>Delete account</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Logout */}
@@ -492,6 +533,8 @@ const make_s = (colors: Palette) => StyleSheet.create({
   dangerNote: { fontSize: 13, color: colors.muted, marginBottom: 12, lineHeight: 18 },
   dangerBtn: { borderWidth: 1, borderColor: colors.danger, borderRadius: radius.md, paddingVertical: 12, alignItems: 'center' },
   dangerBtnText: { color: colors.danger, fontWeight: '700', fontSize: 15 },
+  deleteBtn: { backgroundColor: colors.danger, borderColor: colors.danger },
+  deleteBtnText: { color: '#fff', fontWeight: '800', fontSize: 15 },
   emptyText: { color: colors.muted, fontSize: 14, paddingVertical: 4 },
   blockedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12 },
   blockedName: { fontSize: 15, fontWeight: '600', color: colors.text },
