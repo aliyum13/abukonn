@@ -8,6 +8,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { apiFetch } from '../src/lib/api';
+import { RoleBadge } from '../src/components/RoleBadge';
 import { colors, radius, shadow } from '../src/theme';
 
 interface Person {
@@ -19,6 +20,9 @@ interface Person {
   profile_photo_url: string | null;
   bio: string | null;
   is_verified?: boolean;
+  is_content_creator?: boolean;
+  is_admin?: boolean;
+  role?: string;
   followers_count?: number;
   is_following?: boolean;
 }
@@ -58,9 +62,11 @@ function PersonRow({ person, onOpen }: { person: Person; onOpen: (id: number) =>
         </View>
       )}
       <View style={{ flex: 1 }}>
-        <Text style={s.name}>
-          {person.full_name}{person.is_verified ? ' ✓' : ''}
-        </Text>
+        <View style={s.nameRow}>
+          <Text style={s.name} numberOfLines={1}>{person.full_name}</Text>
+          <RoleBadge role={person.role || (person.is_admin ? 'admin' : person.is_verified ? 'verified' : 'user')} iconOnly />
+          {person.is_content_creator ? <Text style={s.creatorIcon}>✎</Text> : null}
+        </View>
         {person.department ? (
           <Text style={s.sub} numberOfLines={1}>
             {person.department}{person.level ? ` · ${person.level}` : ''}
@@ -269,7 +275,9 @@ const make_s = (colors: Palette) => StyleSheet.create({
   avatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.brand100 },
   fallback: { alignItems: 'center', justifyContent: 'center' },
   letter: { color: colors.brand, fontWeight: '700', fontSize: 18 },
-  name: { fontSize: 15, fontWeight: '700', color: colors.text },
+  name: { fontSize: 15, fontWeight: '700', color: colors.text, flexShrink: 1 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  creatorIcon: { fontSize: 13, color: '#d97706', fontWeight: '800' },
   sub: { fontSize: 13, color: colors.muted, marginTop: 2 },
   followBtn: {
     backgroundColor: colors.brand, borderRadius: radius.full,
