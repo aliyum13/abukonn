@@ -31,7 +31,7 @@ export default function ClassRep() {
 
   // Create-override modal
   const [modalOpen, setModalOpen] = useState(false);
-  const [kind, setKind] = useState<'add' | 'cancel'>('add');
+  const [kind, setKind] = useState<'add' | 'edit' | 'cancel'>('add');
   const [date, setDate] = useState('');
   const [courseTitle, setCourseTitle] = useState('');
   const [courseCode, setCourseCode] = useState('');
@@ -40,6 +40,8 @@ export default function ClassRep() {
   const [venue, setVenue] = useState('');
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
+  const [official, setOfficial] = useState<{ id: number; course_code: string | null; course_title: string; start_time: string; end_time: string; venue: string | null; lecturer: string | null; day: string }[]>([]);
+  const [targetClassId, setTargetClassId] = useState<number | null>(null);
 
   const loadClasses = useCallback(async () => {
     try {
@@ -63,22 +65,32 @@ export default function ClassRep() {
     }
   }, []);
 
+  const loadOfficial = useCallback(async (cls: RepClass) => {
+    try {
+      const d = await apiFetch<{ classes?: typeof official; timetable?: typeof official }>(
+        `/api/timetable/${encodeURIComponent(cls.department)}/${encodeURIComponent(cls.level)}`);
+      setOfficial(d.classes || d.timetable || []);
+    } catch {
+      setOfficial([]);
+    }
+  }, []);
+
   useEffect(() => { loadClasses(); }, [loadClasses]);
-  useEffect(() => { if (active) loadOverrides(active); }, [active, loadOverrides]);
+  useEffect(() => { if (active) { loadOverrides(active); loadOfficial(active); } }, [active, loadOverrides, loadOfficial]);
 
   const resetForm = () => {
     setKind('add'); setDate(''); setCourseTitle(''); setCourseCode('');
-    setStartTime(''); setEndTime(''); setVenue(''); setNote('');
+    setStartTime(''); setEndTime(''); setVenue(''); setNote(''); setTargetClassId(null);
   };
 
   const submit = async () => {
     if (!active) return;
     if (!date.trim()) { Alert.alert('Date required', 'Enter the date (YYYY-MM-DD).'); return; }
-    if (kind === 'add' && (!courseTitle.trim() || !startTime.trim())) {
-      Alert.alert('Missing details', 'Course title and start time are required for an extra class.'); return;
+    if ((kind === 'add' || kind === 'edit') && (!courseTitle.trim() || !startTime.trim())) {
+      Alert.alert('Missing details', 'Course title and start time are required.'); return;
     }
-    if (kind === 'cancel' && !courseTitle.trim()) {
-      Alert.alert('Which class?', 'Enter the course title to cancel.'); return;
+    if ((kind === 'edit' || kind === 'cancel') && !targetClassId) {
+      Alert.alert('Which class?', 'Select which official class to change.'); return;
     }
     setSaving(true);
     try {
@@ -87,6 +99,7 @@ export default function ClassRep() {
         body: JSON.stringify({
           department: active.department, level: active.level,
           override_date: date.trim(), kind,
+          original_class_id: (kind === 'edit' || kind === 'cancel') ? targetClassId : null,
           course_code: courseCode.trim() || null,
           course_title: courseTitle.trim() || null,
           start_time: startTime.trim() || null,
@@ -217,29 +230,61 @@ export default function ClassRep() {
             <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
               <View style={s.kindToggle}>
                 <TouchableOpacity style={[s.kindOpt, kind === 'add' ? s.kindOptOn : null]} onPress={() => setKind('add')}>
-                  <Text style={kind === 'add' ? s.kindOptTextOn : s.kindOptText}>Extra class</Text>
+                  <Text style={kind === 'add' ? s.kindOptTextOn : s.kindOptText}>Extra</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.kindOpt, kind === 'edit' ? s.kindOptOn : null]} onPress={() => setKind('edit')}>
+                  <Text style={kind === 'edit' ? s.kindOptTextOn : s.kindOptText}>Reschedule</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[s.kindOpt, kind === 'cancel' ? s.kindOptOn : null]} onPress={() => setKind('cancel')}>
-                  <Text style={kind === 'cancel' ? s.kindOptTextOn : s.kindOptText}>Cancel a class</Text>
+                  <Text style={kind === 'cancel' ? s.kindOptTextOn : s.kindOptText}>Cancel</Text>
                 </TouchableOpacity>
               </View>
 
               <Text style={s.label}>Date</Text>
               <TextInput style={s.input} value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" placeholderTextColor={colors.muted} />
 
-              <Text style={s.label}>Course title</Text>
-              <TextInput style={s.input} value={courseTitle} onChangeText={setCourseTitle} placeholder="e.g. Financial Accounting" placeholderTextColor={colors.muted} />
-
-              <Text style={s.label}>Course code (optional)</Text>
-              <TextInput style={s.input} value={courseCode} onChangeText={setCourseCode} placeholder="e.g. ACC302" placeholderTextColor={colors.muted} autoCapitalize="characters" />
-
-              {kind === 'add' ? (
+              {(kind === 'edit' || kind === 'cancel') ? (
                 <>
-                  <Text style={s.label}>Start time</Text>
+                  <Text style={s.label}>Which class?</Text>
+                  {official.length === 0 ? (
+                    <Text style={s.muted}>No official classes loaded for this department/level.</Text>
+                  ) : (
+                    official.map(c => (
+                      <TouchableOpacity
+                        key={c.id}
+                        style={[s.classPick, targetClassId === c.id ? s.classPickOn : null]}
+                        onPress={() => {
+                          setTargetClassId(c.id);
+                          if (kind === 'edit') {
+                            // Prefill from the official class so the rep edits from real values.
+                            setCourseTitle(c.course_title); setCourseCode(c.course_code || '');
+                            setStartTime(c.start_time); setEndTime(c.end_time); setVenue(c.venue || '');
+                          }
+                        }}
+                      >
+                        <Text style={targetClassId === c.id ? s.classPickTextOn : s.classPickText}>
+                          {c.course_code ? `${c.course_code} · ` : ''}{c.course_title}
+                        </Text>
+                        <Text style={s.classPickSub}>{c.day} · {c.start_time}{c.end_time ? `–${c.end_time}` : ''}{c.venue ? ` · ${c.venue}` : ''}</Text>
+                      </TouchableOpacity>
+                    ))
+                  )}
+                </>
+              ) : null}
+
+              {(kind === 'add' || kind === 'edit') ? (
+                <>
+                  <Text style={s.label}>{kind === 'edit' ? 'New course title' : 'Course title'}</Text>
+                  <TextInput style={s.input} value={courseTitle} onChangeText={setCourseTitle} placeholder="e.g. Financial Accounting" placeholderTextColor={colors.muted} />
+
+                  <Text style={s.label}>Course code (optional)</Text>
+                  <TextInput style={s.input} value={courseCode} onChangeText={setCourseCode} placeholder="e.g. ACC302" placeholderTextColor={colors.muted} autoCapitalize="characters" />
+
+                  <Text style={s.label}>{kind === 'edit' ? 'New start time' : 'Start time'}</Text>
                   <TextInput style={s.input} value={startTime} onChangeText={setStartTime} placeholder="e.g. 10:00 AM" placeholderTextColor={colors.muted} />
                   <Text style={s.label}>End time (optional)</Text>
                   <TextInput style={s.input} value={endTime} onChangeText={setEndTime} placeholder="e.g. 12:00 PM" placeholderTextColor={colors.muted} />
-                  <Text style={s.label}>Venue (optional)</Text>
+                  <Text style={s.label}>{kind === 'edit' ? 'New venue (optional)' : 'Venue (optional)'}</Text>
                   <TextInput style={s.input} value={venue} onChangeText={setVenue} placeholder="e.g. LT1" placeholderTextColor={colors.muted} />
                 </>
               ) : null}
@@ -293,6 +338,11 @@ const make_s = (colors: Palette) => StyleSheet.create({
   },
   kindToggle: { flexDirection: 'row', gap: 10, marginBottom: 16 },
   kindOpt: { flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
+  classPick: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 12, marginBottom: 8 },
+  classPickOn: { borderColor: colors.brand, backgroundColor: colors.brand100 },
+  classPickText: { fontSize: 14, fontWeight: '700', color: colors.text },
+  classPickTextOn: { fontSize: 14, fontWeight: '700', color: colors.brand },
+  classPickSub: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
   kindOptOn: { backgroundColor: colors.brand, borderColor: colors.brand },
   kindOptText: { fontSize: 14, fontWeight: '600', color: colors.textSecondary },
   kindOptTextOn: { fontSize: 14, fontWeight: '700', color: '#fff' },
