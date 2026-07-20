@@ -9,15 +9,20 @@ import { apiFetch } from '../src/lib/api';
 import { colors, radius, shadow } from '../src/theme';
 
 interface Override {
-  kind: 'cancel' | 'change';
+  kind: 'cancel' | 'edit' | 'add';
   note?: string | null;
-  start_time?: string;
-  end_time?: string;
-  venue?: string | null;
+  new?: {
+    start_time?: string;
+    end_time?: string;
+    course_code?: string | null;
+    course_title?: string;
+    venue?: string | null;
+    lecturer?: string | null;
+  };
 }
 
 interface ClassItem {
-  id: number;
+  id: number | string;
   day_of_week?: string;
   start_time: string;
   end_time: string;
@@ -71,9 +76,11 @@ export default function Timetable() {
 
   const renderClass = (c: ClassItem) => {
     const cancelled = c.override?.kind === 'cancel';
-    const changed = c.override?.kind === 'change';
+    const changed = c.override?.kind === 'edit';
+    const added = c.override?.kind === 'add';
+    const nv = c.override?.new;
     return (
-      <View style={[s.class, cancelled ? s.cancelled : null]}>
+      <View style={[s.class, cancelled ? s.cancelled : added ? s.added : null]}>
         <View style={s.timeCol}>
           <Text style={[s.time, cancelled ? s.strike : null]}>{c.start_time}</Text>
           <Text style={s.timeEnd}>{c.end_time}</Text>
@@ -93,8 +100,14 @@ export default function Timetable() {
           ) : null}
           {changed ? (
             <Text style={s.changeTag}>
-              Rescheduled{c.override?.venue ? ` → ${c.override.venue}` : ''}
-              {c.override?.start_time ? ` at ${c.override.start_time}` : ''}
+              Rescheduled{nv?.venue ? ` → ${nv.venue}` : ''}
+              {nv?.start_time ? ` at ${nv.start_time}` : ''}
+              {c.override?.note ? ` — ${c.override.note}` : ''}
+            </Text>
+          ) : null}
+          {added ? (
+            <Text style={s.addedTag}>
+              Extra class{c.override?.note ? ` — ${c.override.note}` : ''}
             </Text>
           ) : null}
         </View>
@@ -205,6 +218,7 @@ const make_s = (colors: Palette) => StyleSheet.create({
     borderWidth: 1, borderColor: colors.border, ...shadow.card,
   },
   cancelled: { opacity: 0.6 },
+  added: { borderLeftWidth: 3, borderLeftColor: '#16a34a' },
   timeCol: { width: 58 },
   time: { fontSize: 14, fontWeight: '700', color: colors.text },
   timeEnd: { fontSize: 12, color: colors.muted, marginTop: 2 },
@@ -214,4 +228,5 @@ const make_s = (colors: Palette) => StyleSheet.create({
   detail: { fontSize: 13, color: colors.muted, marginTop: 3 },
   cancelTag: { fontSize: 12, color: colors.danger, fontWeight: '700', marginTop: 5 },
   changeTag: { fontSize: 12, color: '#0ea5e9', fontWeight: '700', marginTop: 5 },
+  addedTag: { fontSize: 12, color: '#16a34a', fontWeight: '700', marginTop: 5 },
 });
