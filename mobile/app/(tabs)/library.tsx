@@ -3,12 +3,14 @@ import { useThemedStyles } from '../../src/theme/ThemeContext';
 import type { Palette } from '../../src/theme';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl,
-  TouchableOpacity, TextInput, Linking, Alert,
+  TouchableOpacity, TextInput, Linking, Alert, Modal, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../../src/lib/api';
 import { colors, radius, shadow } from '../../src/theme';
 import { useTabScrollToTop } from '../../src/lib/useScrollToTop';
+import { DEPARTMENTS, LEVELS } from '../../src/lib/departments';
 
 interface Material {
   id: number;
@@ -50,13 +52,18 @@ export default function Library() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [type, setType] = useState('all');
+  const [department, setDepartment] = useState('');
+  const [level, setLevel] = useState('');
+  const [filterOpen, setFilterOpen] = useState(false);
 
-  const load = useCallback(async (t: string, q: string) => {
+  const load = useCallback(async (t: string, q: string, dept = '', lvl = '') => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
       if (t && t !== 'all') params.append('type', t);
       if (q.trim()) params.append('search', q.trim());
+      if (dept) params.append('department', dept);
+      if (lvl) params.append('level', lvl);
       const data = await apiFetch<{ materials: Material[] }>(`/api/library?${params.toString()}`);
       setMaterials(data.materials || []);
     } catch {
@@ -67,19 +74,26 @@ export default function Library() {
     }
   }, []);
 
-  useEffect(() => { load(type, search); }, [type]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { setRefresh(() => load(type, search)); }, [type, search, load, setRefresh]);
+  useEffect(() => { load(type, search, department, level); }, [type, department, level]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setRefresh(() => load(type, search, department, level)); }, [type, search, department, level, load, setRefresh]);
 
   // Debounce search so we're not firing a request on every keystroke.
   useEffect(() => {
-    const t = setTimeout(() => load(type, search), 400);
+    const t = setTimeout(() => load(type, search, department, level), 400);
     return () => clearTimeout(t);
   }, [search]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openFile = async (m: Material) => {
+    // Office files (Word/PPT/Excel) don't render natively — route them through
+    // Microsoft's web viewer, matching web. PDFs/images open directly.
+    const OFFICE = new Set(['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx']);
+    const ext = ((m.file_name || m.title).split('.').pop() || '').toLowerCase();
+    const url = OFFICE.has(ext)
+      ? `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(m.file_url)}`
+      : m.file_url;
     try {
-      const ok = await Linking.canOpenURL(m.file_url);
-      if (ok) await Linking.openURL(m.file_url);
+      const ok = await Linking.canOpenURL(url);
+      if (ok) await Linking.openURL(url);
       else Alert.alert('Cannot open', 'This file could not be opened.');
     } catch {
       Alert.alert('Cannot open', 'This file could not be opened.');
@@ -115,6 +129,10 @@ export default function Library() {
             </TouchableOpacity>
           )}
         />
+        <TouchableOpacity style={[s.filterBtn, (department || level) ? s.filterBtnActive : null]} onPress={() => setFilterOpen(true)}>
+          <Ionicons name="options-outline" size={18} color={(department || level) ? '#fff' : colors.textSecondary} />
+          {(department || level) ? <View style={s.filterDot} /> : null}
+        </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -126,7 +144,7 @@ export default function Library() {
           keyExtractor={m => String(m.id)}
           refreshControl={
             <RefreshControl refreshing={refreshing}
-              onRefresh={() => { setRefreshing(true); load(type, search); }}
+              onRefresh={() => { setRefreshing(true); load(type, search, department, level); }}
               tintColor={colors.brand} />
           }
           ListEmptyComponent={
@@ -156,6 +174,47 @@ export default function Library() {
           )}
         />
       )}
+
+      {/* Department / Level filter */}
+      <Modal visible={filterOpen} animationType="slide" transparent onRequestClose={() => setFilterOpen(false)}>
+        <View style={s.fBackdrop}>
+          <View style={s.fSheet}>
+            <View style={s.fHeader}>
+              <Text style={s.fTitle}>Filter</Text>
+              <TouchableOpacity onPress={() => { setDepartment(''); setLevel(''); }} hitSlop={8}>
+                <Text style={s.fClear}>Clear all</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 460 }}>
+              <Text style={s.fLabel}>Level</Text>
+              <View style={s.fChips}>
+                <TouchableOpacity style={[s.fChip, !level ? s.fChipOn : null]} onPress={() => setLevel('')}>
+                  <Text style={!level ? s.fChipTextOn : s.fChipText}>All</Text>
+                </TouchableOpacity>
+                {LEVELS.map(l => (
+                  <TouchableOpacity key={l} style={[s.fChip, level === l ? s.fChipOn : null]} onPress={() => setLevel(l)}>
+                    <Text style={level === l ? s.fChipTextOn : s.fChipText}>{l}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={s.fLabel}>Department</Text>
+              <View style={s.fChips}>
+                <TouchableOpacity style={[s.fChip, !department ? s.fChipOn : null]} onPress={() => setDepartment('')}>
+                  <Text style={!department ? s.fChipTextOn : s.fChipText}>All</Text>
+                </TouchableOpacity>
+                {DEPARTMENTS.map(d => (
+                  <TouchableOpacity key={d} style={[s.fChip, department === d ? s.fChipOn : null]} onPress={() => setDepartment(d)}>
+                    <Text style={department === d ? s.fChipTextOn : s.fChipText} numberOfLines={1}>{d}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+            <TouchableOpacity style={s.fApply} onPress={() => setFilterOpen(false)}>
+              <Text style={s.fApplyText}>Show results</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -169,7 +228,23 @@ const make_s = (colors: Palette) => StyleSheet.create({
     borderRadius: radius.md, paddingHorizontal: 16, paddingVertical: 11, fontSize: 15,
     color: colors.text, backgroundColor: colors.surface,
   },
-  filterRow: { marginBottom: 8 },
+  filterRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  filterBtn: { marginHorizontal: 12, width: 38, height: 38, borderRadius: 19, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  filterBtnActive: { backgroundColor: colors.brand, borderColor: colors.brand },
+  filterDot: { position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: 4, backgroundColor: '#fff' },
+  fBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  fSheet: { backgroundColor: colors.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 34 },
+  fHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  fTitle: { fontSize: 18, fontWeight: '800', color: colors.text },
+  fClear: { fontSize: 14, color: colors.brand, fontWeight: '700' },
+  fLabel: { fontSize: 13, fontWeight: '800', color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 14, marginBottom: 8 },
+  fChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  fChip: { borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 7, maxWidth: '100%' },
+  fChipOn: { backgroundColor: colors.brand, borderColor: colors.brand },
+  fChipText: { fontSize: 13, color: colors.textSecondary, fontWeight: '600' },
+  fChipTextOn: { fontSize: 13, color: '#fff', fontWeight: '700' },
+  fApply: { backgroundColor: colors.brand, borderRadius: 12, paddingVertical: 13, alignItems: 'center', marginTop: 16 },
+  fApplyText: { color: '#fff', fontWeight: '800', fontSize: 15 },
   chip: {
     paddingHorizontal: 14, paddingVertical: 7, borderRadius: 18,
     borderWidth: 1, borderColor: colors.border,
