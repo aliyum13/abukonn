@@ -92,6 +92,13 @@ export default function Notifications() {
 
   useEffect(() => { load(); setRefresh(load); }, [load, setRefresh]);
 
+  // Auto-mark all read on open — resets the bell badge (server-side) but keeps
+  // the unread styling for this viewing session so you can still see what's new,
+  // matching web.
+  useEffect(() => {
+    apiFetch('/api/notifications/read-all', { method: 'PATCH' }).catch(() => {});
+  }, []);
+
   const markAllRead = async () => {
     // Optimistic — this is cosmetic, so don't make the user wait on the network.
     setItems(prev => prev.map(n => ({ ...n, is_read: true })));
@@ -103,15 +110,26 @@ export default function Notifications() {
   };
 
   const openOne = async (n: Grouped) => {
-    if (n.is_read) return;
-    setItems(prev => prev.map(x => x.id === n.id ? { ...x, is_read: true } : x));
-    try {
-      await apiFetch('/api/notifications/read-many', {
+    // Mark read (optimistic) — mirrors web.
+    if (!n.is_read) {
+      setItems(prev => prev.map(x => x.id === n.id ? { ...x, is_read: true } : x));
+      apiFetch('/api/notifications/read-many', {
         method: 'PATCH',
         body: JSON.stringify({ ids: n.notification_ids }),
-      });
-    } catch {
-      load();
+      }).catch(() => load());
+    }
+    // Navigate to the relevant destination (matches web's notifHref).
+    if (n.type === 'connect_request') {
+      router.push('/connect');
+    } else if (n.type === 'new_story') {
+      router.push('/(tabs)/feed');
+    } else if (n.type === 'follow' || n.type === 'connect_accepted') {
+      const actorId = n.actors[0]?.id;
+      if (actorId) router.push({ pathname: '/user/[id]', params: { id: String(actorId) } });
+    } else if (n.post_id) {
+      router.push({ pathname: '/post/[id]', params: { id: String(n.post_id) } });
+    } else {
+      router.push('/(tabs)/feed');
     }
   };
 
@@ -166,16 +184,24 @@ export default function Notifications() {
                   onPress={() => actor && router.push({
                     pathname: '/user/[id]', params: { id: String(actor.id) },
                   })}
+                  style={s.avatarStack}
                 >
-                  {actor?.profile_photo_url ? (
-                    <Image source={{ uri: actor.profile_photo_url }} style={s.avatar} />
-                  ) : (
-                    <View style={[s.avatar, s.fallback]}>
-                      <Text style={s.letter}>
-                        {actor?.full_name?.charAt(0).toUpperCase() ?? '?'}
-                      </Text>
+                  {item.actors.slice(0, 2).map((a, i) => (
+                    <View key={a.id} style={[s.avatarWrap, i > 0 ? s.avatarOverlap : null]}>
+                      {a.profile_photo_url ? (
+                        <Image source={{ uri: a.profile_photo_url }} style={s.avatar} />
+                      ) : (
+                        <View style={[s.avatar, s.fallback]}>
+                          <Text style={s.letter}>{a.full_name?.charAt(0).toUpperCase() ?? '?'}</Text>
+                        </View>
+                      )}
                     </View>
-                  )}
+                  ))}
+                  {item.actor_count > 2 ? (
+                    <View style={[s.avatarWrap, s.avatarOverlap, s.avatarMore]}>
+                      <Text style={s.avatarMoreText}>+{item.actor_count - 2}</Text>
+                    </View>
+                  ) : null}
                 </TouchableOpacity>
 
                 <View style={{ flex: 1 }}>
@@ -217,6 +243,11 @@ const make_s = (colors: Palette) => StyleSheet.create({
   },
   unreadRow: { backgroundColor: colors.brand50, borderColor: colors.brand100 },
   avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#dcfce7' },
+  avatarStack: { flexDirection: 'row', alignItems: 'center' },
+  avatarWrap: { borderRadius: 22, borderWidth: 2, borderColor: colors.bg },
+  avatarOverlap: { marginLeft: -16 },
+  avatarMore: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+  avatarMoreText: { fontSize: 13, fontWeight: '800', color: colors.textSecondary },
   fallback: { alignItems: 'center', justifyContent: 'center' },
   letter: { color: colors.brand, fontWeight: '700', fontSize: 16 },
   icon: { fontSize: 13 },
