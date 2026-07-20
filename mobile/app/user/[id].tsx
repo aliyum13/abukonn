@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../../src/lib/api';
 import { useAuth } from '../../src/context/AuthContext';
 import { RoleBadge, usesFollowSystem } from '../../src/components/RoleBadge';
+import { ReportModal } from '../../src/components/ReportModal';
 import { colors } from '../../src/theme';
 
 interface ProfileUser {
@@ -93,6 +94,7 @@ export default function UserProfile() {
   // Connect (mutual connection, separate from follow).
   const [connectStatus, setConnectStatus] = useState<{ status: string; request_id?: number; initiated_by_me?: boolean } | null>(null);
   const [connectBusy, setConnectBusy] = useState(false);
+  const [reportTarget, setReportTarget] = useState<{ type: 'post' | 'user'; id: number; name: string } | null>(null);
 
   useEffect(() => {
     apiFetch<{ status: string; request_id?: number; initiated_by_me?: boolean }>(`/api/connect/${id}/status`)
@@ -165,6 +167,32 @@ export default function UserProfile() {
     }
   };
 
+  const openProfileMenu = () => {
+    Alert.alert(user?.full_name ?? 'User', undefined, [
+      { text: 'Report user', onPress: () => setReportTarget({ type: 'user', id: Number(id), name: user?.full_name ?? '' }) },
+      { text: 'Block user', style: 'destructive', onPress: blockUser },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const blockUser = () => {
+    Alert.alert('Block user', `Block ${user?.full_name}? You won't see each other's content.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Block', style: 'destructive',
+        onPress: async () => {
+          try {
+            await apiFetch(`/api/moderation/block/${id}`, { method: 'POST' });
+            Alert.alert('Blocked', `You've blocked ${user?.full_name}.`);
+            router.back();
+          } catch (err) {
+            Alert.alert('Could not block', err instanceof Error ? err.message : '');
+          }
+        },
+      },
+    ]);
+  };
+
   const message = async () => {
     try {
       // NOTE: the endpoint takes `recipient_id` and returns { conversation: { id } }.
@@ -211,7 +239,13 @@ export default function UserProfile() {
           <Text style={s.back}>‹ Back</Text>
         </TouchableOpacity>
         <Text style={s.headerName} numberOfLines={1}>{user.full_name}</Text>
-        <View style={{ width: 50 }} />
+        {!isMe ? (
+          <TouchableOpacity onPress={openProfileMenu} hitSlop={10} style={{ width: 50, alignItems: 'flex-end' }}>
+            <Ionicons name="ellipsis-horizontal" size={22} color={colors.text} />
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 50 }} />
+        )}
       </View>
 
       <FlatList
@@ -360,6 +394,7 @@ export default function UserProfile() {
           )
         )}
       />
+      <ReportModal target={reportTarget} onClose={() => setReportTarget(null)} />
     </SafeAreaView>
   );
 }
