@@ -134,6 +134,11 @@ export default function AcademicCalendar() {
             <View>
               {renderSemester('First Semester', first)}
               {renderSemester('Second Semester', second)}
+              {(first.length > 0 || second.length > 0) ? (
+                <Text style={s.footerNote}>
+                  All national and state public holidays will be observed. Dates are subject to change by the University.
+                </Text>
+              ) : null}
             </View>
           )}
         />
@@ -180,6 +185,7 @@ const make_s = (colors: Palette) => StyleSheet.create({
   listPad: { padding: 16 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   muted: { color: colors.muted, fontSize: 15 },
+  footerNote: { fontSize: 12, color: colors.muted, lineHeight: 18, marginTop: 4, marginBottom: 24, paddingHorizontal: 4, fontStyle: 'italic' },
   semesterTitle: {
     fontSize: 13, fontWeight: '800', color: colors.textSecondary,
     marginBottom: 8, marginLeft: 4, textTransform: 'uppercase', letterSpacing: 0.5,
