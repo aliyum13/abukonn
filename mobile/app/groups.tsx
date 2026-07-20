@@ -3,10 +3,11 @@ import { useThemedStyles } from '../src/theme/ThemeContext';
 import type { Palette } from '../src/theme';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl,
-  TouchableOpacity, Image, Alert,
+  TouchableOpacity, Image, Alert, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../src/lib/api';
 import { colors, radius, shadow } from '../src/theme';
 
@@ -29,15 +30,16 @@ export default function Groups() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [joining, setJoining] = useState<number | null>(null);
+  const [query, setQuery] = useState('');
 
-  const load = useCallback(async (t: 'mine' | 'discover') => {
+  const load = useCallback(async (t: 'mine' | 'discover', q = '') => {
     setLoading(true);
     try {
       if (t === 'mine') {
         const d = await apiFetch<{ groups: Group[] }>('/api/groups');
         setMine(d.groups || []);
       } else {
-        const d = await apiFetch<{ groups: Group[] }>('/api/groups/discover');
+        const d = await apiFetch<{ groups: Group[] }>(`/api/groups/discover${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`);
         setDiscover(d.groups || []);
       }
     } catch {
@@ -49,6 +51,13 @@ export default function Groups() {
   }, []);
 
   useEffect(() => { load(tab); }, [tab, load]);
+
+  // Debounced group search (discover tab only).
+  useEffect(() => {
+    if (tab !== 'discover') return;
+    const t = setTimeout(() => load('discover', query), 350);
+    return () => clearTimeout(t);
+  }, [query, tab, load]);
 
   const join = async (g: Group) => {
     setJoining(g.id);
@@ -97,6 +106,25 @@ export default function Groups() {
           <Text style={tab === 'discover' ? s.tabTextOn : s.tabText}>Discover</Text>
         </TouchableOpacity>
       </View>
+
+      {tab === 'discover' ? (
+        <View style={s.searchWrap}>
+          <Ionicons name="search" size={16} color={colors.muted} />
+          <TextInput
+            style={s.searchInput}
+            placeholder="Search groups by name"
+            placeholderTextColor={colors.muted}
+            value={query}
+            onChangeText={setQuery}
+            autoCapitalize="none"
+          />
+          {query ? (
+            <TouchableOpacity onPress={() => setQuery('')} hitSlop={8}>
+              <Ionicons name="close-circle" size={18} color={colors.muted} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
 
       {loading ? (
         <View style={s.center}><ActivityIndicator size="large" color={colors.brand} /></View>
@@ -184,6 +212,12 @@ const make_s = (colors: Palette) => StyleSheet.create({
   title: { fontSize: 18, fontWeight: '700', color: colors.text },
   newLink: { color: colors.brand, fontSize: 15, fontWeight: '700' },
   tabs: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 10, gap: 8 },
+  searchWrap: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginHorizontal: 16, marginBottom: 8, paddingHorizontal: 12, paddingVertical: 9,
+    borderRadius: radius.full, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+  },
+  searchInput: { flex: 1, fontSize: 15, color: colors.text, padding: 0 },
   tab: {
     flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center',
     borderWidth: 1, borderColor: colors.border,
