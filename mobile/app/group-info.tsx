@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../src/lib/api';
+import { useAuth } from '../src/context/AuthContext';
 import { colors, radius } from '../src/theme';
 
 interface Member {
@@ -28,6 +29,7 @@ export default function GroupInfo() {
   const s = useThemedStyles(make_s);
   const router = useRouter();
   const { id, name } = useLocalSearchParams<{ id: string; name?: string }>();
+  const { user } = useAuth();
 
   const [members, setMembers] = useState<Member[]>([]);
   const [pending, setPending] = useState<Pending[]>([]);
@@ -110,6 +112,27 @@ export default function GroupInfo() {
           } catch { load(); }
         },
       },
+    ]);
+  };
+
+  const setMemberRole = async (userId: number, role: 'admin' | 'member') => {
+    setMembers(prev => prev.map(m => m.id === userId ? { ...m, role } : m));
+    try {
+      await apiFetch(`/api/groups/${id}/members/${userId}/role`, { method: 'PATCH', body: JSON.stringify({ role }) });
+    } catch (err) {
+      load(); // revert to server truth (e.g. can't demote the last admin)
+      Alert.alert('Could not change role', err instanceof Error ? err.message : '');
+    }
+  };
+
+  const openMemberMenu = (m: Member) => {
+    const isMemberAdmin = m.role === 'admin';
+    Alert.alert(m.full_name, undefined, [
+      isMemberAdmin
+        ? { text: 'Demote to member', onPress: () => setMemberRole(m.id, 'member') }
+        : { text: 'Promote to admin', onPress: () => setMemberRole(m.id, 'admin') },
+      { text: 'Remove from group', style: 'destructive', onPress: () => removeMember(m.id, m.full_name) },
+      { text: 'Cancel', style: 'cancel' },
     ]);
   };
 
@@ -201,13 +224,16 @@ export default function GroupInfo() {
                   {item.department ? <Text style={s.muted}>{item.department}</Text> : null}
                 </View>
               </TouchableOpacity>
-              {item.role === 'admin' ? (
-                <View style={s.adminBadge}><Text style={s.adminText}>Admin</Text></View>
-              ) : isAdmin ? (
-                <TouchableOpacity onPress={() => removeMember(item.id, item.full_name)} hitSlop={8}>
-                  <Ionicons name="remove-circle-outline" size={22} color={colors.danger} />
-                </TouchableOpacity>
-              ) : null}
+              <View style={s.memberRight}>
+                {item.role === 'admin' ? (
+                  <View style={s.adminBadge}><Text style={s.adminText}>Admin</Text></View>
+                ) : null}
+                {isAdmin && item.id !== user?.id ? (
+                  <TouchableOpacity onPress={() => openMemberMenu(item)} hitSlop={8}>
+                    <Ionicons name="ellipsis-vertical" size={20} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
             </View>
           )}
           ListFooterComponent={
@@ -285,6 +311,7 @@ const make_s = (colors: Palette) => StyleSheet.create({
   fallback: { alignItems: 'center', justifyContent: 'center' },
   letter: { fontSize: 18, fontWeight: '800', color: colors.brand },
   name: { fontSize: 15, fontWeight: '700', color: colors.text },
+  memberRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   adminBadge: { backgroundColor: colors.brand100, borderRadius: radius.full, paddingVertical: 4, paddingHorizontal: 10 },
   adminText: { color: colors.brand, fontWeight: '700', fontSize: 12 },
   pendingActions: { flexDirection: 'row', gap: 8 },
