@@ -96,6 +96,7 @@ export default function UserProfile() {
   const [connectStatus, setConnectStatus] = useState<{ status: string; request_id?: number; initiated_by_me?: boolean } | null>(null);
   const [connectBusy, setConnectBusy] = useState(false);
   const [reportTarget, setReportTarget] = useState<{ type: 'post' | 'user'; id: number; name: string } | null>(null);
+  const [bellOn, setBellOn] = useState(false);
 
   useEffect(() => {
     apiFetch<{ status: string; request_id?: number; initiated_by_me?: boolean }>(`/api/connect/${id}/status`)
@@ -174,6 +175,26 @@ export default function UserProfile() {
       { text: 'Block user', style: 'destructive', onPress: blockUser },
       { text: 'Cancel', style: 'cancel' },
     ]);
+  };
+
+  // Post-notification bell (only meaningful once you follow a follow-system account).
+  useEffect(() => {
+    if (!user?.is_following) { setBellOn(false); return; }
+    let live = true;
+    apiFetch<{ notify_on_post: boolean }>(`/api/follows/${id}/notifications`)
+      .then(d => { if (live) setBellOn(!!d.notify_on_post); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [user?.is_following, id]);
+
+  const togglePostNotifs = async () => {
+    const next = !bellOn;
+    setBellOn(next);
+    try {
+      await apiFetch(`/api/follows/${id}/notifications`, { method: 'PUT', body: JSON.stringify({ notify_on_post: next }) });
+    } catch {
+      setBellOn(!next);
+    }
   };
 
   const blockUser = () => {
@@ -310,6 +331,15 @@ export default function UserProfile() {
                     <Text style={user.is_following ? s.followingText : s.followText}>
                       {user.is_following ? 'Following' : 'Follow'}
                     </Text>
+                  </TouchableOpacity>
+                ) : null}
+                {usesFollowSystem(user.role || (user.is_admin ? 'admin' : user.is_verified ? 'verified' : 'user')) && user.is_following ? (
+                  <TouchableOpacity style={s.bellBtn} onPress={togglePostNotifs}>
+                    <Ionicons
+                      name={bellOn ? 'notifications' : 'notifications-outline'}
+                      size={20}
+                      color={bellOn ? colors.brand : colors.textSecondary}
+                    />
                   </TouchableOpacity>
                 ) : null}
                 <TouchableOpacity style={s.msgBtn} onPress={message}>
@@ -457,6 +487,10 @@ const make_s = (colors: Palette) => StyleSheet.create({
   msgBtn: {
     flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 10,
     paddingVertical: 11, alignItems: 'center',
+  },
+  bellBtn: {
+    borderWidth: 1, borderColor: colors.border, borderRadius: 10,
+    paddingVertical: 11, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center',
   },
   msgText: { color: colors.text, fontWeight: '700', fontSize: 14 },
   sectionTitle: {
