@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Image, FlatList, ActivityIndicator, Alert, Modal,
+  View, Text, StyleSheet, TouchableOpacity, Image, FlatList, ActivityIndicator, Alert, Modal, TextInput, ScrollView,
 } from 'react-native';
 import { useThemedStyles } from '../src/theme/ThemeContext';
 import type { Palette } from '../src/theme';
@@ -42,10 +42,20 @@ export default function GroupInfo() {
     try {
       const data = await apiFetch<{
         members: Member[]; pending: Pending[]; my_role: string;
+        group?: { name: string; description: string | null; require_approval?: boolean; only_admins_can_add?: boolean; invite_enabled?: boolean; is_public?: boolean };
       }>(`/api/groups/${id}/messages`);
       setMembers(data.members || []);
       setPending(data.pending || []);
       setMyRole(data.my_role || 'member');
+      if (data.group) {
+        setSettings({
+          name: data.group.name,
+          description: data.group.description || '',
+          require_approval: !!data.group.require_approval,
+          only_admins_can_add: !!data.group.only_admins_can_add,
+          invite_enabled: data.group.invite_enabled !== false,
+        });
+      }
     } catch {
       // keep what we have
     } finally {
@@ -56,6 +66,50 @@ export default function GroupInfo() {
   useEffect(() => { load(); }, [load]);
 
   const [addOpen, setAddOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settings, setSettings] = useState({ name: '', description: '', require_approval: false, only_admins_can_add: false, invite_enabled: true });
+  const [savingSettings, setSavingSettings] = useState(false);
+
+  const saveSettings = async () => {
+    if (!settings.name.trim()) { Alert.alert('Group name is required'); return; }
+    setSavingSettings(true);
+    try {
+      await apiFetch(`/api/groups/${id}/settings`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          name: settings.name.trim(),
+          description: settings.description.trim(),
+          require_approval: settings.require_approval,
+          only_admins_can_add: settings.only_admins_can_add,
+          invite_enabled: settings.invite_enabled,
+        }),
+      });
+      setSettingsOpen(false);
+      load();
+    } catch (err) {
+      Alert.alert('Could not save', err instanceof Error ? err.message : '');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const deleteGroup = () => {
+    Alert.alert('Delete group', 'This permanently deletes the group and all its messages. This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: async () => {
+          try {
+            await apiFetch(`/api/groups/${id}`, { method: 'DELETE' });
+            router.replace('/groups');
+          } catch (err) {
+            Alert.alert('Could not delete', err instanceof Error ? err.message : '');
+          }
+        },
+      },
+    ]);
+  };
+
   const [followers, setFollowers] = useState<{ id: number; full_name: string; profile_photo_url: string | null }[]>([]);
   const [addingId, setAddingId] = useState<number | null>(null);
   const [addedIds, setAddedIds] = useState<Set<number>>(new Set());
@@ -161,9 +215,14 @@ export default function GroupInfo() {
         </TouchableOpacity>
         <Text style={s.title} numberOfLines={1}>{name || 'Group'}</Text>
         {isAdmin ? (
-          <TouchableOpacity onPress={openAddMembers} hitSlop={12} style={{ width: 60, alignItems: 'flex-end' }}>
-            <Ionicons name="person-add-outline" size={22} color={colors.brand} />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 16, width: 60, justifyContent: 'flex-end' }}>
+            <TouchableOpacity onPress={openAddMembers} hitSlop={10}>
+              <Ionicons name="person-add-outline" size={21} color={colors.brand} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setSettingsOpen(true)} hitSlop={10}>
+              <Ionicons name="settings-outline" size={21} color={colors.text} />
+            </TouchableOpacity>
+          </View>
         ) : (
           <View style={{ width: 60 }} />
         )}
@@ -284,6 +343,59 @@ export default function GroupInfo() {
           </View>
         </View>
       </Modal>
+
+      {/* Group settings sheet (admin) */}
+      <Modal visible={settingsOpen} animationType="slide" transparent onRequestClose={() => setSettingsOpen(false)}>
+        <View style={s.addBackdrop}>
+          <View style={s.addSheet}>
+            <View style={s.addHeader}>
+              <Text style={s.addTitle}>Group settings</Text>
+              <TouchableOpacity onPress={() => setSettingsOpen(false)} hitSlop={12}><Text style={s.addClose}>✕</Text></TouchableOpacity>
+            </View>
+            <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 460 }}>
+              <Text style={s.fieldLabel}>Name</Text>
+              <TextInput
+                style={s.field}
+                value={settings.name}
+                onChangeText={t => setSettings(p => ({ ...p, name: t }))}
+                placeholder="Group name"
+                placeholderTextColor={colors.muted}
+              />
+              <Text style={s.fieldLabel}>Description</Text>
+              <TextInput
+                style={[s.field, { height: 80, textAlignVertical: 'top' }]}
+                value={settings.description}
+                onChangeText={t => setSettings(p => ({ ...p, description: t }))}
+                placeholder="What's this group about?"
+                placeholderTextColor={colors.muted}
+                multiline
+              />
+              {([
+                { key: 'require_approval', label: 'Require approval to join' },
+                { key: 'only_admins_can_add', label: 'Only admins can add members' },
+                { key: 'invite_enabled', label: 'Invite link enabled' },
+              ] as const).map(row => (
+                <TouchableOpacity
+                  key={row.key}
+                  style={s.toggleRow}
+                  onPress={() => setSettings(p => ({ ...p, [row.key]: !p[row.key] }))}
+                >
+                  <Text style={s.toggleLabel}>{row.label}</Text>
+                  <View style={[s.toggle, settings[row.key] ? s.toggleOn : null]}>
+                    <View style={[s.knob, settings[row.key] ? s.knobOn : null]} />
+                  </View>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity style={[s.saveBtn, savingSettings ? { opacity: 0.6 } : null]} onPress={saveSettings} disabled={savingSettings}>
+                <Text style={s.saveText}>{savingSettings ? 'Saving…' : 'Save changes'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.deleteBtn} onPress={deleteGroup}>
+                <Text style={s.deleteText}>Delete group</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -330,6 +442,18 @@ const make_s = (colors: Palette) => StyleSheet.create({
   addBtnText: { color: colors.brand, fontWeight: '700', fontSize: 14 },
   addBtnDone: { borderColor: colors.border },
   addBtnDoneText: { color: colors.muted, fontWeight: '700', fontSize: 14 },
+  fieldLabel: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginTop: 12, marginBottom: 4 },
+  field: { borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, color: colors.text, backgroundColor: colors.surface },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12 },
+  toggleLabel: { fontSize: 15, color: colors.text, flex: 1 },
+  toggle: { width: 46, height: 28, borderRadius: 14, backgroundColor: colors.border, padding: 3, justifyContent: 'center' },
+  toggleOn: { backgroundColor: colors.brand },
+  knob: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#fff' },
+  knobOn: { alignSelf: 'flex-end' },
+  saveBtn: { backgroundColor: colors.brand, borderRadius: 12, paddingVertical: 13, alignItems: 'center', marginTop: 18 },
+  saveText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+  deleteBtn: { paddingVertical: 13, alignItems: 'center', marginTop: 4 },
+  deleteText: { color: colors.danger, fontWeight: '700', fontSize: 15 },
   leaveBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     margin: 16, marginTop: 24, borderWidth: 1, borderColor: colors.danger,
