@@ -10,9 +10,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../src/lib/api';
 import { colors, radius } from '../src/theme';
 
+function timeAgo(iso: string) {
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return 'now';
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  return `${Math.floor(s / 86400)}d`;
+}
+
 interface Request {
   id: number; sender_id: number; sender_name: string;
   sender_department: string | null; sender_photo: string | null;
+  sender_level?: string | null; mutual_count?: number; created_at?: string;
 }
 interface Connection {
   id: number; full_name: string; department: string | null;
@@ -97,15 +106,21 @@ export default function Connect() {
                 )}
                 <View style={{ flex: 1 }}>
                   <Text style={s.name}>{item.sender_name}</Text>
-                  {item.sender_department ? <Text style={s.muted}>{item.sender_department}</Text> : null}
+                  {item.sender_department ? (
+                    <Text style={s.muted}>{item.sender_department}{item.sender_level ? ` · ${item.sender_level}` : ''}</Text>
+                  ) : null}
+                  {item.mutual_count ? (
+                    <Text style={s.mutual}>{item.mutual_count} mutual connection{item.mutual_count > 1 ? 's' : ''}</Text>
+                  ) : null}
+                  {item.created_at ? <Text style={s.reqTime}>{timeAgo(item.created_at)}</Text> : null}
                 </View>
               </TouchableOpacity>
               <View style={s.reqActions}>
                 <TouchableOpacity style={s.acceptBtn} onPress={() => accept(item)}>
-                  <Ionicons name="checkmark" size={18} color="#fff" />
+                  <Text style={s.acceptText}>Accept</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={s.declineBtn} onPress={() => decline(item)}>
-                  <Ionicons name="close" size={18} color={colors.danger} />
+                  <Text style={s.declineText}>Decline</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -152,6 +167,8 @@ const make_s = (colors: Palette) => StyleSheet.create({
   tabUnderline: { position: 'absolute', bottom: 0, height: 2.5, width: 40, borderRadius: 2, backgroundColor: colors.brand },
   center: { paddingVertical: 48, alignItems: 'center' },
   muted: { fontSize: 13, color: colors.muted },
+  mutual: { fontSize: 12, color: colors.brand, fontWeight: '600', marginTop: 2 },
+  reqTime: { fontSize: 12, color: colors.muted, marginTop: 2 },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
     backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border,
@@ -162,6 +179,8 @@ const make_s = (colors: Palette) => StyleSheet.create({
   letter: { fontSize: 20, fontWeight: '800', color: colors.brand },
   name: { fontSize: 15, fontWeight: '700', color: colors.text },
   reqActions: { flexDirection: 'row', gap: 8 },
-  acceptBtn: { backgroundColor: colors.brand, borderRadius: 999, width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  declineBtn: { borderWidth: 1, borderColor: colors.danger, borderRadius: 999, width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  acceptBtn: { backgroundColor: colors.brand, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 8, alignItems: 'center', justifyContent: 'center' },
+  acceptText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  declineBtn: { borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 8, alignItems: 'center', justifyContent: 'center' },
+  declineText: { color: colors.textSecondary, fontWeight: '700', fontSize: 14 },
 });
