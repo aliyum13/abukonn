@@ -3,9 +3,10 @@ import { useThemedStyles } from '../../src/theme/ThemeContext';
 import type { Palette } from '../../src/theme';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl,
-  Image, TouchableOpacity, Modal, ScrollView,
+  Image, TouchableOpacity, Modal, ScrollView, Share,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../../src/lib/api';
 import { colors, radius, shadow } from '../../src/theme';
 import { useTabScrollToTop } from '../../src/lib/useScrollToTop';
@@ -24,7 +25,7 @@ interface Article {
 const CATEGORIES = [
   { key: 'all', label: 'All' },
   { key: 'admission', label: 'Admission' },
-  { key: 'examination', label: 'Exams' },
+  { key: 'examination', label: 'Examination' },
   { key: 'faculty', label: 'Faculty' },
   { key: 'sports', label: 'Sports' },
   { key: 'events', label: 'Events' },
@@ -64,6 +65,17 @@ export default function News() {
   useEffect(() => { load(); setRefresh(load); }, [load, setRefresh]);
 
   const filtered = cat === 'all' ? news : news.filter(n => n.category === cat);
+
+  const shareArticle = async (article: Article) => {
+    try {
+      await Share.share({
+        title: article.title,
+        message: `${article.title}\n\nhttps://abukonn.com/news/${article.id}`,
+      });
+    } catch {
+      /* user dismissed */
+    }
+  };
 
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
@@ -128,7 +140,9 @@ export default function News() {
               <Text style={s.back}>‹ Back</Text>
             </TouchableOpacity>
             <Text style={s.modalTitle}>News</Text>
-            <View style={{ width: 50 }} />
+            <TouchableOpacity onPress={() => open && shareArticle(open)} hitSlop={10} style={{ width: 50, alignItems: 'flex-end' }}>
+              <Ionicons name="share-outline" size={22} color={colors.brand} />
+            </TouchableOpacity>
           </View>
           {open ? (
             <ScrollView contentContainerStyle={{ padding: 16 }}>
