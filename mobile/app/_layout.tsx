@@ -15,16 +15,20 @@ function useNotificationRouting() {
   useEffect(() => {
     const route = (data: Record<string, unknown> | undefined) => {
       if (!data) return;
+      // Data shapes emitted by the backend (see lib/notify + controllers):
+      //   { type:'conversation', conversationId } / { type:'post', postId }
+      //   { type:'profile', userId } / { type:'story', userId }
       if (data.type === 'conversation' && data.conversationId) {
-        router.push({
-          pathname: '/chat/[id]',
-          params: { id: String(data.conversationId), name: 'Chat' },
-        });
-        return;
+        router.push({ pathname: '/chat/[id]', params: { id: String(data.conversationId), name: 'Chat' } });
+      } else if (data.type === 'post' && data.postId) {
+        router.push({ pathname: '/post/[id]', params: { id: String(data.postId) } });
+      } else if (data.type === 'profile' && data.userId) {
+        router.push({ pathname: '/user/[id]', params: { id: String(data.userId) } });
+      } else if (data.type === 'story') {
+        router.push('/(tabs)/feed');
+      } else {
+        router.push('/(tabs)/notifications');
       }
-      // Posts, stories and profiles have no dedicated mobile screen yet, so send
-      // them to the notifications list rather than nowhere at all.
-      router.push('/(tabs)/notifications');
     };
 
     // Opened FROM a notification while the app was closed.
