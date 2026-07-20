@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Image, FlatList, ActivityIndicator, Alert,
+  View, Text, StyleSheet, TouchableOpacity, Image, FlatList, ActivityIndicator, Alert, Modal,
 } from 'react-native';
 import { useThemedStyles } from '../src/theme/ThemeContext';
 import type { Palette } from '../src/theme';
@@ -52,6 +52,36 @@ export default function GroupInfo() {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [followers, setFollowers] = useState<{ id: number; full_name: string; profile_photo_url: string | null }[]>([]);
+  const [addingId, setAddingId] = useState<number | null>(null);
+  const [addedIds, setAddedIds] = useState<Set<number>>(new Set());
+
+  const openAddMembers = async () => {
+    setAddOpen(true);
+    setAddedIds(new Set());
+    try {
+      const d = await apiFetch<{ following: { id: number; full_name: string; profile_photo_url: string | null }[] }>('/api/follows/following');
+      setFollowers(d.following || []);
+    } catch {
+      setFollowers([]);
+    }
+  };
+
+  const addMember = async (person: { id: number }) => {
+    if (addingId !== null) return;
+    setAddingId(person.id);
+    try {
+      await apiFetch(`/api/groups/${id}/members`, { method: 'POST', body: JSON.stringify({ user_id: person.id }) });
+      setAddedIds(prev => new Set([...prev, person.id]));
+      load(); // refresh member list
+    } catch (err) {
+      Alert.alert('Could not add', err instanceof Error ? err.message : '');
+    } finally {
+      setAddingId(null);
+    }
+  };
 
   const approve = async (userId: number) => {
     setPending(prev => prev.filter(p => p.id !== userId));
@@ -107,7 +137,13 @@ export default function GroupInfo() {
           <Text style={s.backText}>‹ Back</Text>
         </TouchableOpacity>
         <Text style={s.title} numberOfLines={1}>{name || 'Group'}</Text>
-        <View style={{ width: 60 }} />
+        {isAdmin ? (
+          <TouchableOpacity onPress={openAddMembers} hitSlop={12} style={{ width: 60, alignItems: 'flex-end' }}>
+            <Ionicons name="person-add-outline" size={22} color={colors.brand} />
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 60 }} />
+        )}
       </View>
 
       {loading ? (
@@ -182,6 +218,46 @@ export default function GroupInfo() {
           }
         />
       )}
+
+      {/* Add members sheet */}
+      <Modal visible={addOpen} animationType="slide" transparent onRequestClose={() => setAddOpen(false)}>
+        <View style={s.addBackdrop}>
+          <View style={s.addSheet}>
+            <View style={s.addHeader}>
+              <Text style={s.addTitle}>Add members</Text>
+              <TouchableOpacity onPress={() => setAddOpen(false)} hitSlop={12}><Text style={s.addClose}>✕</Text></TouchableOpacity>
+            </View>
+            <FlatList
+              data={followers.filter(f => !members.some(m => m.id === f.id))}
+              keyExtractor={f => String(f.id)}
+              style={{ maxHeight: 380 }}
+              ListEmptyComponent={<Text style={s.addEmpty}>No one to add — people you follow who aren&apos;t already in the group appear here.</Text>}
+              renderItem={({ item }) => {
+                const done = addedIds.has(item.id);
+                return (
+                  <View style={s.addRow}>
+                    {item.profile_photo_url ? (
+                      <Image source={{ uri: item.profile_photo_url }} style={s.addAvatar} />
+                    ) : (
+                      <View style={[s.addAvatar, s.fallback]}><Text style={s.letter}>{item.full_name.charAt(0).toUpperCase()}</Text></View>
+                    )}
+                    <Text style={s.addName} numberOfLines={1}>{item.full_name}</Text>
+                    <TouchableOpacity
+                      style={[s.addBtn, done ? s.addBtnDone : null]}
+                      onPress={() => addMember(item)}
+                      disabled={done || addingId === item.id}
+                    >
+                      {addingId === item.id
+                        ? <ActivityIndicator size="small" />
+                        : <Text style={done ? s.addBtnDoneText : s.addBtnText}>{done ? 'Added' : 'Add'}</Text>}
+                    </TouchableOpacity>
+                  </View>
+                );
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -214,6 +290,19 @@ const make_s = (colors: Palette) => StyleSheet.create({
   pendingActions: { flexDirection: 'row', gap: 8 },
   approveBtn: { backgroundColor: colors.brand, borderRadius: radius.full, width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
   rejectBtn: { borderWidth: 1, borderColor: colors.danger, borderRadius: radius.full, width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
+  addBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  addSheet: { backgroundColor: colors.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 34 },
+  addHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  addTitle: { fontSize: 18, fontWeight: '800', color: colors.text },
+  addClose: { fontSize: 20, color: colors.muted },
+  addEmpty: { textAlign: 'center', color: colors.muted, marginTop: 24, fontSize: 14, paddingHorizontal: 20 },
+  addRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 9 },
+  addAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.brand100 },
+  addName: { flex: 1, fontSize: 15, fontWeight: '600', color: colors.text },
+  addBtn: { borderWidth: 1, borderColor: colors.brand, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 7 },
+  addBtnText: { color: colors.brand, fontWeight: '700', fontSize: 14 },
+  addBtnDone: { borderColor: colors.border },
+  addBtnDoneText: { color: colors.muted, fontWeight: '700', fontSize: 14 },
   leaveBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     margin: 16, marginTop: 24, borderWidth: 1, borderColor: colors.danger,

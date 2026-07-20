@@ -178,7 +178,7 @@ export default function Groups() {
                 {tab === 'discover' && !isMember ? (
                   isPending ? (
                     <View style={[s.joinBtn, s.pendingBtn]}>
-                      <Text style={s.pendingText}>Pending</Text>
+                      <Text style={s.pendingText}>Requested</Text>
                     </View>
                   ) : (
                     <TouchableOpacity
