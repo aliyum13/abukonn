@@ -22,6 +22,7 @@ interface ProfileUser {
   level: string | null;
   bio: string | null;
   profile_photo_url: string | null;
+  created_at?: string;
   followers_count: number;
   following_count: number;
   is_following: boolean;
@@ -279,6 +280,9 @@ export default function UserProfile() {
               </Text>
             ) : null}
             {user.bio ? <Text style={s.bio}>{user.bio}</Text> : null}
+            {user.created_at ? (
+              <Text style={s.joined}>Joined {new Date(user.created_at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}</Text>
+            ) : null}
 
             <View style={s.stats}>
               <View style={s.stat}>
@@ -416,6 +420,7 @@ const make_s = (colors: Palette) => StyleSheet.create({
   letter: { fontSize: 32, fontWeight: '800', color: colors.brand },
   name: { fontSize: 20, fontWeight: '800', color: colors.text, marginTop: 12 },
   badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
+  joined: { fontSize: 13, color: colors.muted, marginTop: 8 },
   creatorBadge: { backgroundColor: 'rgba(217,119,6,0.15)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
   creatorBadgeText: { fontSize: 11, fontWeight: '700', color: '#d97706' },
   muted: { fontSize: 14, color: colors.muted, marginTop: 4, textAlign: 'center' },

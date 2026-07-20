@@ -18,6 +18,9 @@ export interface ApiUser {
   bio?: string | null;
   date_of_birth?: string | null;
   role?: string;
+  is_verified?: boolean;
+  is_content_creator?: boolean;
+  is_admin?: boolean;
 }
 
 // Attaches the token, parses JSON, and surfaces real errors rather than

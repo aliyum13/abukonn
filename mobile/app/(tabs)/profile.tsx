@@ -9,6 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/context/AuthContext';
+import { RoleBadge } from '../../src/components/RoleBadge';
 import { apiFetch } from '../../src/lib/api';
 import { colors, radius, shadow } from '../../src/theme';
 
@@ -91,6 +92,12 @@ export default function Profile() {
           </View>
         )}
         <Text style={s.name}>{user?.full_name}</Text>
+        <View style={s.badgeRow}>
+          <RoleBadge role={user?.role || (user?.is_admin ? 'admin' : user?.is_verified ? 'verified' : 'user')} />
+          {user?.is_content_creator ? (
+            <View style={s.creatorBadge}><Text style={s.creatorBadgeText}>✎ Creator</Text></View>
+          ) : null}
+        </View>
         {user?.department ? (
           <Text style={s.muted}>{user.department}{user.level ? ` · ${user.level}` : ''}</Text>
         ) : null}
@@ -216,6 +223,9 @@ const make_s = (colors: Palette) => StyleSheet.create({
   fallback: { alignItems: 'center', justifyContent: 'center' },
   letter: { fontSize: 32, fontWeight: '800', color: colors.brand },
   name: { fontSize: 22, fontWeight: '800', color: colors.text, marginTop: 12 },
+  badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
+  creatorBadge: { backgroundColor: 'rgba(217,119,6,0.15)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
+  creatorBadgeText: { fontSize: 11, fontWeight: '700', color: '#d97706' },
   muted: { fontSize: 14, color: colors.muted },
   bio: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', marginTop: 8, lineHeight: 20 },
   stats: { flexDirection: 'row', gap: 32, marginTop: 18 },
