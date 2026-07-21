@@ -11,7 +11,6 @@
     "@expo/vector-icons": "^15.0.3",
     "expo": "~54.0.34",
     "expo-constants": "~18.0.13",
-    "expo-dev-client": "~6.0.19",
     "expo-device": "~8.0.9",
     "expo-image-picker": "~17.0.8",
     "expo-notifications": "~0.32.12",
