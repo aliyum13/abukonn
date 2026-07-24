@@ -16,7 +16,10 @@
     },
     "production": {
       "autoIncrement": true,
-      "android": { "buildType": "app-bundle" }
+      "android": { "buildType": "app-bundle" },
+      "env": {
+        "RCT_BUILD_HERMES_FROM_SOURCE": "1"
+      }
     }
   },
   "submit": {
