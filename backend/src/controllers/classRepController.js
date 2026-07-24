@@ -1,5 +1,6 @@
 const ClassRep = require('../models/ClassRep');
 const TimetableOverride = require('../models/TimetableOverride');
+const { normalizeTime } = require('../lib/time');
 
 // Confirms the requester reps the given department + level (or is a full admin).
 async function canManage(user, department, level) {
@@ -63,8 +64,8 @@ async function createOverride(req, res) {
       overrideDate: override_date,
       kind,
       originalClassId: original_class_id || null,
-      startTime: start_time || null,
-      endTime: end_time || null,
+      startTime: normalizeTime(start_time),
+      endTime: normalizeTime(end_time),
       courseCode: course_code || null,
       courseTitle: course_title || null,
       venue: venue || null,

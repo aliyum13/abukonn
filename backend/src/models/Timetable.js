@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { byStartTime, normalizeTime } = require('../lib/time');
 
 const createTimetableTable = async () => {
   await pool.query(`
@@ -73,7 +74,9 @@ const getTodayClasses = async (department, level) => {
      ORDER BY (CASE WHEN start_time ~ '^[0-9]{1,2}:[0-9]{2}' THEN (LPAD(SPLIT_PART(start_time, ':', 1), 2, '0') || ':' || SPLIT_PART(start_time, ':', 2))::time ELSE '00:00'::time END) ASC`,
     [department, level, normalLevel, normalLevel.toLowerCase(), dayName]
   );
-  return { classes: rows, day: dayName };
+  // Safety net: sort in JS too, so ordering is right even for rows stored in
+  // 12-hour form that the SQL time-cast would misorder.
+  return { classes: [...rows].sort(byStartTime), day: dayName };
 };
 
 // Today's classes with any class-rep overrides applied. Each returned class
@@ -130,12 +133,9 @@ const getTodayClassesWithOverrides = async (department, level) => {
     });
   }
 
-  const toMin = (t) => {
-    if (!t) return 0;
-    const [h, m] = String(t).split(':').map((n) => parseInt(n, 10));
-    return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
-  };
-  merged.sort((a, b) => toMin(a.start_time) - toMin(b.start_time));
+  // byStartTime understands both 12- and 24-hour input; the old inline parser
+  // read "2:00 PM" as 02:00, so afternoon classes sorted before morning ones.
+  merged.sort(byStartTime);
 
   return { classes: merged, day: base.day, has_overrides: overrides.length > 0 };
 };
@@ -153,7 +153,7 @@ const getWeekClasses = async (department, level) => {
        (CASE WHEN start_time ~ '^[0-9]{1,2}:[0-9]{2}' THEN (LPAD(SPLIT_PART(start_time, ':', 1), 2, '0') || ':' || SPLIT_PART(start_time, ':', 2))::time ELSE '00:00'::time END) ASC`,
     [department, level, normalLevel, normalLevel.toLowerCase()]
   );
-  return rows;
+  return [...rows].sort(byStartTime);
 };
 
 const getTimetable = async (department, level) => {
@@ -169,7 +169,7 @@ const getTimetable = async (department, level) => {
        (CASE WHEN start_time ~ '^[0-9]{1,2}:[0-9]{2}' THEN (LPAD(SPLIT_PART(start_time, ':', 1), 2, '0') || ':' || SPLIT_PART(start_time, ':', 2))::time ELSE '00:00'::time END) ASC`,
     [department, level, normalLevel, normalLevel.toLowerCase()]
   );
-  return rows;
+  return [...rows].sort(byStartTime);
 };
 
 const clearTimetable = async (department, level) => {

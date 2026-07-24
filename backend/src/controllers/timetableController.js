@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const Timetable = require('../models/Timetable');
 const User = require('../models/User');
+const { normalizeTime } = require('../lib/time');
 
 const VALID_DAYS = new Set(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']);
 
@@ -87,8 +88,9 @@ async function uploadTimetable(req, res) {
         department,
         level,
         day: r.day?.trim(),
-        start_time: r.start_time?.trim(),
-        end_time: r.end_time?.trim(),
+        // Store 24-hour so ordering is correct regardless of how the CSV wrote it.
+        start_time: normalizeTime(r.start_time),
+        end_time: normalizeTime(r.end_time),
         course_code: r.course_code?.trim() || null,
         course_title: r.course_title?.trim(),
         venue: r.venue?.trim() || null,
@@ -172,7 +174,7 @@ async function updateClass(req, res) {
        SET day=$1, start_time=$2, end_time=$3, course_code=$4,
            course_title=$5, venue=$6, lecturer=$7, status=COALESCE($8, status)
        WHERE id=$9 RETURNING *`,
-      [day, start_time, end_time || null, course_code || null, course_title, venue || null, lecturer || null, status || null, id]
+      [day, normalizeTime(start_time), normalizeTime(end_time), course_code || null, course_title, venue || null, lecturer || null, status || null, id]
     );
     if (!rows.length) return res.status(404).json({ message: 'Class not found' });
     res.json({ class: rows[0] });
@@ -214,7 +216,7 @@ async function addClass(req, res) {
       `INSERT INTO abukonn.timetables
        (department, level, day, start_time, end_time, course_code, course_title, venue, lecturer, status, created_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-      [department, level, day, start_time, end_time || null, course_code || null, course_title, venue || null, lecturer || null, status || 'holding', req.user.id]
+      [department, level, day, normalizeTime(start_time), normalizeTime(end_time), course_code || null, course_title, venue || null, lecturer || null, status || 'holding', req.user.id]
     );
     // Update row count in uploads
     await pool.query(

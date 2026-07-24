@@ -7,6 +7,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { apiFetch } from '../src/lib/api';
+import { classTiming, formatTime, nowInMinutes } from '../src/lib/time';
 import { colors, radius, shadow } from '../src/theme';
 
 interface Override {
@@ -40,6 +41,12 @@ export default function Timetable() {
   const s = useThemedStyles(make_s);
   const router = useRouter();
   const [mode, setMode] = useState<'today' | 'week'>('today');
+  // Re-render each minute so a class flips to ENDED while the screen is open.
+  const [nowMin, setNowMin] = useState(nowInMinutes());
+  useEffect(() => {
+    const id = setInterval(() => setNowMin(nowInMinutes()), 60000);
+    return () => clearInterval(id);
+  }, []);
   const [today, setToday] = useState<ClassItem[]>([]);
   const [todayName, setTodayName] = useState<string | null>(null);
   const [week, setWeek] = useState<ClassItem[]>([]);
@@ -76,22 +83,36 @@ export default function Timetable() {
 
   useEffect(() => { load(mode); }, [mode, load]);
 
-  const renderClass = (c: ClassItem) => {
+  const renderClass = (c: ClassItem, isToday = false) => {
     const cancelled = c.override?.kind === 'cancel';
     const changed = c.override?.kind === 'edit';
     const added = c.override?.kind === 'add';
     const nv = c.override?.new;
+    // "Ended" only means anything for today — the week view lists every day.
+    // Use the rescheduled times when there's an edit override.
+    const timing = isToday && !cancelled
+      ? classTiming(nv?.start_time ?? c.start_time, nv?.end_time ?? c.end_time, nowMin)
+      : 'unknown';
+    const ended = timing === 'ended';
+    const ongoing = timing === 'ongoing';
     return (
-      <View style={[s.class, cancelled ? s.cancelled : added ? s.added : null]}>
+      <View style={[s.class, cancelled ? s.cancelled : ended ? s.endedClass : added ? s.added : null]}>
         <View style={s.timeCol}>
-          <Text style={[s.time, cancelled ? s.strike : null]}>{c.start_time}</Text>
-          <Text style={s.timeEnd}>{c.end_time}</Text>
+          <Text style={[s.time, cancelled ? s.strike : null]}>{formatTime(c.start_time)}</Text>
+          <Text style={s.timeEnd}>{formatTime(c.end_time)}</Text>
         </View>
         <View style={s.bar} />
         <View style={{ flex: 1 }}>
-          <Text style={[s.course, cancelled ? s.strike : null]}>
-            {c.course_code ? `${c.course_code} · ` : ''}{c.course_title}
-          </Text>
+          <View style={s.courseRow}>
+            <Text style={[s.course, cancelled ? s.strike : null, { flex: 1 }]}>
+              {c.course_code ? `${c.course_code} · ` : ''}{c.course_title}
+            </Text>
+            {ended ? (
+              <View style={s.endedBadge}><Text style={s.endedBadgeText}>ENDED</Text></View>
+            ) : ongoing ? (
+              <View style={s.nowBadge}><Text style={s.nowBadgeText}>NOW</Text></View>
+            ) : null}
+          </View>
           {c.venue ? <Text style={s.detail}>📍 {c.venue}</Text> : null}
           {c.lecturer ? <Text style={s.detail}>👤 {c.lecturer}</Text> : null}
 
@@ -169,7 +190,7 @@ export default function Timetable() {
                 tintColor={colors.brand} />
             }
             ListHeaderComponent={todayName ? <Text style={s.dayLabel}>{todayName}</Text> : null}
-            renderItem={({ item }) => renderClass(item)}
+            renderItem={({ item }) => renderClass(item, true)}
           />
         )
       ) : (
@@ -225,6 +246,12 @@ const make_s = (colors: Palette) => StyleSheet.create({
   },
   cancelled: { opacity: 0.6 },
   added: { borderLeftWidth: 3, borderLeftColor: '#16a34a' },
+  endedClass: { opacity: 0.55 },
+  courseRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  endedBadge: { backgroundColor: colors.border, borderRadius: radius.full, paddingHorizontal: 8, paddingVertical: 2 },
+  endedBadgeText: { fontSize: 10, fontWeight: '800', color: colors.textSecondary, letterSpacing: 0.5 },
+  nowBadge: { backgroundColor: '#dcfce7', borderRadius: radius.full, paddingHorizontal: 8, paddingVertical: 2 },
+  nowBadgeText: { fontSize: 10, fontWeight: '800', color: '#15803d', letterSpacing: 0.5 },
   timeCol: { width: 58 },
   time: { fontSize: 14, fontWeight: '700', color: colors.text },
   timeEnd: { fontSize: 12, color: colors.muted, marginTop: 2 },
