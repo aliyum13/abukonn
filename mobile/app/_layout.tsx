@@ -1,10 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
 import { AuthProvider } from '../src/context/AuthContext';
 import { ThemeProvider, useTheme } from '../src/theme/ThemeContext';
+import { ErrorBoundary, installGlobalErrorHandler } from '../src/components/ErrorBoundary';
 
 // Tapping a push should land you on the thing it's about, not just open the app
 // wherever you last left it. The backend attaches a data payload to every push
@@ -57,14 +58,33 @@ function Routes() {
   );
 }
 
+// Rethrows a captured out-of-React error from *inside* the boundary, so the
+// boundary can render it. Throwing in RootLayout itself would escape it.
+function GlobalErrorGate({ children }: { children: React.ReactNode }) {
+  const [globalError, setGlobalError] = useState<Error | null>(null);
+
+  useEffect(() => {
+    installGlobalErrorHandler((error, isFatal) => {
+      if (isFatal) setGlobalError(error);
+    });
+  }, []);
+
+  if (globalError) throw globalError;
+  return <>{children}</>;
+}
+
 export default function RootLayout() {
   return (
-    <ThemeProvider>
-      <SafeAreaProvider>
-        <AuthProvider>
-          <Routes />
-        </AuthProvider>
-      </SafeAreaProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <GlobalErrorGate>
+        <ThemeProvider>
+          <SafeAreaProvider>
+            <AuthProvider>
+              <Routes />
+            </AuthProvider>
+          </SafeAreaProvider>
+        </ThemeProvider>
+      </GlobalErrorGate>
+    </ErrorBoundary>
   );
 }
