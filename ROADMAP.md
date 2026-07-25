@@ -62,6 +62,18 @@ repo so it survives across work sessions.
   and don't page. Wire onEndReached / load-more on web + mobile, then drop the
   default to 20. Low risk once done outside the iOS-build crunch.
 
+### Real active-user metric (analytics)
+- **Problem:** the admin "active today" number counts users who POSTED in the last
+  24h (`COUNT(DISTINCT user_id) FROM posts WHERE created_at > NOW()-24h`), NOT
+  users who opened the app. On social apps ~90%+ of users only read/engage
+  without posting, so this undercounts real activity by ~10x and will make
+  traction look far worse than it is.
+- **Fix:** add a server-side `last_active` (or `last_seen`) timestamp on `users`,
+  stamped from the auth middleware (cheap, ~once per session; the middleware
+  currently does no DB work). Then DAU = last_active within 24h, MAU = 30d, and
+  "online now" can use live Socket.io connections. Update the admin dashboard
+  query. Schema migration + middleware + admin query — a real change, not a patch.
+
 ### Feed ranking (personalized)
 - Move feed off pure chronological to a light mix of recency + engagement +
   interest match. **Hold until post-launch** — engagement ranking on a sparse new
