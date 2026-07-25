@@ -37,7 +37,12 @@ interface RegisterData {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-const INACTIVITY_LIMIT_MS = 24 * 60 * 60 * 1000; // 24 hours
+// Match the server JWT lifetime (7d). The server token is the real authority for
+// how long a session lasts; this client-side check previously expired sessions
+// after just 24h of inactivity, so users who came back a day later were logged
+// out even though their token was still valid for a week. The /me call below is
+// what actually validates the token — a 401 there is the real "logged out".
+const INACTIVITY_LIMIT_MS = 30 * 24 * 60 * 60 * 1000; // 30 days — matches server JWT
 
 function touchActivity() {
   localStorage.setItem('abukonn_last_active', String(Date.now()));
@@ -72,7 +77,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       fetch(`${API_URL}/api/users/me`, {
         headers: { Authorization: `Bearer ${storedToken}` },
       })
-        .then((r) => (r.ok ? r.json() : null))
+        .then((r) => {
+          // Only a real 401/403 from the server means the token is actually
+          // invalid or expired — that's the one case we force a logout. Network
+          // errors (offline, server hiccup) must NOT log the user out.
+          if (r.status === 401 || r.status === 403) {
+            localStorage.removeItem('abukonn_token');
+            localStorage.removeItem('abukonn_user');
+            localStorage.removeItem('abukonn_last_active');
+            setToken(null);
+            setUser(null);
+            window.location.replace('/login?reason=session_expired');
+            return null;
+          }
+          return r.ok ? r.json() : null;
+        })
         .then((data) => {
           if (data?.user) {
             localStorage.setItem('abukonn_user', JSON.stringify(data.user));

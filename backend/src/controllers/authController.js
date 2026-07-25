@@ -15,7 +15,10 @@ function generateToken(user) {
   return jwt.sign(
     { id: user.id, email: user.email, is_admin: user.is_admin || false },
     process.env.JWT_SECRET,
-    { expiresIn: '7d' }
+    // 30d: there's no refresh-token flow, so the JWT lifetime is the whole session
+    // length. 7d meant weekly forced logouts for active users, which for a social
+    // app hurts retention. 30d keeps people signed in like they expect.
+    { expiresIn: '30d' }
   );
 }
 
