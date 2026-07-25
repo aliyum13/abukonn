@@ -24,23 +24,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   // On launch: a stored token might be expired or revoked, so verify it with the
-  // server rather than assuming it's still good.
+  // server. Deliberately deferred to the next tick with a delay: on iOS a native
+  // module (keychain / notifications) throwing synchronously in the first render
+  // pass aborts the app before anything paints, with no catchable JS error. Let
+  // the tree mount first, THEN touch native.
   useEffect(() => {
-    (async () => {
-      const token = await getToken();
-      if (!token) { setLoading(false); return; }
-      try {
-        const res = await fetchMe();
-        setUser(res.user);
-        // Re-register each launch: push tokens rotate, and the user may have
-        // changed notification permissions in system settings since last time.
-        registerForPush();
-      } catch {
-        await clearToken();
-      } finally {
-        setLoading(false);
-      }
-    })();
+    let cancelled = false;
+    const t = setTimeout(() => {
+      (async () => {
+        let token: string | null = null;
+        try {
+          token = await getToken();
+        } catch {
+          // Keychain read can throw natively on some iOS states — treat as no token.
+          token = null;
+        }
+        if (cancelled) return;
+        if (!token) { setLoading(false); return; }
+        try {
+          const res = await fetchMe();
+          if (cancelled) return;
+          setUser(res.user);
+          // Fire-and-forget, and only after we're mounted and authed.
+          registerForPush();
+        } catch {
+          try { await clearToken(); } catch { /* ignore */ }
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      })();
+    }, 0);
+    return () => { cancelled = true; clearTimeout(t); };
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
