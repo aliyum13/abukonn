@@ -74,35 +74,8 @@ export class ErrorBoundary extends React.Component<Props, State> {
   }
 }
 
-/**
- * Render errors are caught by the boundary above, but errors thrown outside
- * React (in a promise, a timer, a native callback) bypass it and abort the app.
- * Routing those into the same screen means we see the message instead of a
- * silent close.
- */
-let installed = false;
-export function installGlobalErrorHandler(onError: (error: Error, isFatal: boolean) => void) {
-  if (installed) return;
-  installed = true;
-
-  const globalAny = global as unknown as {
-    ErrorUtils?: {
-      getGlobalHandler: () => (error: Error, isFatal?: boolean) => void;
-      setGlobalHandler: (h: (error: Error, isFatal?: boolean) => void) => void;
-    };
-  };
-
-  const ErrorUtils = globalAny.ErrorUtils;
-  if (!ErrorUtils) return;
-
-  const previous = ErrorUtils.getGlobalHandler();
-  ErrorUtils.setGlobalHandler((error: Error, isFatal?: boolean) => {
-    try {
-      onError(error, !!isFatal);
-    } catch {
-      /* never let the reporter itself crash the app */
-    }
-    // Keep the default behaviour for non-fatal errors so dev logging still works.
-    if (!isFatal && typeof previous === 'function') previous(error, isFatal);
-  });
-}
+// NOTE: the global (out-of-React) error handler that used to live here now lives
+// in src/lib/earlyErrorHandler.tsx, installed from index.js before expo-router
+// loads. Installing it from a useEffect in this tree was too late: a module that
+// throws while the bundle is being evaluated crashes the app before any effect
+// in the tree has run.

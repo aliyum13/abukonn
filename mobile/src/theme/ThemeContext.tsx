@@ -18,17 +18,31 @@ const ThemeContext = createContext<ThemeState | undefined>(undefined);
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const system = useColorScheme(); // 'light' | 'dark' | null, follows the phone
   const [mode, setModeState] = useState<ThemeMode>('system');
-  const [ready, setReady] = useState(false);
 
   // Load the saved choice once on launch.
+  //
+  // This used to hold the whole tree back (`if (!ready) return null`) to avoid a
+  // light-to-dark flash. That was a launch hazard: the root layout is required to
+  // render a navigator on its FIRST render, and returning null meant it didn't —
+  // any navigation before the keychain read resolved threw 'Attempted to navigate
+  // before mounting the Root Layout component'. The default is 'system', which
+  // already matches the phone, so the flash only ever affected users who had
+  // explicitly overridden it, and a wrong frame beats a crash.
+  //
+  // Deferred a tick because SecureStore is a native call and the launch path is
+  // where iOS was aborting.
   useEffect(() => {
-    (async () => {
-      try {
-        const saved = await SecureStore.getItemAsync(STORE_KEY);
-        if (saved === 'light' || saved === 'dark' || saved === 'system') setModeState(saved);
-      } catch { /* default system */ }
-      setReady(true);
-    })();
+    let cancelled = false;
+    const t = setTimeout(() => {
+      (async () => {
+        try {
+          const saved = await SecureStore.getItemAsync(STORE_KEY);
+          if (cancelled) return;
+          if (saved === 'light' || saved === 'dark' || saved === 'system') setModeState(saved);
+        } catch { /* default system */ }
+      })();
+    }, 0);
+    return () => { cancelled = true; clearTimeout(t); };
   }, []);
 
   const scheme: 'light' | 'dark' =
@@ -45,9 +59,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(() => ({ mode, scheme, palette, setMode }), [mode, scheme, palette, setMode]);
-
-  // Don't paint until we know the saved mode, to avoid a light→dark flash.
-  if (!ready) return null;
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

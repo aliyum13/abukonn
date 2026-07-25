@@ -1,26 +1,82 @@
-import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { apiFetch } from './api';
 
+type NotificationsModule = typeof import('expo-notifications');
+type DeviceModule = typeof import('expo-device');
+
+/**
+ * expo-notifications is loaded lazily, and that is the whole point of this file's
+ * shape.
+ *
+ * `import * as Notifications from 'expo-notifications'` is not a cheap import.
+ * Its index eagerly re-exports about twenty submodules, ten of which call
+ * `requireNativeModule('Expo…')` at MODULE SCOPE. requireNativeModule throws
+ * `Cannot find native module 'X'` when that module isn't registered in the built
+ * binary — and because the throw happens while the module graph is being
+ * evaluated, it lands before React mounts and before any ErrorBoundary exists.
+ * In a release build that reaches RCTFatal and aborts the process: SIGABRT on
+ * launch, with a crash report showing only the native abort.
+ *
+ * A try/catch around setNotificationHandler could never help, because the import
+ * that throws is hoisted above it. Requiring the module on first use, inside a
+ * guard, keeps it off the launch path entirely: if notifications are broken the
+ * app still starts and simply has no push.
+ */
+let notificationsModule: NotificationsModule | null | undefined;
+let deviceModule: DeviceModule | null | undefined;
+
+function getNotifications(): NotificationsModule | null {
+  if (notificationsModule !== undefined) return notificationsModule;
+  try {
+    notificationsModule = require('expo-notifications') as NotificationsModule;
+  } catch (err) {
+    console.log('Push: expo-notifications unavailable', err);
+    notificationsModule = null;
+  }
+  return notificationsModule;
+}
+
+function getDevice(): DeviceModule | null {
+  if (deviceModule !== undefined) return deviceModule;
+  try {
+    deviceModule = require('expo-device') as DeviceModule;
+  } catch (err) {
+    console.log('Push: expo-device unavailable', err);
+    deviceModule = null;
+  }
+  return deviceModule;
+}
+
+/** Shared with the notification-tap routing in the root layout. */
+export function notificationsApi(): NotificationsModule | null {
+  return getNotifications();
+}
+
 // Show notifications even while the app is in the foreground.
 // SDK 54 replaced shouldShowAlert with the more granular banner/list pair.
 //
-// This runs at module-load time — before React (and the error boundary) mounts —
-// because AuthProvider imports this file at startup. If it throws in a release
-// build, the app SIGABRTs before anything can catch it, so it's guarded.
-try {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: true,
-      shouldSetBadge: true,
-    }),
-  });
-} catch (err) {
-  console.warn('Push: setNotificationHandler failed', err);
+// Called from an effect once the tree is mounted, NOT at module load.
+let handlerInstalled = false;
+export function initPushHandler() {
+  if (handlerInstalled) return;
+  handlerInstalled = true;
+
+  const Notifications = getNotifications();
+  if (!Notifications) return;
+
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      }),
+    });
+  } catch (err) {
+    console.log('Push: setNotificationHandler failed', err);
+  }
 }
 
 let currentToken: string | null = null;
@@ -29,7 +85,11 @@ let currentToken: string | null = null;
 // Returns null if the user declines or on a simulator (push needs real hardware).
 export async function registerForPush(): Promise<string | null> {
   try {
-    if (!Device.isDevice) return null;
+    const Notifications = getNotifications();
+    if (!Notifications) return null;
+
+    const Device = getDevice();
+    if (Device && !Device.isDevice) return null;
 
     let { status } = await Notifications.getPermissionsAsync();
     if (status !== 'granted') {
