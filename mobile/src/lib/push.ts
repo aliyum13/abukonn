@@ -6,14 +6,22 @@ import { apiFetch } from './api';
 
 // Show notifications even while the app is in the foreground.
 // SDK 54 replaced shouldShowAlert with the more granular banner/list pair.
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+//
+// This runs at module-load time — before React (and the error boundary) mounts —
+// because AuthProvider imports this file at startup. If it throws in a release
+// build, the app SIGABRTs before anything can catch it, so it's guarded.
+try {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+    }),
+  });
+} catch (err) {
+  console.warn('Push: setNotificationHandler failed', err);
+}
 
 let currentToken: string | null = null;
 
