@@ -97,7 +97,7 @@ async function createPost({ userId, content, imageUrl = null, category = 'GENERA
   return post;
 }
 
-async function getFollowingPosts(currentUserId) {
+async function getFollowingPosts(currentUserId, limit = 50, offset = 0) {
   const result = await pool.query(
     `SELECT p.id, p.user_id, p.content, p.image_url, p.likes_count, p.comments_count,
             COALESCE(p.repost_count, 0) AS repost_count,
@@ -135,13 +135,14 @@ async function getFollowingPosts(currentUserId) {
      AND p.user_id NOT IN (
        SELECT blocked_id FROM abukonn.blocks WHERE blocker_id = $1
      )
-     ORDER BY p.created_at DESC`,
-    [currentUserId]
+     ORDER BY p.created_at DESC
+     LIMIT $2 OFFSET $3`,
+    [currentUserId, limit, offset]
   );
   return result.rows;
 }
 
-async function getAllPosts(currentUserId) {
+async function getAllPosts(currentUserId, limit = 50, offset = 0) {
   const result = await pool.query(
     `SELECT p.id, p.user_id, p.content, p.image_url, p.likes_count, p.comments_count,
             COALESCE(p.repost_count, 0) AS repost_count,
@@ -187,8 +188,9 @@ async function getAllPosts(currentUserId) {
      WHERE p.user_id NOT IN (
        SELECT blocked_id FROM abukonn.blocks WHERE blocker_id = $1
      )
-     ORDER BY p.created_at DESC`,
-    [currentUserId]
+     ORDER BY p.created_at DESC
+     LIMIT $2 OFFSET $3`,
+    [currentUserId, limit, offset]
   );
   return result.rows;
 }

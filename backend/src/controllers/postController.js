@@ -184,8 +184,13 @@ async function setBestAnswer(req, res) {
 
 async function getFeed(req, res) {
   try {
-    const posts = await Post.getAllPosts(req.user.id);
-    res.json({ posts });
+    // Paginated: the feed query runs correlated subqueries per row, so returning
+    // every post at once got linearly slower as content accumulated. Default 20.
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const offset = (page - 1) * limit;
+    const posts = await Post.getAllPosts(req.user.id, limit, offset);
+    res.json({ posts, page, limit, hasMore: posts.length === limit });
   } catch (err) {
     console.error('Get feed error:', err.message);
     res.status(500).json({ message: 'Server error fetching feed' });
@@ -194,8 +199,11 @@ async function getFeed(req, res) {
 
 async function getFollowingFeed(req, res) {
   try {
-    const posts = await Post.getFollowingPosts(req.user.id);
-    res.json({ posts });
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const offset = (page - 1) * limit;
+    const posts = await Post.getFollowingPosts(req.user.id, limit, offset);
+    res.json({ posts, page, limit, hasMore: posts.length === limit });
   } catch (err) {
     console.error('Get following feed error:', err.message);
     res.status(500).json({ message: 'Server error fetching following feed' });
