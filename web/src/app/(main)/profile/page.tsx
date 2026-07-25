@@ -159,6 +159,7 @@ export default function ProfilePage() {
   const [classRepFor, setClassRepFor] = useState<Array<{ id: number; department: string; level: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [shareCopied, setShareCopied] = useState(false);
   const [photoLightboxOpen, setPhotoLightboxOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('posts');
 
@@ -461,6 +462,26 @@ export default function ProfilePage() {
             </div>
           )}
           <p className="mt-0.5 text-[14px] text-ink-muted">@{displayUsername}</p>
+
+          {/* Shareable profile link */}
+          {displayUsername ? (
+            <button
+              type="button"
+              onClick={() => {
+                const link = `${window.location.origin}/u/${displayUsername}`;
+                navigator.clipboard?.writeText(link).then(
+                  () => { setShareCopied(true); setTimeout(() => setShareCopied(false), 2000); },
+                  () => {},
+                );
+              }}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1 text-[12px] font-medium text-ink-muted transition hover:border-brand-300 hover:text-brand-600 dark:border-[#333]"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+              </svg>
+              {shareCopied ? 'Link copied!' : 'Share profile'}
+            </button>
+          ) : null}
 
           {/* Bio */}
           {user.bio

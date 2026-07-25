@@ -91,8 +91,10 @@ async function findByEmail(email) {
 }
 
 async function findByUsername(username) {
+  // Case-insensitive: shared links may be typed as /u/Ali or /u/ali, and
+  // usernames are stored lowercase. LOWER on both sides keeps it robust.
   const result = await pool.query(
-    'SELECT id FROM abukonn.users WHERE username = $1',
+    'SELECT id FROM abukonn.users WHERE LOWER(username) = LOWER($1)',
     [username]
   );
   return result.rows[0] || null;
