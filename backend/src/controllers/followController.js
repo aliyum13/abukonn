@@ -177,12 +177,16 @@ async function discover(req, res) {
     res.json({
       faculty_name: facultyName,
       department_name: myDept,
+      // Order: put the notable, badge-worthy accounts first (verified, admins,
+      // content creators) so they surface at the top of Discover, then the
+      // people closest to you (your department, then your faculty), then the
+      // long tail. Matches the product ask that verified/official accounts lead.
       sections: [
-        { key: 'department', title: myDept ? `From ${myDept}` : 'Your department', people: department },
-        { key: 'faculty', title: facultyName || 'Your faculty', people: faculty },
+        { key: 'verified', title: 'Verified', people: verified },
         { key: 'admins', title: 'Admins', people: admins },
         { key: 'creators', title: 'Content creators', people: creators },
-        { key: 'verified', title: 'Verified users', people: verified },
+        { key: 'department', title: myDept ? `From ${myDept}` : 'Your department', people: department },
+        { key: 'faculty', title: facultyName || 'Your faculty', people: faculty },
         { key: 'others', title: 'More people across ABU', people: others },
       ].filter((s) => s.people.length > 0),
     });

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Image, Alert, FlatList,
   ActivityIndicator, RefreshControl,
@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/context/AuthContext';
 import { RoleBadge } from '../../src/components/RoleBadge';
 import { apiFetch } from '../../src/lib/api';
+import { useTabScrollToTop } from '../../src/lib/useScrollToTop';
 import { colors, radius, shadow } from '../../src/theme';
 
 interface ProfilePost {
@@ -41,6 +42,7 @@ export default function Profile() {
   const s = useThemedStyles(make_s);
   const { user, signOut } = useAuth();
   const router = useRouter();
+  const { ref: listRef, setRefresh } = useTabScrollToTop<ProfilePost | ProfileReply>();
 
   const [posts, setPosts] = useState<ProfilePost[]>([]);
   const [replies, setReplies] = useState<ProfileReply[]>([]);
@@ -70,6 +72,7 @@ export default function Profile() {
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+  useEffect(() => { setRefresh(load); }, [load, setRefresh]);
 
   const onLogout = () => {
     Alert.alert('Log out', 'Are you sure?', [
@@ -163,6 +166,7 @@ export default function Profile() {
         <View style={s.center}><ActivityIndicator color={colors.brand} /></View>
       ) : (
         <FlatList
+          ref={listRef}
           data={data as (ProfilePost | ProfileReply)[]}
           keyExtractor={(item) => String(item.id)}
           ListHeaderComponent={header}
