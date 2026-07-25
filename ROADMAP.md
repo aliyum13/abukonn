@@ -32,6 +32,10 @@ repo so it survives across work sessions.
   creators → your department → faculty → others).
 - **Tap-to-refresh:** re-tapping the active tab scrolls to top + refreshes. Now
   on all five tabs (Profile was the one missing it).
+- **Feed pagination (scaling):** the two feed queries had no LIMIT and ran ~9
+  subqueries per row — cost grew with posts×users. Now LIMIT/OFFSET with
+  `?page`/`?limit`, default 50, returning `hasMore`. This raised the practical
+  ceiling from a few hundred to a few thousand concurrent (see follow-up).
 - **Full web↔mobile parity pass** across all 19 feature areas.
 
 ---
@@ -52,6 +56,11 @@ repo so it survives across work sessions.
 - Add a "Class reps from your department" section. Reps live in the
   `class_representatives` table (dept+level), not a user flag, so this needs a
   join — a bit more than the reorder already done.
+
+### Feed infinite scroll (finish the pagination)
+- Backend feed is paginated; clients still fetch page 1 with a high default (50)
+  and don't page. Wire onEndReached / load-more on web + mobile, then drop the
+  default to 20. Low risk once done outside the iOS-build crunch.
 
 ### Feed ranking (personalized)
 - Move feed off pure chronological to a light mix of recency + engagement +
