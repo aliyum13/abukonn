@@ -119,13 +119,15 @@ export default function Notifications() {
       }).catch(() => load());
     }
     // Navigate to the relevant destination (matches web's notifHref).
-    if (n.type === 'connect_request') {
-      router.push('/connect');
-    } else if (n.type === 'new_story') {
-      router.push('/(tabs)/feed');
-    } else if (n.type === 'follow' || n.type === 'connect_accepted') {
+    if (n.type === 'follow' || n.type === 'connect_accepted' || n.type === 'connect_request') {
+      // connect_request/connect_accepted are legacy (mutual-connect era). New
+      // ones aren't created under the follow model, but old ones may linger —
+      // send them to the actor's profile (where you can follow back) rather than
+      // the retired /connect screen.
       const actorId = n.actors[0]?.id;
       if (actorId) router.push({ pathname: '/user/[id]', params: { id: String(actorId) } });
+    } else if (n.type === 'new_story') {
+      router.push('/(tabs)/feed');
     } else if (n.post_id) {
       router.push({ pathname: '/post/[id]', params: { id: String(n.post_id) } });
     } else {
