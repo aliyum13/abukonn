@@ -28,6 +28,10 @@ repo so it survives across work sessions.
   footer, refresh-mid-flight race guard. [67f1658]
 - **Class reps in Discover:** new section after Content creators, reuses
   discoverSection(), no new table. [67f1658]
+- **Mobile connect-UI cleanup:** removed /connect menu entry; legacy
+  connect_request notifications open the actor profile. Follow switch fully done.
+- **Real active-user metric:** users.last_active stamped from auth middleware
+  (throttled 5min, fire-and-forget); admin shows real DAU/MAU/online + posters.
 - **iOS crash hardening:** earlyErrorHandler, lazy expo-secure-store, expo-font
   pin, reworked push/_layout/index. [e95a1fe, 720c8ad, b407998 — outside main chat]
 
@@ -76,18 +80,6 @@ repo so it survives across work sessions.
   multiple Cloudinary uploads) and UI changes (a swipeable gallery on the card,
   web + mobile). Backend `image_url` reads appear in many queries, so migrate
   carefully with backward compatibility. Not a quick patch — a proper feature.
-
-### Real active-user metric (analytics)
-- **Problem:** the admin "active today" number counts users who POSTED in the last
-  24h (`COUNT(DISTINCT user_id) FROM posts WHERE created_at > NOW()-24h`), NOT
-  users who opened the app. On social apps ~90%+ of users only read/engage
-  without posting, so this undercounts real activity by ~10x and will make
-  traction look far worse than it is.
-- **Fix:** add a server-side `last_active` (or `last_seen`) timestamp on `users`,
-  stamped from the auth middleware (cheap, ~once per session; the middleware
-  currently does no DB work). Then DAU = last_active within 24h, MAU = 30d, and
-  "online now" can use live Socket.io connections. Update the admin dashboard
-  query. Schema migration + middleware + admin query — a real change, not a patch.
 
 ### Feed ranking (personalized)
 - Move feed off pure chronological to a light mix of recency + engagement +
