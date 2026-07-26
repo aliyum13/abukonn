@@ -168,6 +168,16 @@ async function discover(req, res) {
     // 4. Content creators
     const creators = take(await Follow.discoverSection(req.user.id, 'u.is_content_creator = TRUE', [], 20));
 
+    // 4b. Class representatives — reuses the same discoverSection() helper
+    // (same exclusion/dedup/ordering as every other section), scoped to
+    // whoever has a row in class_representatives. No new table, no separate
+    // query path.
+    const classReps = take(await Follow.discoverSection(
+      req.user.id,
+      'u.id IN (SELECT DISTINCT user_id FROM abukonn.class_representatives)',
+      [], 20
+    ));
+
     // 5. Verified users
     const verified = take(await Follow.discoverSection(req.user.id, 'u.is_verified = TRUE', [], 20));
 
@@ -185,6 +195,7 @@ async function discover(req, res) {
         { key: 'verified', title: 'Verified', people: verified },
         { key: 'admins', title: 'Admins', people: admins },
         { key: 'creators', title: 'Content creators', people: creators },
+        { key: 'class_reps', title: 'Class representatives', people: classReps },
         { key: 'department', title: myDept ? `From ${myDept}` : 'Your department', people: department },
         { key: 'faculty', title: facultyName || 'Your faculty', people: faculty },
         { key: 'others', title: 'More people across ABU', people: others },

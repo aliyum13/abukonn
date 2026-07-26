@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, memo } from 'react';
+import { useEffect, useState, useCallback, useRef, memo } from 'react';
 import { useThemedStyles } from '../../src/theme/ThemeContext';
 import type { Palette } from '../../src/theme';
 import {
@@ -332,6 +332,15 @@ export default function Feed() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  // Infinite scroll — main "For You" feed only (Following tab pagination is a
+  // separate, later piece of work). loadGenRef guards against a rare race: if
+  // pull-to-refresh resets the list while a loadMore() for the old list is
+  // still in flight, the stale response must not append onto the fresh one.
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState(false);
+  const loadGenRef = useRef(0);
 
   const [composeOpen, setComposeOpen] = useState(false);
   const [newPost, setNewPost] = useState('');
@@ -382,17 +391,50 @@ export default function Feed() {
   const [commentsLoading, setCommentsLoading] = useState(false);
 
   const load = useCallback(async () => {
+    const gen = ++loadGenRef.current;
     try {
-      const data = await apiFetch<{ posts: Post[] }>('/api/posts');
+      const data = await apiFetch<{ posts: Post[]; hasMore?: boolean }>('/api/posts?page=1');
+      if (gen !== loadGenRef.current) return; // superseded by a newer load()
       setPosts(data.posts || []);
+      setPage(1);
+      setHasMore(data.hasMore ?? (data.posts?.length ?? 0) > 0);
+      setLoadMoreError(false);
       setError('');
     } catch (err) {
+      if (gen !== loadGenRef.current) return;
       setError(err instanceof Error ? err.message : 'Could not load posts');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (gen === loadGenRef.current) { setLoading(false); setRefreshing(false); }
     }
   }, []);
+
+  // Fetches the next page and appends. Guarded against concurrent duplicate
+  // calls (loadingMore), exhausted feeds (hasMore), and the Following tab
+  // (out of scope this round — page/hasMore here only ever track "For You").
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore || feedTab !== 'for_you') return;
+    const gen = loadGenRef.current;
+    setLoadingMore(true);
+    setLoadMoreError(false);
+    const nextPage = page + 1;
+    try {
+      const data = await apiFetch<{ posts: Post[]; hasMore?: boolean }>(`/api/posts?page=${nextPage}`);
+      if (gen !== loadGenRef.current) return; // a refresh landed while this was in flight
+      const incoming = data.posts || [];
+      setPosts(prev => {
+        const existingIds = new Set(prev.map(p => p.id));
+        const deduped = incoming.filter(p => !existingIds.has(p.id));
+        return deduped.length > 0 ? [...prev, ...deduped] : prev;
+      });
+      setPage(nextPage);
+      setHasMore(data.hasMore ?? incoming.length > 0);
+    } catch {
+      if (gen === loadGenRef.current) setLoadMoreError(true);
+      // existing posts are untouched — nothing removed on a failed page load
+    } finally {
+      setLoadingMore(false); // always reset, even if superseded — never leave it stuck
+    }
+  }, [loadingMore, hasMore, page, feedTab]);
 
   useEffect(() => { load(); setRefresh(load); }, [load, setRefresh]);
 
@@ -1051,6 +1093,19 @@ export default function Feed() {
               onRSVP={toggleRSVP}
             />
           )}
+          onEndReached={feedTab === 'for_you' ? loadMore : undefined}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={
+            feedTab === 'for_you' ? (
+              loadingMore ? (
+                <View style={s.loadMoreFooter}><ActivityIndicator color={colors.brand} /></View>
+              ) : loadMoreError ? (
+                <TouchableOpacity style={s.loadMoreFooter} onPress={loadMore}>
+                  <Text style={s.loadMoreRetryText}>Couldn&apos;t load more — tap to retry</Text>
+                </TouchableOpacity>
+              ) : null
+            ) : null
+          }
           initialNumToRender={6}
           maxToRenderPerBatch={6}
           windowSize={9}
@@ -1436,6 +1491,8 @@ const make_s = (colors: Palette) => StyleSheet.create({
   hlCardTitle: { fontSize: 16, fontWeight: '800', color: '#1f2937' },
   hlDesc: { fontSize: 14, color: '#374151', lineHeight: 20 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
+  loadMoreFooter: { paddingVertical: 20, alignItems: 'center', justifyContent: 'center' },
+  loadMoreRetryText: { fontSize: 13, fontWeight: '600', color: colors.brand },
   error: { color: colors.danger, fontSize: 15, textAlign: 'center', marginBottom: 6 },
   muted: { color: colors.muted, fontSize: 12 },
   card: {
