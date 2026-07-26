@@ -106,6 +106,9 @@ app.set('io', io);
 
 // Track online users: userId -> Set of socketIds
 const onlineUsers = new Map();
+// Let other parts of the app (e.g. admin stats) read how many distinct users are
+// currently connected, without exposing the map itself.
+app.set('getOnlineCount', () => onlineUsers.size);
 
 io.on('connection', (socket) => {
   // socket.data.userId is set and verified by the io.use() auth middleware above.

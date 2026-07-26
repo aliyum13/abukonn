@@ -9,21 +9,40 @@ const ClassRep = require('../models/ClassRep');
 
 async function getStats(req, res) {
   try {
-    const [users, posts, news, today] = await Promise.all([
+    const [users, posts, news, activeDay, activeMonth, postersDay] = await Promise.all([
       pool.query('SELECT COUNT(*) FROM abukonn.users'),
       pool.query('SELECT COUNT(*) FROM abukonn.posts'),
       pool.query('SELECT COUNT(*) FROM abukonn.news'),
+      // Real activity: anyone who made an authenticated request in the window,
+      // not just people who posted. last_active is stamped by the auth middleware.
+      pool.query(
+        `SELECT COUNT(*) FROM abukonn.users
+         WHERE last_active >= NOW() - INTERVAL '24 hours'`
+      ),
+      pool.query(
+        `SELECT COUNT(*) FROM abukonn.users
+         WHERE last_active >= NOW() - INTERVAL '30 days'`
+      ),
+      // Kept as a separate signal: distinct users who actually POSTED in 24h.
+      // Useful next to activeToday — the gap shows the lurker-to-poster ratio.
       pool.query(
         `SELECT COUNT(DISTINCT user_id) FROM abukonn.posts
          WHERE created_at >= NOW() - INTERVAL '24 hours'`
       ),
     ]);
 
+    const getOnlineCount = req.app.get('getOnlineCount');
+    const onlineNow = typeof getOnlineCount === 'function' ? getOnlineCount() : null;
+
     res.json({
       totalUsers: parseInt(users.rows[0].count, 10),
       totalPosts: parseInt(posts.rows[0].count, 10),
       totalNews: parseInt(news.rows[0].count, 10),
-      activeToday: parseInt(today.rows[0].count, 10),
+      // activeToday now means "opened/used the app in 24h" (real DAU), not "posted".
+      activeToday: parseInt(activeDay.rows[0].count, 10),
+      activeThisMonth: parseInt(activeMonth.rows[0].count, 10),
+      postersToday: parseInt(postersDay.rows[0].count, 10),
+      onlineNow,
     });
   } catch (err) {
     console.error('Admin stats error:', err.message);

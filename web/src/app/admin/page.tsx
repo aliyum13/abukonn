@@ -13,7 +13,10 @@ interface Stats {
   totalUsers: number;
   totalPosts: number;
   totalNews: number;
-  activeToday: number;
+  activeToday: number;       // real DAU — opened/used the app in 24h
+  activeThisMonth: number;   // MAU
+  postersToday: number;      // distinct users who posted in 24h
+  onlineNow: number | null;  // live socket connections
 }
 
 interface RecentUser {
@@ -49,7 +52,29 @@ const STAT_CARDS = [
   {
     key: 'activeToday' as const,
     label: 'Active Today',
+    sub: 'opened the app (24h)',
     color: 'bg-amber-50 text-amber-700',
+    icon: 'M13 10V3L4 14h7v7l9-11h-7z',
+  },
+  {
+    key: 'activeThisMonth' as const,
+    label: 'Active This Month',
+    sub: 'used the app (30d)',
+    color: 'bg-emerald-50 text-emerald-700',
+    icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z',
+  },
+  {
+    key: 'postersToday' as const,
+    label: 'Posted Today',
+    sub: 'created a post (24h)',
+    color: 'bg-blue-50 text-blue-700',
+    icon: 'M12 4v16m8-8H4',
+  },
+  {
+    key: 'onlineNow' as const,
+    label: 'Online Now',
+    sub: 'connected right now',
+    color: 'bg-green-50 text-green-700',
     icon: 'M13 10V3L4 14h7v7l9-11h-7z',
   },
 ];
@@ -127,7 +152,7 @@ export default function AdminDashboard() {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {statsLoading
           ? Array.from({ length: 4 }).map((_, i) => <StatSkeleton key={i} />)
-          : STAT_CARDS.map(({ key, label, color, icon }) => (
+          : STAT_CARDS.map(({ key, label, sub, color, icon }) => (
               <Card key={key}>
                 <CardContent className="p-6">
                   <div className="flex items-center gap-4">
@@ -139,6 +164,7 @@ export default function AdminDashboard() {
                     <div>
                       <p className="text-2xl font-bold text-ink">{stats?.[key] ?? '—'}</p>
                       <p className="text-body-sm text-ink-secondary">{label}</p>
+                      {sub ? <p className="text-caption text-ink-muted">{sub}</p> : null}
                     </div>
                   </div>
                 </CardContent>

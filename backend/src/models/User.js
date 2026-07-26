@@ -23,6 +23,11 @@ ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEF
 ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS date_of_birth DATE;
 ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS is_content_creator BOOLEAN NOT NULL DEFAULT FALSE;
+-- Real activity tracking: stamped from the auth middleware on authenticated
+-- requests (throttled). Powers true DAU/MAU on the admin dashboard, replacing the
+-- old "distinct posters in 24h" proxy which undercounted actual usage ~10x.
+ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS last_active TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_users_last_active ON abukonn.users(last_active);
 
 -- Backfill: pre-existing admin accounts may have is_admin=true but role='user'
 -- (the two were managed separately historically). Sync them so role-based admin
