@@ -8,8 +8,11 @@ const CONFIGS: Record<string, { label: string; icon: string; bg: string; fg: str
   admin:      { label: 'Admin',      icon: '🛡', bg: 'rgba(22,163,74,0.15)',  fg: '#16a34a' },
 };
 
-export function usesFollowSystem(role?: string | null): boolean {
-  return ['verified', 'bod', 'influencer', 'admin'].includes(role || '');
+// Pure follow for everyone now — the mutual connect flow is retired. Kept as a
+// function so callers are unchanged. (Mobile UI cleanup of leftover connect
+// affordances is a separate follow-up; behaviour here is already consistent.)
+export function usesFollowSystem(_role?: string | null): boolean {
+  return true;
 }
 
 export function RoleBadge({ role, iconOnly }: { role?: string | null; iconOnly?: boolean }) {

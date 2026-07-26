@@ -52,9 +52,14 @@ export function RoleBadge({ role, className, iconOnly = false }: RoleBadgeProps)
   );
 }
 
-/** Returns true if this role uses follow (one-way) rather than connect (mutual) */
-export function usesFollowSystem(role: string): boolean {
-  return ['verified', 'bod', 'influencer', 'admin'].includes(role);
+/**
+ * Whether a profile uses the follow (one-way) model. As of the switch to pure
+ * Instagram-style follow, this is EVERYONE — the mutual connect flow is retired.
+ * Kept as a function (rather than inlining `true`) so callers don't need to
+ * change and so the old per-role behaviour is easy to see in history.
+ */
+export function usesFollowSystem(_role?: string): boolean {
+  return true;
 }
 
 /**

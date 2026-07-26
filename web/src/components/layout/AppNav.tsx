@@ -113,27 +113,8 @@ export function AppNav() {
   const [unreadCount, setUnreadCount] = useState(0);
 
   // Connect request count
-  const [connectCount, setConnectCount] = useState(0);
-
-  const fetchConnectCount = useCallback(async () => {
-    if (!token) return;
-    try {
-      const res = await fetch(`${API_URL}/api/connect/requests/incoming/count`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const d = await res.json();
-        setConnectCount(d.count ?? 0);
-      }
-    } catch { /* silent */ }
-  }, [token]);
-
-  useEffect(() => {
-    if (!token) return;
-    fetchConnectCount();
-    const id = setInterval(fetchConnectCount, 30_000);
-    return () => clearInterval(id);
-  }, [token, fetchConnectCount]);
+  // (Connect-request polling removed — switched to one-way follow; there is no
+  // connect-requests inbox to badge anymore.)
 
   // Message unread count
   const [msgUnreadCount, setMsgUnreadCount] = useState(0);
