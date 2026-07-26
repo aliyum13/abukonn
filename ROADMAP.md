@@ -5,12 +5,16 @@ repo so it survives across work sessions.
 
 ---
 
-## 🔴 Launch blocker (do first)
+## ✅ Launch blocker — RESOLVED
 
-Nothing currently blocking. See "Recently shipped" — the iOS TestFlight launch
-crash chain is resolved as of build 17.
-
----
+- **iOS + Android builds now launch cleanly.** iOS build 17 works on device;
+  Android works too. Journey: Hermes engine PAC crash fixed
+  (RCT_BUILD_HERMES_FROM_SOURCE=1), New Architecture disabled, native startup
+  calls (SecureStore + push registration) deferred off the first-render pass,
+  setNotificationHandler guarded, on-screen ErrorBoundary added, .easignore
+  fixed so uploads are small. Both platforms are past the launch-crash blocker.
+  Next: finish store submissions (TestFlight → App Store review for iOS; Play
+  Internal testing → production for Android).
 
 ## ✅ Recently shipped
 
