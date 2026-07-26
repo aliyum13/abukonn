@@ -7,18 +7,26 @@ repo so it survives across work sessions.
 
 ## 🔴 Launch blocker (do first)
 
-- **iOS TestFlight launch crash.** Engine-level Hermes PAC crash is fixed
-  (`RCT_BUILD_HERMES_FROM_SOURCE=1`). Remaining crash is a native Expo module
-  throwing at startup (SIGABRT on `expo.modules.AsyncFunctionQueue`). Latest fix:
-  deferred `SecureStore.getItemAsync` + push registration off the first-render
-  pass, guarded `setNotificationHandler`, added an on-screen error boundary.
-  **Next:** build 11, test on device. If it still crashes, get the
-  **symbolicated** crash from App Store Connect → TestFlight → Crashes (names the
-  exact module) instead of guessing.
+Nothing currently blocking. See "Recently shipped" — the iOS TestFlight launch
+crash chain is resolved as of build 17.
 
 ---
 
 ## ✅ Recently shipped
+
+- **iOS TestFlight launch crash — fully resolved (build 17).** Chain of five
+  separate bugs, each one revealed only after fixing the last: (1) Hermes PAC
+  crash, fixed with `RCT_BUILD_HERMES_FROM_SOURCE=1`; (2) stale lockfile still
+  shipping `expo-dev-client` despite it being dropped from `package.json`; (3)
+  `expo-notifications`/`expo-secure-store` throwing `requireNativeModule` at
+  module scope on the launch path — now lazy-required; (4) `ThemeProvider`
+  blocking the root navigator's first render; (5) `expo-font` resolving to a
+  rogue, SDK-incompatible `57.0.1` via `@expo/vector-icons`'s open-ended
+  peerDependency range instead of the correct `~14.0.12` — now pinned directly.
+  Also added: a global error handler + on-screen fallback screen (`index.js`,
+  `earlyErrorHandler.tsx`, `ErrorBoundary.tsx`) so any future startup crash
+  shows a readable message instead of a silent SIGABRT — this is what actually
+  let us diagnose bugs (2)–(5) instead of guessing from crash-log noise.
 
 - **Timetable:** fixed class ordering (12-hour times were sorting as 24-hour) +
   added ENDED / NOW status on the Today view. Migration script for existing rows:
@@ -41,6 +49,19 @@ repo so it survives across work sessions.
 ---
 
 ## 🟡 Queued features (post-launch, roughly in priority order)
+
+### Bug: "System" theme doesn't follow device dark mode on iOS
+- **Symptom:** confirmed on device (build 17) — phone is in Dark Mode,
+  in-app theme setting is "System," app renders light anyway.
+- **Root cause found:** `app.json` has `"userInterfaceStyle": "light"`
+  hardcoded, forcing iOS's native `UIUserInterfaceStyle` to Light regardless
+  of the device setting. `ThemeContext`'s own system-detection logic
+  (`useColorScheme()`) is correct — it's being fed a value pinned at the
+  native config level before it ever sees the real device setting.
+- **Fix:** one-line change, `"userInterfaceStyle"` → `"automatic"` in
+  `app.json`. Native config change — needs a new build to take effect, won't
+  work from a JS-only patch. Not urgent enough to spend a build on alone;
+  bundle with the next build that has other changes queued.
 
 ### Multi-media posts — 2–3 images/videos per post
 - **Ask:** let users attach 2–3 pictures or videos to a single post (carousel/
