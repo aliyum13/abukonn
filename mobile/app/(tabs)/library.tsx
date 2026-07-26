@@ -123,6 +123,14 @@ export default function Library() {
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.muted} />
         </TouchableOpacity>
+        <TouchableOpacity style={s.quickCard} onPress={() => router.push('/cgpa-calculator')}>
+          <View style={s.quickIcon}><Ionicons name="calculator-outline" size={22} color={colors.brand} /></View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.quickTitle}>CGPA Calculator</Text>
+            <Text style={s.quickSub} numberOfLines={1}>Track your GPA every semester</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+        </TouchableOpacity>
       </View>
 
       <TextInput

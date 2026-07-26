@@ -123,8 +123,8 @@ export default function LibraryPage() {
         <p className="mt-1 text-body-sm text-ink-muted">Past questions, lecture notes and study materials</p>
       </div>
 
-      {/* Quick access: Academic Calendar + Timetable */}
-      <div className="mb-5 grid gap-3 sm:grid-cols-2">
+      {/* Quick access: Academic Calendar + Timetable + CGPA Calculator */}
+      <div className="mb-5 grid gap-3 sm:grid-cols-3">
         <Link href="/academic-calendar" className="block">
           <Card className="h-full cursor-pointer transition hover:border-brand-300 hover:shadow-card dark:hover:border-brand-700">
             <CardContent className="flex items-center gap-4 p-4">
@@ -155,6 +155,25 @@ export default function LibraryPage() {
               <div className="min-w-0 flex-1">
                 <p className="font-semibold text-ink">Timetable</p>
                 <p className="text-caption text-ink-muted">Your department&apos;s class schedule</p>
+              </div>
+              <svg className="h-5 w-5 shrink-0 text-ink-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+              </svg>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link href="/cgpa-calculator" className="block">
+          <Card className="h-full cursor-pointer transition hover:border-brand-300 hover:shadow-card dark:hover:border-brand-700">
+            <CardContent className="flex items-center gap-4 p-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-950 dark:text-brand-400">
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 7.5h6m-6 3h6m-6 3h1.5m3 0h1.5M5.625 3h12.75c.621 0 1.125.504 1.125 1.125v15.75c0 .621-.504 1.125-1.125 1.125H5.625a1.125 1.125 0 01-1.125-1.125V4.125C4.5 3.504 5.004 3 5.625 3z" />
+                </svg>
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-ink">CGPA Calculator</p>
+                <p className="text-caption text-ink-muted">Track your GPA every semester</p>
               </div>
               <svg className="h-5 w-5 shrink-0 text-ink-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
