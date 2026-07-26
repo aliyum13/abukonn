@@ -143,4 +143,16 @@ repo so it survives across work sessions.
   Urgent, unrelated to features.
 - Consider a **staging branch** — `main` auto-deploys straight to production
   (Vercel + Railway).
-- After launch: ship to a student cohort, measure return/retention.
+- After launch: ship to a student cohort, measure return/retention.## ✅ RESOLVED: iOS + Android launch
+
+- **iOS build 17 launches cleanly on device.** The long crash saga is over.
+  Fixes that got it there, in order: New Architecture disabled
+  (newArchEnabled:false); Hermes built from source
+  (RCT_BUILD_HERMES_FROM_SOURCE=1) to beat the SDK 54 arm64 PAC crash; native
+  startup calls (SecureStore + push registration) deferred off the first-render
+  pass; setNotificationHandler guarded; on-screen ErrorBoundary added.
+- **Android also builds and launches.** Same fixes apply; the Hermes PAC crash
+  was iOS-only, so Android was smoother.
+- NEXT for both: finish store listings and submit for review (see below).
+
+
