@@ -18,6 +18,19 @@ repo so it survives across work sessions.
 
 ## ✅ Recently shipped
 
+- **Switch to one-way follow (Instagram-style):** everyone now follows instead of
+  mutual connect. usesFollowSystem() returns true for all; existing connections +
+  pending requests migrated to follows in production (27 new rows, non-destructive).
+- **Dark mode "System" fix:** app.json userInterfaceStyle "light" -> "automatic"
+  (was overriding device appearance). [commit 67f1658, done outside main chat]
+- **Feed infinite scroll (mobile, For You):** load() resets pagination, loadMore()
+  appends next page with ID dedup, concurrent-call guard, hasMore stop, tap-to-retry
+  footer, refresh-mid-flight race guard. [67f1658]
+- **Class reps in Discover:** new section after Content creators, reuses
+  discoverSection(), no new table. [67f1658]
+- **iOS crash hardening:** earlyErrorHandler, lazy expo-secure-store, expo-font
+  pin, reworked push/_layout/index. [e95a1fe, 720c8ad, b407998 — outside main chat]
+
 - **iOS TestFlight launch crash — fully resolved (build 17).** Chain of five
   separate bugs, each one revealed only after fixing the last: (1) Hermes PAC
   crash, fixed with `RCT_BUILD_HERMES_FROM_SOURCE=1`; (2) stale lockfile still
@@ -54,19 +67,6 @@ repo so it survives across work sessions.
 
 ## 🟡 Queued features (post-launch, roughly in priority order)
 
-### Bug: "System" theme doesn't follow device dark mode on iOS
-- **Symptom:** confirmed on device (build 17) — phone is in Dark Mode,
-  in-app theme setting is "System," app renders light anyway.
-- **Root cause found:** `app.json` has `"userInterfaceStyle": "light"`
-  hardcoded, forcing iOS's native `UIUserInterfaceStyle` to Light regardless
-  of the device setting. `ThemeContext`'s own system-detection logic
-  (`useColorScheme()`) is correct — it's being fed a value pinned at the
-  native config level before it ever sees the real device setting.
-- **Fix:** one-line change, `"userInterfaceStyle"` → `"automatic"` in
-  `app.json`. Native config change — needs a new build to take effect, won't
-  work from a JS-only patch. Not urgent enough to spend a build on alone;
-  bundle with the next build that has other changes queued.
-
 ### Multi-media posts — 2–3 images/videos per post
 - **Ask:** let users attach 2–3 pictures or videos to a single post (carousel/
   gallery), when the feature is live.
@@ -76,16 +76,6 @@ repo so it survives across work sessions.
   multiple Cloudinary uploads) and UI changes (a swipeable gallery on the card,
   web + mobile). Backend `image_url` reads appear in many queries, so migrate
   carefully with backward compatibility. Not a quick patch — a proper feature.
-
-### Class reps in Discover
-- Add a "Class reps from your department" section. Reps live in the
-  `class_representatives` table (dept+level), not a user flag, so this needs a
-  join — a bit more than the reorder already done.
-
-### Feed infinite scroll (finish the pagination)
-- Backend feed is paginated; clients still fetch page 1 with a high default (50)
-  and don't page. Wire onEndReached / load-more on web + mobile, then drop the
-  default to 20. Low risk once done outside the iOS-build crunch.
 
 ### Real active-user metric (analytics)
 - **Problem:** the admin "active today" number counts users who POSTED in the last
