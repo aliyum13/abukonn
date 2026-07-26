@@ -1,10 +1,26 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import { useColorScheme } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
 import { Palette, lightColors, darkColors, applyPalette } from './index';
 
 export type ThemeMode = 'system' | 'light' | 'dark';
 const STORE_KEY = 'abukonn_theme_mode';
+
+// Lazy + guarded for the same reason as src/lib/storage.ts: expo-secure-store
+// throws at MODULE SCOPE if its native module isn't in the binary, and this
+// file is on the launch path (imported directly by app/_layout.tsx). Themed
+// preference just falls back to 'system' if it's unavailable.
+type SecureStoreModule = typeof import('expo-secure-store');
+let secureStoreMod: SecureStoreModule | null | undefined;
+function getSecureStore(): SecureStoreModule | null {
+  if (secureStoreMod !== undefined) return secureStoreMod;
+  try {
+    secureStoreMod = require('expo-secure-store') as SecureStoreModule;
+  } catch (err) {
+    console.log('SecureStore unavailable', err);
+    secureStoreMod = null;
+  }
+  return secureStoreMod;
+}
 
 interface ThemeState {
   mode: ThemeMode;              // the user's choice
@@ -35,6 +51,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     const t = setTimeout(() => {
       (async () => {
+        const SecureStore = getSecureStore();
+        if (!SecureStore) return;
         try {
           const saved = await SecureStore.getItemAsync(STORE_KEY);
           if (cancelled) return;
@@ -55,7 +73,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const setMode = useCallback((m: ThemeMode) => {
     setModeState(m);
-    SecureStore.setItemAsync(STORE_KEY, m).catch(() => {});
+    getSecureStore()?.setItemAsync(STORE_KEY, m).catch(() => {});
   }, []);
 
   const value = useMemo(() => ({ mode, scheme, palette, setMode }), [mode, scheme, palette, setMode]);
