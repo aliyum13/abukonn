@@ -7,6 +7,23 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: 'res.cloudinary.com' },
     ],
   },
+  // iOS universal links (AASA) and Android App Links (assetlinks.json) are
+  // verified by crawlers that expect application/json specifically -- Next's
+  // default static-file serving for an extensionless file falls back to
+  // application/octet-stream, which some verifiers reject. Force it here
+  // rather than relying on the default.
+  async headers() {
+    return [
+      {
+        source: '/.well-known/apple-app-site-association',
+        headers: [{ key: 'Content-Type', value: 'application/json' }],
+      },
+      {
+        source: '/.well-known/assetlinks.json',
+        headers: [{ key: 'Content-Type', value: 'application/json' }],
+      },
+    ];
+  },
 };
 
 // Wrap with Sentry. All build-time source-map upload is optional and silently

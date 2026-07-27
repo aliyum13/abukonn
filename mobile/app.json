@@ -11,6 +11,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.abukonn.app",
+      "associatedDomains": ["applinks:abukonn.com"],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -23,6 +24,17 @@
       },
       "permissions": [
         "android.permission.RECORD_AUDIO"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            { "scheme": "https", "host": "abukonn.com", "pathPrefix": "/u/" },
+            { "scheme": "https", "host": "abukonn.com", "pathPrefix": "/join/" }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
       ]
     },
     "plugins": [

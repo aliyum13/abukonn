@@ -1,0 +1,11 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "884S5U2L4D.com.abukonn.app",
+        "paths": ["/u/*", "/join/*"]
+      }
+    ]
+  }
+}
