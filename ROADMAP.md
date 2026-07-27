@@ -103,7 +103,7 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
 
 ## 🔍 Reported from device testing (iPhone via Expo Go)
 
-4 of 12 fixed so far, rest still queued.
+5 of 12 fixed so far, rest still queued.
 
 - [x] **Feed post images and story images load noticeably slowly** (mobile).
   Root cause: mobile was loading full-resolution Cloudinary originals
@@ -130,8 +130,13 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
   with a `before` cursor; both clients got a "Load earlier messages"
   control plus an auto-scroll guard so prepending history doesn't yank the
   view back to the bottom. [6c0e145]
-- [ ] **Share button + view count on feed posts** — present on web, missing on
-  mobile.
+- [x] **Share button + view count on feed posts** — present on web, missing on
+  mobile. Turned out to be half true: the share button already existed and
+  already worked correctly on mobile (paper-plane icon -> ShareSheet, mirrors
+  web's flow exactly) -- just not visually recognized as "the share button"
+  since the icon differs. View count was the genuine gap: no field, no
+  tracking, no display. Added all three, using FlatList's viewability API as
+  the RN equivalent of web's IntersectionObserver-based tracker. [31b26c0]
 - [ ] **Tapping a post image doesn't open a clear/full view on mobile** — works
   on web (tap opens the image clearly), mobile has no equivalent.
 - [ ] **News images should open for clear viewing** — news posts have attached
