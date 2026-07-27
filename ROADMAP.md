@@ -27,14 +27,12 @@ file lists. Ticking off one at a time before more feature work.
 - [x] **Mobile deep links** — `abukonn.com/u/<name>` and group invite links
       now open the app instead of the browser. New screens `app/u/[username].tsx`
       and `app/join/[inviteCode].tsx` reuse web's existing backend endpoints
-      exactly. [e0f80e3] **Not fully live yet — three manual steps remain:**
-      (1) replace the placeholder SHA256 fingerprint in
-      `web/public/.well-known/assetlinks.json` — run `eas credentials`
-      (Android production) to get the real value; (2) deploy web so the
-      `.well-known` files are actually reachable at abukonn.com — Apple/Google's
-      verification crawlers need to fetch them from the live domain;
-      (3) a fresh EAS build for both platforms — `associatedDomains` and
-      `intentFilters` are native config, only take effect in a new binary.
+      exactly. [e0f80e3] Real Android SHA256 fingerprint filled in. [411f50f]
+      **Two manual steps remain before it's actually live:**
+      (1) deploy web so the `.well-known` files are reachable at abukonn.com —
+      Apple/Google's verification crawlers need to fetch them from the live
+      domain; (2) a fresh EAS build for both platforms — `associatedDomains`
+      and `intentFilters` are native config, only take effect in a new binary.
 - [ ] **Admin panel on mobile — needs a decision, not a build.** Web has full
       admin (users, whitelist, reports, news, highlights, library, timetable,
       calendar); mobile has none. Large enough to be its own feature if
