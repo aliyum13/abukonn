@@ -125,6 +125,19 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
   not just the browser. Was blocked behind the iOS build — that's resolved now
   (build 17 launches clean), so this is unblocked.
 
+### Academic Calendar Integration
+- Admin creates university-wide events (Mid-Semester Break, Public Holidays,
+  Exams, Semester Breaks). Any class falling within those dates should
+  automatically show the right status (e.g. Cancelled / No Classes) without
+  the admin having to edit every class individually.
+
+### Bulk Timetable Status Update
+- Admin can update the status of multiple classes at once instead of editing
+  each individually. E.g. for a mid-semester break, public holiday, strike, or
+  any event affecting the whole university or a faculty, admin selects a date
+  range (or a full week) and marks all scheduled classes as Cancelled in one
+  action.
+
 ---
 
 ## 💰 Commercial (needs decisions, not just code)
