@@ -103,9 +103,15 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
 
 ## 🔍 Reported from device testing (iPhone via Expo Go)
 
-2 of 12 fixed so far, rest still queued.
+3 of 12 fixed so far, rest still queued.
 
-- [ ] **Feed post images and story images load noticeably slowly** (mobile).
+- [x] **Feed post images and story images load noticeably slowly** (mobile).
+  Root cause: mobile was loading full-resolution Cloudinary originals
+  everywhere (a phone photo can be several MB), while web already had a
+  Cloudinary URL-transform helper (f_auto/q_auto/width-cap/dpr_auto) mobile
+  never got. Ported the same helper and applied it to feed post images,
+  the full-screen story viewer image, and every avatar in both screens.
+  [2bbe804]
 - [x] **Story reply loses the story reference** — replied to a story with
   "Enjoyment," the recipient got the message but no reference to which
   story / the story's image, unlike a normal quote-reply. Backend already
