@@ -103,7 +103,7 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
 
 ## 🔍 Reported from device testing (iPhone via Expo Go)
 
-5 of 12 fixed so far, rest still queued.
+6 of 12 fixed so far, rest still queued.
 
 - [x] **Feed post images and story images load noticeably slowly** (mobile).
   Root cause: mobile was loading full-resolution Cloudinary originals
@@ -137,8 +137,11 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
   since the icon differs. View count was the genuine gap: no field, no
   tracking, no display. Added all three, using FlatList's viewability API as
   the RN equivalent of web's IntersectionObserver-based tracker. [31b26c0]
-- [ ] **Tapping a post image doesn't open a clear/full view on mobile** — works
-  on web (tap opens the image clearly), mobile has no equivalent.
+- [x] **Tapping a post image doesn't open a clear/full view on mobile** — works
+  on web (tap opens the image clearly), mobile has no equivalent. Ported
+  web's lightbox exactly: full-screen overlay showing the raw (not
+  thumbnail-optimized) image, tap anywhere or the close button to dismiss.
+  [5c27e06]
 - [ ] **News images should open for clear viewing** — news posts have attached
   images; tapping should open a clear/full view, on both web and mobile.
 - [ ] **Match News section design between web and mobile** — currently they
@@ -221,6 +224,13 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
 ---
 
 ## 🧹 Housekeeping / debt
+
+- **Untracked file sitting in the mobile working tree:** `mobile/app/my-stories.tsx`
+  (found while working on device-testing item 6). Not in git history, not
+  written by this session. Looks like a real, substantial My Stories
+  management screen implementation (the parity backlog item) — worth
+  reviewing and either finishing/committing it or discarding it deliberately,
+  rather than leaving it to sit uncommitted.
 
 - **Group chat history is still unbounded.** `Group.getGroupMessages()` has
   the identical no-LIMIT pattern that made opening a DM slow (fixed for DMs
