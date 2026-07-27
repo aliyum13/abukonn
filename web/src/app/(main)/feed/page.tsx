@@ -1210,6 +1210,18 @@ export default function FeedPage() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [followingPosts, setFollowingPosts] = useState<Post[]>([]);
 
+  // Infinite scroll — main "For You" feed only, mirrors the mobile
+  // implementation (Following tab pagination is separate, later work).
+  // loadGenRef guards a rare race: if fetchPosts() resets the list while an
+  // old loadMorePosts() is still in flight, the stale response must not
+  // append onto the fresh one.
+  const [feedPage, setFeedPage] = useState(1);
+  const [feedHasMore, setFeedHasMore] = useState(true);
+  const [loadingMorePosts, setLoadingMorePosts] = useState(false);
+  const [loadMorePostsError, setLoadMorePostsError] = useState(false);
+  const loadGenRef = useRef(0);
+  const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
+
   // Apply an update to EVERY list a post can appear in.
   //
   // The feed keeps two arrays — For You (`posts`) and Following
@@ -1764,8 +1776,9 @@ export default function FeedPage() {
 
   const fetchPosts = async (isRetry = false) => {
     if (!token) return;
+    const gen = ++loadGenRef.current;
     try {
-      const res = await fetchWithRetry(`${API_URL}/api/posts`, {
+      const res = await fetchWithRetry(`${API_URL}/api/posts?page=1`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.status === 401 && !isRetry) {
@@ -1781,19 +1794,68 @@ export default function FeedPage() {
         }
       }
       const data = await res.json();
-      if (res.ok) {
+      if (res.ok && gen === loadGenRef.current) {
         setPosts(data.posts);
+        setFeedPage(1);
+        setFeedHasMore(data.hasMore ?? (data.posts?.length ?? 0) > 0);
+        setLoadMorePostsError(false);
         lastFetchRef.current = Date.now();
         // Clear any stale error banner (e.g. a transient network error from a
         // previous action) now that we've successfully loaded the feed.
         setError(prev => (prev === 'Failed to load feed' || prev.includes('Network') ? '' : prev));
       }
     } catch {
-      setError('Failed to load feed');
+      if (gen === loadGenRef.current) setError('Failed to load feed');
     } finally {
-      setLoading(false);
+      if (gen === loadGenRef.current) setLoading(false);
     }
   };
+
+  // Fetches the next page and appends. Guarded against concurrent duplicate
+  // calls, exhausted feeds, and the Following tab (out of scope this round).
+  const loadMorePosts = async () => {
+    if (!token || loadingMorePosts || !feedHasMore || feedTab !== 'for_you') return;
+    const gen = loadGenRef.current;
+    setLoadingMorePosts(true);
+    setLoadMorePostsError(false);
+    const nextPage = feedPage + 1;
+    try {
+      const res = await fetchWithRetry(`${API_URL}/api/posts?page=${nextPage}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error('Failed to load more posts');
+      if (gen !== loadGenRef.current) return; // a fresh fetchPosts() landed while this was in flight
+      const incoming: Post[] = data.posts || [];
+      setPosts(prev => {
+        const existingIds = new Set(prev.map(p => p.id));
+        const deduped = incoming.filter(p => !existingIds.has(p.id));
+        return deduped.length > 0 ? [...prev, ...deduped] : prev;
+      });
+      setFeedPage(nextPage);
+      setFeedHasMore(data.hasMore ?? incoming.length > 0);
+    } catch {
+      if (gen === loadGenRef.current) setLoadMorePostsError(true);
+      // existing posts are untouched — nothing removed on a failed page load
+    } finally {
+      setLoadingMorePosts(false); // always reset, even if superseded — never leave it stuck
+    }
+  };
+
+  // IntersectionObserver-driven infinite scroll for the For You feed. Watches
+  // a sentinel div rendered after the posts list; loadMorePosts() itself is
+  // re-entrancy-guarded, so re-triggering this observer is harmless.
+  useEffect(() => {
+    if (feedTab !== 'for_you' || !feedHasMore) return;
+    const el = loadMoreSentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) loadMorePosts();
+    }, { rootMargin: '400px' });
+    observer.observe(el);
+    return () => observer.disconnect();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feedTab, feedHasMore, feedPage, loadingMorePosts]);
 
   const fetchFollowingPosts = async () => {
     if (!token) return;
@@ -3797,6 +3859,20 @@ export default function FeedPage() {
             posts
               .filter(post => categoryFilter === 'ALL' || post.category === categoryFilter)
               .map((post) => renderPostCard(post))
+          )}
+          {!loading && posts.length > 0 && (
+            <div ref={loadMoreSentinelRef} className="flex items-center justify-center py-6">
+              {loadingMorePosts ? (
+                <svg className="h-5 w-5 animate-spin text-brand-600" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                </svg>
+              ) : loadMorePostsError ? (
+                <button type="button" onClick={loadMorePosts} className="text-body-sm font-semibold text-brand-600 hover:text-brand-700">
+                  Couldn&apos;t load more — tap to retry
+                </button>
+              ) : null}
+            </div>
           )}
           </>
           )}
