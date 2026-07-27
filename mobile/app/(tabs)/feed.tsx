@@ -13,6 +13,7 @@ import { uploadImage } from '../../src/lib/upload';
 import { MenuSheet } from '../../src/components/MenuSheet';
 import { useTabScrollToTop } from '../../src/lib/useScrollToTop';
 import { apiFetch, API_URL } from '../../src/lib/api';
+import { optimizedImage, optimizedAvatar } from '../../src/lib/image';
 import { getToken } from '../../src/lib/storage';
 import { colors, radius, shadow } from '../../src/theme';
 import { StoryBar } from '../../src/components/Stories';
@@ -153,7 +154,7 @@ const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, on
           onPress={() => onOpenProfile(displayAuthorId)}
         >
           {displayPhoto ? (
-            <Image source={{ uri: displayPhoto }} style={s.avatar} />
+            <Image source={{ uri: optimizedAvatar(displayPhoto, 40) }} style={s.avatar} />
           ) : (
             <View style={[s.avatar, s.fallback]}>
               <Text style={s.letter}>{displayName?.charAt(0).toUpperCase()}</Text>
@@ -270,7 +271,7 @@ const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, on
       ) : null}
 
       {post.image_url ? (
-        <Image source={{ uri: post.image_url }} style={s.image} resizeMode="contain" />
+        <Image source={{ uri: optimizedImage(post.image_url) }} style={s.image} resizeMode="contain" />
       ) : null}
 
       <View style={s.actions}>
@@ -863,7 +864,7 @@ export default function Feed() {
                   onPress={() => router.push({ pathname: '/user/[id]', params: { id: String(item.id) } })}
                 >
                   {item.profile_photo_url ? (
-                    <Image source={{ uri: item.profile_photo_url }} style={s.wtfAvatar} />
+                    <Image source={{ uri: optimizedAvatar(item.profile_photo_url, 52) }} style={s.wtfAvatar} />
                   ) : (
                     <View style={[s.wtfAvatar, s.fallback]}>
                       <Text style={s.letter}>{item.full_name.charAt(0).toUpperCase()}</Text>
@@ -1026,7 +1027,7 @@ export default function Feed() {
                 : router.push({ pathname: '/chat/[id]', params: { id: String(item.id), name: item.name } })}
             >
               {item.kind === 'dm' && item.photo ? (
-                <Image source={{ uri: item.photo }} style={s.convoAvatar} />
+                <Image source={{ uri: optimizedAvatar(item.photo, 52) }} style={s.convoAvatar} />
               ) : (
                 <View style={[s.convoAvatar, s.fallback]}>
                   {item.kind === 'group'

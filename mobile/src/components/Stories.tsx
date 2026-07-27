@@ -9,6 +9,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../lib/api';
+import { optimizedImage, optimizedAvatar } from '../lib/image';
 import { uploadImage } from '../lib/upload';
 import { colors } from '../theme';
 
@@ -104,7 +105,7 @@ export function StoryBar() {
             >
               <View style={[s.ring, unseen ? s.unseenRing : s.seenRing]}>
                 {g.user_photo ? (
-                  <Image source={{ uri: g.user_photo }} style={s.avatar} />
+                  <Image source={{ uri: optimizedAvatar(g.user_photo, 52) }} style={s.avatar} />
                 ) : (
                   <View style={[s.avatar, s.fallback]}>
                     <Text style={s.letter}>{g.user_name.charAt(0).toUpperCase()}</Text>
@@ -318,7 +319,7 @@ function StoryViewer({
             </View>
           ) : story.media_url ? (
             <>
-              <Image source={{ uri: story.media_url }} style={v.media} resizeMode="contain" />
+              <Image source={{ uri: optimizedImage(story.media_url) }} style={v.media} resizeMode="contain" />
               {story.caption ? (
                 <View style={v.captionWrap}>
                   <Text style={v.caption} numberOfLines={3}>{story.caption}</Text>
@@ -436,7 +437,7 @@ function StoryViewer({
                 renderItem={({ item }) => (
                   <View style={v.viewerRow}>
                     {item.user_photo
-                      ? <Image source={{ uri: item.user_photo }} style={v.viewerAvatar} />
+                      ? <Image source={{ uri: optimizedAvatar(item.user_photo, 40) }} style={v.viewerAvatar} />
                       : <View style={[v.viewerAvatar, v.viewerAvatarStub]}><Text style={v.viewerInit}>{item.user_name.charAt(0)}</Text></View>}
                     <View style={{ flex: 1 }}>
                       <Text style={v.viewerName} numberOfLines={1}>{item.user_name}</Text>
@@ -623,7 +624,7 @@ function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: (
         {mode === 'text' && linkPreview && (linkPreview.title || linkPreview.image) ? (
           <View style={c.linkCard}>
             {linkPreview.image ? (
-              <Image source={{ uri: linkPreview.image }} style={c.linkImage} resizeMode="cover" />
+              <Image source={{ uri: optimizedImage(linkPreview.image, 96) }} style={c.linkImage} resizeMode="cover" />
             ) : null}
             <View style={{ flex: 1 }}>
               {linkPreview.site_name ? <Text style={c.linkSite}>{linkPreview.site_name}</Text> : null}
@@ -739,7 +740,7 @@ function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: (
                   })}
                 >
                   {item.profile_photo_url ? (
-                    <Image source={{ uri: item.profile_photo_url }} style={c.pickAvatar} />
+                    <Image source={{ uri: optimizedAvatar(item.profile_photo_url, 42) }} style={c.pickAvatar} />
                   ) : (
                     <View style={[c.pickAvatar, { backgroundColor: '#333', alignItems: 'center', justifyContent: 'center' }]}>
                       <Text style={{ color: '#fff', fontWeight: '700' }}>
