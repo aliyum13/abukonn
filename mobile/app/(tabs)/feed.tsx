@@ -119,6 +119,7 @@ interface PostCardProps {
   onMenu: (post: Post) => void;
   onVote: (post: Post, optionId: number) => void;
   onRSVP: (post: Post) => void;
+  onOpenImage: (url: string) => void;
 }
 
 const CATEGORY_CHIP: Record<string, { bg: string; fg: string; label: string }> = {
@@ -136,7 +137,7 @@ function formatCount(n: number): string {
   return String(n);
 }
 
-const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, onToggleLike, onOpenComments, onRepost, onShare, onMenu, onVote, onRSVP }: PostCardProps) {
+const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, onToggleLike, onOpenComments, onRepost, onShare, onMenu, onVote, onRSVP, onOpenImage }: PostCardProps) {
   const s = useThemedStyles(make_s);
   const { palette } = useTheme();
   const [expanded, setExpanded] = useState(false);
@@ -278,7 +279,9 @@ const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, on
       ) : null}
 
       {post.image_url ? (
-        <Image source={{ uri: optimizedImage(post.image_url) }} style={s.image} resizeMode="contain" />
+        <TouchableOpacity activeOpacity={0.9} onPress={() => onOpenImage(post.image_url!)}>
+          <Image source={{ uri: optimizedImage(post.image_url) }} style={s.image} resizeMode="contain" />
+        </TouchableOpacity>
       ) : null}
 
       <View style={s.actions}>
@@ -397,6 +400,7 @@ export default function Feed() {
 
   const [commentsFor, setCommentsFor] = useState<Post | null>(null);
   const [sharePost, setSharePost] = useState<Post | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [reportTarget, setReportTarget] = useState<{ type: 'post' | 'user'; id: number; name: string } | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentText, setCommentText] = useState('');
@@ -985,6 +989,29 @@ export default function Feed() {
 
       <MenuSheet visible={menuOpen} onClose={() => setMenuOpen(false)} />
       <ShareSheet post={sharePost} onClose={() => setSharePost(null)} />
+
+      {/* Full-screen image viewer — matches web's lightbox exactly: tap the
+          post image, see it clearly, tap anywhere to close. Uses the raw
+          image_url (not the feed thumbnail's optimizedImage crop) so this is
+          the actual clear/full view being asked for. */}
+      <Modal visible={!!lightboxUrl} transparent animationType="fade" onRequestClose={() => setLightboxUrl(null)}>
+        <TouchableOpacity
+          style={s.lightboxBackdrop}
+          activeOpacity={1}
+          onPress={() => setLightboxUrl(null)}
+        >
+          <TouchableOpacity style={s.lightboxClose} onPress={() => setLightboxUrl(null)} hitSlop={12}>
+            <Ionicons name="close" size={26} color="#fff" />
+          </TouchableOpacity>
+          {lightboxUrl ? (
+            <Image
+              source={{ uri: lightboxUrl }}
+              style={s.lightboxImage}
+              resizeMode="contain"
+            />
+          ) : null}
+        </TouchableOpacity>
+      </Modal>
       <ReportModal target={reportTarget} onClose={() => setReportTarget(null)} />
 
       {/* For You / Following / Messages — matches web */}
@@ -1117,6 +1144,7 @@ export default function Feed() {
               onMenu={openPostMenu}
               onVote={voteOnPoll}
               onRSVP={toggleRSVP}
+              onOpenImage={setLightboxUrl}
             />
           )}
           onEndReached={feedTab === 'for_you' ? loadMore : undefined}
@@ -1519,6 +1547,15 @@ const make_s = (colors: Palette) => StyleSheet.create({
   hlCardTitle: { fontSize: 16, fontWeight: '800', color: '#1f2937' },
   hlDesc: { fontSize: 14, color: '#374151', lineHeight: 20 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
+  lightboxBackdrop: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center',
+  },
+  lightboxClose: {
+    position: 'absolute', top: 56, right: 20, zIndex: 1,
+    width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  lightboxImage: { width: '100%', height: '80%' },
   loadMoreFooter: { paddingVertical: 20, alignItems: 'center', justifyContent: 'center' },
   loadMoreRetryText: { fontSize: 13, fontWeight: '600', color: colors.brand },
   error: { color: colors.danger, fontSize: 15, textAlign: 'center', marginBottom: 6 },
