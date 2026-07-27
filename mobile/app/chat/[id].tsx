@@ -16,6 +16,7 @@ import { friendlyPreview, plainText } from '../../src/lib/messagePreview';
 import { getSocket } from '../../src/lib/socket';
 import type { Socket } from 'socket.io-client';
 import { useAuth } from '../../src/context/AuthContext';
+import { formatMessageTime, isSameDay, formatDateSeparator } from '../../src/lib/time';
 import { colors } from '../../src/theme';
 
 interface Msg {
@@ -290,24 +291,36 @@ export default function Chat() {
             keyExtractor={m => String(m.id)}
             contentContainerStyle={{ padding: 12 }}
             onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
-            renderItem={({ item }) => {
+            renderItem={({ item, index }) => {
               const mine = item.sender_id === user?.id;
               const showReceipt = mine && item.id === lastSentId;
+              const prevMsg = messages[index - 1];
+              const showDateSeparator = index === 0 || !isSameDay(item.created_at, prevMsg.created_at);
               return (
-                <View style={{ alignItems: mine ? 'flex-end' : 'flex-start' }}>
-                  <TouchableOpacity activeOpacity={0.8} onLongPress={() => openMessageMenu(item)} delayLongPress={250}>
-                    <View style={[s.bubble, mine ? s.mine : s.theirs]}>
-                      {item.image_url ? (
-                        <Image source={{ uri: item.image_url }} style={s.msgImage} resizeMode="contain" />
-                      ) : null}
-                      {item.content ? (
-                        <MessageBody content={item.content} mine={mine} />
-                      ) : null}
+                <View>
+                  {showDateSeparator ? (
+                    <View style={s.dateSeparatorRow}>
+                      <Text style={s.dateSeparatorText}>{formatDateSeparator(item.created_at)}</Text>
                     </View>
-                  </TouchableOpacity>
-                  {showReceipt ? (
-                    <Text style={s.receipt}>{item.is_read ? '✓✓ Read' : '✓ Delivered'}</Text>
                   ) : null}
+                  <View style={{ alignItems: mine ? 'flex-end' : 'flex-start' }}>
+                    <TouchableOpacity activeOpacity={0.8} onLongPress={() => openMessageMenu(item)} delayLongPress={250}>
+                      <View style={[s.bubble, mine ? s.mine : s.theirs]}>
+                        {item.image_url ? (
+                          <Image source={{ uri: item.image_url }} style={s.msgImage} resizeMode="contain" />
+                        ) : null}
+                        {item.content ? (
+                          <MessageBody content={item.content} mine={mine} />
+                        ) : null}
+                      </View>
+                    </TouchableOpacity>
+                    <Text style={[s.msgTime, mine ? s.msgTimeMine : s.msgTimeTheirs]}>
+                      {formatMessageTime(item.created_at)}
+                    </Text>
+                    {showReceipt ? (
+                      <Text style={s.receipt}>{item.is_read ? '✓✓ Read' : '✓ Delivered'}</Text>
+                    ) : null}
+                  </View>
                 </View>
               );
             }}
@@ -396,6 +409,14 @@ const make_s = (colors: Palette) => StyleSheet.create({
   title: { fontSize: 16, fontWeight: '700', color: colors.text },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   bubble: { maxWidth: '78%', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 9, marginBottom: 8 },
+  dateSeparatorRow: { alignItems: 'center', marginVertical: 10 },
+  dateSeparatorText: {
+    fontSize: 12, fontWeight: '600', color: colors.muted,
+    backgroundColor: colors.surface, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 999,
+  },
+  msgTime: { fontSize: 11, color: colors.muted, marginTop: -4, marginBottom: 4 },
+  msgTimeMine: { marginRight: 4 },
+  msgTimeTheirs: { marginLeft: 4 },
   mine: { alignSelf: 'flex-end', backgroundColor: colors.brand },
   theirs: { alignSelf: 'flex-start', backgroundColor: '#f3f4f6' },
   mineText: { color: '#fff', fontSize: 15 },

@@ -58,3 +58,35 @@ export function formatTime(value?: string | null): string {
   const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
   return `${h12}:${String(m).padStart(2, '0')} ${period}`;
 }
+
+// ── chat message timestamps (ISO datetime strings, distinct from the
+// "14:00"-style class-schedule strings formatTime() above handles) ──────────
+
+/** "2:30 PM" from an ISO created_at timestamp, viewer's local time. */
+export function formatMessageTime(isoString: string): string {
+  const d = new Date(isoString);
+  let h = d.getHours();
+  const m = d.getMinutes();
+  const period = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 === 0 ? 12 : h % 12;
+  return `${h}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+/** True if two ISO timestamps fall on the same local calendar day. */
+export function isSameDay(a: string, b: string): boolean {
+  const da = new Date(a), db = new Date(b);
+  return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
+}
+
+/** Date-separator label for a chat thread: "Today", "Yesterday", or a short date. */
+export function formatDateSeparator(isoString: string): string {
+  const d = new Date(isoString);
+  const now = new Date();
+  const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diffDays = Math.round((startOfDay(now) - startOfDay(d)) / 86400000);
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  const opts: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'short' };
+  if (d.getFullYear() !== now.getFullYear()) opts.year = 'numeric';
+  return d.toLocaleDateString('en-NG', opts);
+}

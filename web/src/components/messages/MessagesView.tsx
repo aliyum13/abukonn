@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from '@/context/AuthContext';
-import { formatTime, timeAgo } from '@/lib/format';
+import { formatTime, timeAgo, formatDateSeparator, isSameDay } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { optimizedImage, optimizedAvatar } from '@/lib/image';
 import { Avatar, Button, Card, EmptyState, Input, Skeleton } from '@/components/ui';
@@ -1459,8 +1459,17 @@ export function MessagesView() {
                         const prevMsg = messages[idx - 1];
                         const showAvatar = !isSent && (idx === 0 || prevMsg?.sender_id !== msg.sender_id);
                         const isDeleted = !!msg.is_deleted;
+                        const showDateSeparator = idx === 0 || !isSameDay(msg.created_at, prevMsg.created_at);
                         return (
-                          <SwipeRow key={msg.id} disabled={isDeleted} onReply={() => triggerReply(msg, isSent ? 'You' : activeConversation.other_user_name)} onLongPress={() => openMessageActions(msg, 'dm', isSent ? 'You' : activeConversation.other_user_name)}>
+                          <div key={msg.id}>
+                          {showDateSeparator && (
+                            <div className="my-3 flex items-center justify-center">
+                              <span className="rounded-full bg-surface px-3 py-1 text-caption font-medium text-ink-muted dark:bg-[#1a1a1a]">
+                                {formatDateSeparator(msg.created_at)}
+                              </span>
+                            </div>
+                          )}
+                          <SwipeRow disabled={isDeleted} onReply={() => triggerReply(msg, isSent ? 'You' : activeConversation.other_user_name)} onLongPress={() => openMessageActions(msg, 'dm', isSent ? 'You' : activeConversation.other_user_name)}>
                           <div className={cn('group/msg flex items-end gap-2', isSent ? 'justify-end' : 'justify-start')}>
                             {!isSent && <div className="w-7 shrink-0">{showAvatar && <Avatar src={activeConversation.other_user_photo} name={activeConversation.other_user_name} size="sm" className="h-7 w-7" />}</div>}
                             {isSent && !isDeleted && (
@@ -1528,6 +1537,7 @@ export function MessagesView() {
                             })()}
                           </div>
                           </SwipeRow>
+                          </div>
                         );
                       })}
                       {typingText && (
@@ -1652,8 +1662,17 @@ export function MessagesView() {
                         const prevMsg = groupMessages[idx - 1];
                         const showSenderInfo = !isSent && (idx === 0 || prevMsg?.sender_id !== msg.sender_id);
                         const isDeleted = !!msg.is_deleted;
+                        const showDateSeparator = idx === 0 || !isSameDay(msg.created_at, prevMsg.created_at);
                         return (
-                          <SwipeRow key={msg.id} disabled={isDeleted} onReply={() => triggerReply(msg, isSent ? 'You' : msg.sender_name)} onLongPress={() => openMessageActions(msg, 'group', isSent ? 'You' : msg.sender_name)}>
+                          <div key={msg.id}>
+                          {showDateSeparator && (
+                            <div className="my-3 flex items-center justify-center">
+                              <span className="rounded-full bg-surface px-3 py-1 text-caption font-medium text-ink-muted dark:bg-[#1a1a1a]">
+                                {formatDateSeparator(msg.created_at)}
+                              </span>
+                            </div>
+                          )}
+                          <SwipeRow disabled={isDeleted} onReply={() => triggerReply(msg, isSent ? 'You' : msg.sender_name)} onLongPress={() => openMessageActions(msg, 'group', isSent ? 'You' : msg.sender_name)}>
                           <div className={cn('group/msg flex items-end gap-2', isSent ? 'justify-end' : 'justify-start')}>
                             {!isSent && (
                               <div className="w-7 shrink-0">
@@ -1729,6 +1748,7 @@ export function MessagesView() {
                             </div>
                           </div>
                           </SwipeRow>
+                          </div>
                         );
                       })}
                     </div>

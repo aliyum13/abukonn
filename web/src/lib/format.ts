@@ -28,6 +28,30 @@ export function formatTime(dateString: string) {
   });
 }
 
+/**
+ * Date-separator label for a chat thread ("Today", "Yesterday", or
+ * "Mon, 14 Jul" / "Mon, 14 Jul 2025" if not this year). Compares calendar
+ * days in the viewer's local timezone, not raw 24h windows.
+ */
+export function formatDateSeparator(dateString: string) {
+  const d = new Date(dateString);
+  const now = new Date();
+  const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diffDays = Math.round((startOfDay(now) - startOfDay(d)) / 86400000);
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  return d.toLocaleDateString('en-NG', {
+    weekday: 'short', day: 'numeric', month: 'short',
+    year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+  });
+}
+
+/** True if two ISO timestamps fall on the same local calendar day. */
+export function isSameDay(a: string, b: string) {
+  const da = new Date(a), db = new Date(b);
+  return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
+}
+
 export function excerpt(content: string, max = 120) {
   if (content.length <= max) return content;
   return `${content.slice(0, max).trim()}...`;
