@@ -418,9 +418,13 @@ const make_s = (colors: Palette) => StyleSheet.create({
   msgTimeMine: { marginRight: 4 },
   msgTimeTheirs: { marginLeft: 4 },
   mine: { alignSelf: 'flex-end', backgroundColor: colors.brand },
-  theirs: { alignSelf: 'flex-start', backgroundColor: '#f3f4f6' },
-  mineText: { color: '#fff', fontSize: 15 },
-  theirsText: { color: colors.text, fontSize: 15 },
+  // Was a hardcoded '#f3f4f6' that never changed with theme. MessageBody.tsx's
+  // theirsText correctly uses colors.text (which turns near-white in dark
+  // mode), but against a bubble background that stayed light-gray regardless
+  // of theme, that's white-on-light-gray in dark mode -- the "received
+  // messages are all white" bug. surfaceSubtle tracks theme correctly
+  // (#f1f5f9 light / #1a1a1a dark), same visual shape as before in light mode.
+  theirs: { alignSelf: 'flex-start', backgroundColor: colors.surfaceSubtle },
   msgImage: { width: 200, height: 200, borderRadius: 12, marginBottom: 4, backgroundColor: 'rgba(0,0,0,0.05)' },
   typing: { fontSize: 13, color: colors.muted, fontStyle: 'italic', paddingHorizontal: 16, paddingBottom: 4 },
   fwdBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },

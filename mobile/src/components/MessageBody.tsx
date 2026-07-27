@@ -1,5 +1,6 @@
 import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useThemedStyles } from '../theme/ThemeContext';
 import type { Palette } from '../theme';
 
@@ -16,11 +17,39 @@ function parseMessage(content: string): Parsed {
     const d = JSON.parse(content);
     if (d && typeof d === 'object') {
       if (d.type === 'shared_post') return { kind: 'shared_post', data: d, text: '' };
+      // Backend already sends media_url/story_type/text_content/bg_color in
+      // the story_reply payload — this was only ever discarding them on
+      // render, showing a bare "Replied to a story" label with no reference
+      // to which story or what it looked like. See StoryReplyCard below.
       if (d.type === 'story_reply') return { kind: 'story_reply', data: d, text: d.reply ?? '' };
       if (d.type === 'message_reply') return { kind: 'message_reply', data: d, text: d.reply ?? '' };
     }
   } catch { /* not JSON — plain text */ }
   return { kind: 'text', text: content };
+}
+
+// Mirrors web's StoryReplyCard exactly: a small preview of the story being
+// replied to (image / video icon / colored text card), so the recipient can
+// actually tell what was replied to instead of just seeing bare text.
+function StoryReplyCard({ data, mine, s }: { data: any; mine: boolean; s: ReturnType<typeof make_s> }) {
+  return (
+    <View style={[s.storyCard, mine ? s.storyCardMine : null]}>
+      {data.story_type === 'image' && data.media_url ? (
+        <Image source={{ uri: data.media_url }} style={s.storyPreview} resizeMode="cover" />
+      ) : data.story_type === 'video' && data.media_url ? (
+        <View style={[s.storyPreview, s.storyVideoPreview]}>
+          <Ionicons name="play" size={22} color="rgba(255,255,255,0.85)" />
+        </View>
+      ) : data.story_type === 'text' && data.text_content ? (
+        <View style={[s.storyPreview, s.storyTextPreview, { backgroundColor: data.bg_color || '#16a34a' }]}>
+          <Text style={s.storyTextContent} numberOfLines={2}>{data.text_content}</Text>
+        </View>
+      ) : null}
+      <View style={s.storyReplyTextWrap}>
+        <Text style={mine ? s.mineText : s.theirsText}>{data.reply}</Text>
+      </View>
+    </View>
+  );
 }
 
 export function MessageBody({ content, mine }: { content: string; mine: boolean }) {
@@ -50,7 +79,7 @@ export function MessageBody({ content, mine }: { content: string; mine: boolean 
     return (
       <View>
         <Text style={[s.quotedLabel, mine ? s.onDark : null]}>↩ Replied to a story</Text>
-        <Text style={mine ? s.mineText : s.theirsText}>{parsed.text}</Text>
+        <StoryReplyCard data={parsed.data} mine={mine} s={s} />
       </View>
     );
   }
@@ -87,4 +116,14 @@ const make_s = (colors: Palette) => StyleSheet.create({
   quoteBoxMine: { borderLeftColor: 'rgba(255,255,255,0.7)' },
   quotedSender: { fontSize: 11, fontWeight: '700', color: colors.brand },
   quotedText: { fontSize: 12, color: colors.muted },
+  storyCard: {
+    width: 180, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.surfaceSubtle,
+  },
+  storyCardMine: { borderColor: 'rgba(255,255,255,0.3)', backgroundColor: 'rgba(255,255,255,0.1)' },
+  storyPreview: { width: '100%', height: 96 },
+  storyVideoPreview: { backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
+  storyTextPreview: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
+  storyTextContent: { color: '#fff', fontSize: 12, fontWeight: '700', textAlign: 'center' },
+  storyReplyTextWrap: { paddingHorizontal: 10, paddingVertical: 8 },
 });
