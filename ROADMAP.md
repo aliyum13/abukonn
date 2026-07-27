@@ -103,7 +103,7 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
 
 ## 🔍 Reported from device testing (iPhone via Expo Go)
 
-6 of 12 fixed so far, rest still queued.
+7 of 12 fixed so far, rest still queued.
 
 - [x] **Feed post images and story images load noticeably slowly** (mobile).
   Root cause: mobile was loading full-resolution Cloudinary originals
@@ -142,8 +142,13 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
   web's lightbox exactly: full-screen overlay showing the raw (not
   thumbnail-optimized) image, tap anywhere or the close button to dismiss.
   [5c27e06]
-- [ ] **News images should open for clear viewing** — news posts have attached
+- [x] **News images should open for clear viewing** — news posts have attached
   images; tapping should open a clear/full view, on both web and mobile.
+  Turned out web didn't have this either — genuinely new on both, not a
+  port. Even the "full article" view was constrained (web: fixed 224px crop,
+  mobile: fixed 260px box). Extracted mobile's lightbox (from item 6) into a
+  shared component since news needed it a second time; added the same
+  lightbox markup to web's news detail page. [baea08e]
 - [ ] **Match News section design between web and mobile** — currently they
   look different; make them consistent.
 - [ ] **Profile layout alignment + missing Status section on mobile** — mobile's
