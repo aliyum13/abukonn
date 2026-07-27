@@ -103,7 +103,7 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
 
 ## 🔍 Reported from device testing (iPhone via Expo Go)
 
-3 of 12 fixed so far, rest still queued.
+4 of 12 fixed so far, rest still queued.
 
 - [x] **Feed post images and story images load noticeably slowly** (mobile).
   Root cause: mobile was loading full-resolution Cloudinary originals
@@ -124,7 +124,12 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
   bubble background color that never changed with theme, paired with
   theme-reactive text that turns near-white in dark mode. Switched to a
   proper theme token. Web was already correct, mobile-only bug. [031455d]
-- [ ] **Opening a DM feels slow** (mobile).
+- [x] **Opening a DM feels slow** (mobile). Root cause was backend, not
+  client: Message.getMessages() had no LIMIT, so opening a thread fetched
+  its entire message history every time. Now returns the most recent 50
+  with a `before` cursor; both clients got a "Load earlier messages"
+  control plus an auto-scroll guard so prepending history doesn't yank the
+  view back to the bottom. [6c0e145]
 - [ ] **Share button + view count on feed posts** — present on web, missing on
   mobile.
 - [ ] **Tapping a post image doesn't open a clear/full view on mobile** — works
@@ -211,6 +216,13 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
 ---
 
 ## 🧹 Housekeeping / debt
+
+- **Group chat history is still unbounded.** `Group.getGroupMessages()` has
+  the identical no-LIMIT pattern that made opening a DM slow (fixed for DMs
+  in 6c0e145). Left alone at the time to keep that fix scoped to the
+  reported bug, but the same slowness will show up in any group whose
+  history grows. Same fix shape applies: limit + `before` cursor, plus the
+  "Load earlier messages" control both clients already have for DMs.
 
 - **Rotate the GitHub PAT** used for pushes — it's been live across many sessions.
   Urgent, unrelated to features.
