@@ -16,7 +16,34 @@ repo so it survives across work sessions.
   Next: finish store submissions (TestFlight → App Store review for iOS; Play
   Internal testing → production for Android).
 
-## ✅ Recently shipped
+## 🟢 Platform parity (web ↔ mobile)
+
+Full audit done — every route/screen compared, verified in code not just
+file lists. Ticking off one at a time before more feature work.
+
+- [x] **Feed infinite scroll on web** — web's main feed was still capped at
+      the first 50 posts (page=1 forever, no load-more). Ported the same
+      pattern already proven on mobile. [149559a]
+- [ ] **Mobile deep links** — `abukonn.com/u/<name>` and group invite links
+      don't open the app on mobile, land in the browser instead. Was blocked
+      on the iOS crash; that's resolved now. Closes two gaps at once (profile
+      links + group invites — same underlying cause).
+- [ ] **Admin panel on mobile — needs a decision, not a build.** Web has full
+      admin (users, whitelist, reports, news, highlights, library, timetable,
+      calendar); mobile has none. Large enough to be its own feature if
+      actually needed — decide whether admins need to moderate from their
+      phones before building anything.
+- [ ] **My Stories management screen (mobile)** — web has a dedicated page
+      listing all your active stories with view counts. Mobile only shows
+      view count / delete inline while watching your own story in the
+      viewer, no list. Smallest item, lowest priority.
+
+Checked and confirmed already at parity (no action needed): notification
+preferences, blocked users management, profile editing, followers/following
+list, individual news articles, terms/privacy links — all present on both
+platforms, sometimes via a different (appropriate) UI pattern per platform.
+
+
 
 - **Switch to one-way follow (Instagram-style):** everyone now follows instead of
   mutual connect. usesFollowSystem() returns true for all; existing connections +
