@@ -130,6 +130,12 @@ Not yet triaged or fixed — listed only, per instruction.
 - **Dropdown navbar emoji icons** — a dropdown menu (both web and mobile)
   currently uses emoji as its icons; should switch to proper icons matching
   the rest of the navbar's icon style.
+- **Push notification shows raw JSON instead of readable text** — a
+  message-reply push notification displayed as `Ahman Umar:
+  {"type":"message_reply","quoted_sender":"ali muhammad","quoted_text":"Go...`
+  on the lock screen, instead of a normal sentence. Looks like the
+  notification body is being set to the raw data payload rather than a
+  formatted message.
 
 ---
 
