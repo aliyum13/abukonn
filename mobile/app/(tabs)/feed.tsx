@@ -60,6 +60,7 @@ interface Post {
   original_author_photo?: string | null;
   original_author_id?: number | null;
   reposts_count?: number;
+  view_count?: number;
   created_at: string;
   post_subtype?: string | null;
   discussion_title?: string | null;
@@ -128,6 +129,12 @@ const CATEGORY_CHIP: Record<string, { bg: string; fg: string; label: string }> =
   EVENTS:       { bg: 'rgba(168,85,247,0.12)', fg: '#9333ea', label: 'Events' },
   CAMPUS_LIFE:  { bg: 'rgba(22,163,74,0.12)',  fg: '#16a34a', label: 'Campus Life' },
 };
+
+function formatCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}K`;
+  return String(n);
+}
 
 const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, onToggleLike, onOpenComments, onRepost, onShare, onMenu, onVote, onRSVP }: PostCardProps) {
   const s = useThemedStyles(make_s);
@@ -294,6 +301,10 @@ const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, on
         <TouchableOpacity style={s.action} onPress={() => onShare(post)}>
           <Ionicons name="paper-plane-outline" size={19} color={palette.textSecondary} />
         </TouchableOpacity>
+        <View style={s.action}>
+          <Ionicons name="stats-chart-outline" size={17} color={palette.textSecondary} />
+          <Text style={s.actionText}>{formatCount(post.view_count ?? 0)}</Text>
+        </View>
       </View>
     </View>
   );
@@ -520,6 +531,20 @@ export default function Feed() {
     setPosts(prev => prev.map(p => (p.id === id ? fn(p) : p)));
     setFollowingPosts(prev => prev.map(p => (p.id === id ? fn(p) : p)));
   }, []);
+
+  // View-count tracking, mirrors web's IntersectionObserver-based approach
+  // (60% visible, once per post per session) using FlatList's own
+  // viewability API since RN has no DOM/IntersectionObserver.
+  const viewedPostsRef = useRef<Set<number>>(new Set());
+  const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: Array<{ item: Post }> }) => {
+    for (const { item } of viewableItems) {
+      if (!item?.id || viewedPostsRef.current.has(item.id)) continue;
+      viewedPostsRef.current.add(item.id);
+      apiFetch(`/api/posts/${item.id}/view`, { method: 'POST' }).catch(() => {});
+      mutateBoth(item.id, p => ({ ...p, view_count: (p.view_count ?? 0) + 1 }));
+    }
+  }).current;
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
 
   const toggleLike = useCallback(async (post: Post) => {
     const was = post.is_liked;
@@ -1096,6 +1121,8 @@ export default function Feed() {
           )}
           onEndReached={feedTab === 'for_you' ? loadMore : undefined}
           onEndReachedThreshold={0.5}
+          onViewableItemsChanged={onViewableItemsChanged}
+          viewabilityConfig={viewabilityConfig}
           ListFooterComponent={
             feedTab === 'for_you' ? (
               loadingMore ? (
