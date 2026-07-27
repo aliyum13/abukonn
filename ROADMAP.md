@@ -103,34 +103,40 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
 
 ## 🔍 Reported from device testing (iPhone via Expo Go)
 
-Not yet triaged or fixed — listed only, per instruction.
+2 of 12 fixed so far, rest still queued.
 
-- **Feed post images and story images load noticeably slowly** (mobile).
-- **Story reply loses the story reference** — replied to a story with
+- [ ] **Feed post images and story images load noticeably slowly** (mobile).
+- [x] **Story reply loses the story reference** — replied to a story with
   "Enjoyment," the recipient got the message but no reference to which
-  story / the story's image, unlike a normal quote-reply.
-- **DM bubble contrast bug** — in a chat thread, messages you send render
+  story / the story's image, unlike a normal quote-reply. Backend already
+  sent the story's media_url/story_type/text_content/bg_color; mobile's
+  MessageBody.tsx was discarding all of it and showing bare text. Ported
+  web's existing StoryReplyCard treatment. [031455d]
+- [x] **DM bubble contrast bug** — in a chat thread, messages you send render
   fine, but messages received from the other person are all white (unreadable
-  against the background, at least in dark mode).
-- **Opening a DM feels slow** (mobile).
-- **Share button + view count on feed posts** — present on web, missing on
+  against the background, at least in dark mode). Root cause: a hardcoded
+  bubble background color that never changed with theme, paired with
+  theme-reactive text that turns near-white in dark mode. Switched to a
+  proper theme token. Web was already correct, mobile-only bug. [031455d]
+- [ ] **Opening a DM feels slow** (mobile).
+- [ ] **Share button + view count on feed posts** — present on web, missing on
   mobile.
-- **Tapping a post image doesn't open a clear/full view on mobile** — works
+- [ ] **Tapping a post image doesn't open a clear/full view on mobile** — works
   on web (tap opens the image clearly), mobile has no equivalent.
-- **News images should open for clear viewing** — news posts have attached
+- [ ] **News images should open for clear viewing** — news posts have attached
   images; tapping should open a clear/full view, on both web and mobile.
-- **Match News section design between web and mobile** — currently they
+- [ ] **Match News section design between web and mobile** — currently they
   look different; make them consistent.
-- **Profile layout alignment + missing Status section on mobile** — mobile's
+- [ ] **Profile layout alignment + missing Status section on mobile** — mobile's
   profile is centered, web's is left-aligned; make both centered. Also web
   has a "Status" section on profile that mobile doesn't have — add it.
-- **Library wording consistency** — Library itself is fine, but match the
+- [ ] **Library wording consistency** — Library itself is fine, but match the
   copy/labels ("all materials," "notes," and other option names) between web
   and mobile so they read the same.
-- **Dropdown navbar emoji icons** — a dropdown menu (both web and mobile)
+- [ ] **Dropdown navbar emoji icons** — a dropdown menu (both web and mobile)
   currently uses emoji as its icons; should switch to proper icons matching
   the rest of the navbar's icon style.
-- **Push notification shows raw JSON instead of readable text** — a
+- [ ] **Push notification shows raw JSON instead of readable text** — a
   message-reply push notification displayed as `Ahman Umar:
   {"type":"message_reply","quoted_sender":"ali muhammad","quoted_text":"Go...`
   on the lock screen, instead of a normal sentence. Looks like the
