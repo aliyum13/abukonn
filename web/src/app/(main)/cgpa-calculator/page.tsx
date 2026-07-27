@@ -106,14 +106,14 @@ export default function CgpaCalculatorPage() {
                 </button>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {sem.courses.map((course) => (
-                  <div key={course.id} className="flex items-center gap-2">
+                  <div key={course.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-2 dark:border-[#2a2a2a] sm:border-0 sm:p-0">
                     <input
                       value={course.code}
                       onChange={(e) => updateCourse(sem.id, course.id, { code: e.target.value.toUpperCase() })}
                       placeholder="Code"
-                      className="w-28 rounded-lg border border-border bg-white px-2.5 py-1.5 text-body-sm text-ink focus:border-brand-500 focus:outline-none dark:bg-[#111] dark:border-[#333]"
+                      className="w-24 min-w-0 flex-1 rounded-lg border border-border bg-white px-2.5 py-1.5 text-body-sm text-ink focus:border-brand-500 focus:outline-none dark:bg-[#111] dark:border-[#333] sm:w-28 sm:flex-none"
                     />
                     <input
                       value={course.creditUnit || ''}
@@ -121,9 +121,21 @@ export default function CgpaCalculatorPage() {
                       placeholder="CU"
                       type="number"
                       min={0}
-                      className="w-16 rounded-lg border border-border bg-white px-2.5 py-1.5 text-center text-body-sm text-ink focus:border-brand-500 focus:outline-none dark:bg-[#111] dark:border-[#333]"
+                      className="w-14 shrink-0 rounded-lg border border-border bg-white px-2 py-1.5 text-center text-body-sm text-ink focus:border-brand-500 focus:outline-none dark:bg-[#111] dark:border-[#333]"
                     />
-                    <div className="flex gap-1">
+                    <button
+                      onClick={() => removeCourse(sem.id, course.id)}
+                      className="shrink-0 text-ink-muted hover:text-red-600"
+                      aria-label="Remove course"
+                    >
+                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                    {/* Grade chips get their own row -- 6 chips at ~28px each fit
+                        one line even on a narrow phone, they just don't fit
+                        alongside the code/CU inputs too on the same line. */}
+                    <div className="flex w-full gap-1 sm:w-auto">
                       {GRADES.map((g) => (
                         <button
                           key={g}
@@ -139,15 +151,6 @@ export default function CgpaCalculatorPage() {
                         </button>
                       ))}
                     </div>
-                    <button
-                      onClick={() => removeCourse(sem.id, course.id)}
-                      className="ml-auto text-ink-muted hover:text-red-600"
-                      aria-label="Remove course"
-                    >
-                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
                   </div>
                 ))}
               </div>

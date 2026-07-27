@@ -139,23 +139,30 @@ export default function CgpaCalculator() {
                 </View>
 
                 {sem.courses.map((course) => (
-                  <View key={course.id} style={s.courseRow}>
-                    <TextInput
-                      style={[s.courseInput, s.codeInput]}
-                      value={course.code}
-                      onChangeText={(t) => updateCourse(sem.id, course.id, { code: t })}
-                      placeholder="Code"
-                      placeholderTextColor={colors.muted}
-                      autoCapitalize="characters"
-                    />
-                    <TextInput
-                      style={[s.courseInput, s.cuInput]}
-                      value={course.creditUnit ? String(course.creditUnit) : ''}
-                      onChangeText={(t) => updateCourse(sem.id, course.id, { creditUnit: parseInt(t, 10) || 0 })}
-                      placeholder="CU"
-                      placeholderTextColor={colors.muted}
-                      keyboardType="number-pad"
-                    />
+                  <View key={course.id} style={s.courseCard}>
+                    <View style={s.courseTopRow}>
+                      <TextInput
+                        style={[s.courseInput, s.codeInput]}
+                        value={course.code}
+                        onChangeText={(t) => updateCourse(sem.id, course.id, { code: t })}
+                        placeholder="Code"
+                        placeholderTextColor={colors.muted}
+                        autoCapitalize="characters"
+                      />
+                      <TextInput
+                        style={[s.courseInput, s.cuInput]}
+                        value={course.creditUnit ? String(course.creditUnit) : ''}
+                        onChangeText={(t) => updateCourse(sem.id, course.id, { creditUnit: parseInt(t, 10) || 0 })}
+                        placeholder="CU"
+                        placeholderTextColor={colors.muted}
+                        keyboardType="number-pad"
+                      />
+                      <TouchableOpacity onPress={() => removeCourse(sem.id, course.id)} hitSlop={8}>
+                        <Ionicons name="close-circle" size={20} color={colors.muted} />
+                      </TouchableOpacity>
+                    </View>
+                    {/* Own row: 6 chips at 26px each fit one line on any phone
+                        width, they just don't fit alongside the inputs above too. */}
                     <View style={s.gradeRow}>
                       {GRADES.map((g) => (
                         <TouchableOpacity
@@ -167,9 +174,6 @@ export default function CgpaCalculator() {
                         </TouchableOpacity>
                       ))}
                     </View>
-                    <TouchableOpacity onPress={() => removeCourse(sem.id, course.id)} hitSlop={8}>
-                      <Ionicons name="close-circle" size={20} color={colors.muted} />
-                    </TouchableOpacity>
                   </View>
                 ))}
 
@@ -224,13 +228,14 @@ const make_s = (colors: Palette) => StyleSheet.create({
   },
   semHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
   semLabelInput: { flex: 1, fontSize: 16, fontWeight: '800', color: colors.text, padding: 0 },
-  courseRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  courseCard: { marginBottom: 10, gap: 6 },
+  courseTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   courseInput: {
     borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm,
     paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: colors.text,
   },
-  codeInput: { flex: 1.3 },
-  cuInput: { width: 44, textAlign: 'center' },
+  codeInput: { flex: 1 },
+  cuInput: { width: 52, textAlign: 'center' },
   gradeRow: { flexDirection: 'row', gap: 4 },
   gradeChip: {
     width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center',
