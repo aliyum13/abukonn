@@ -46,7 +46,9 @@ async function getConversations(req, res) {
 async function getMessages(req, res) {
   try {
     const conversationId = parseInt(req.params.conversationId, 10);
-    const data = await Message.getMessages(conversationId, req.user.id);
+    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
+    const before = req.query.before ? parseInt(req.query.before, 10) : undefined;
+    const data = await Message.getMessages(conversationId, req.user.id, { limit, before });
 
     if (!data) {
       return res.status(404).json({ message: 'Conversation not found' });

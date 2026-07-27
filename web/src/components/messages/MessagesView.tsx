@@ -456,6 +456,12 @@ export function MessagesView() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Older-history pagination. The backend now returns only the most recent
+  // page of a conversation rather than its entire history (that unbounded
+  // fetch was the "opening a DM is slow" bug), so both clients need a way to
+  // page further back.
+  const [hasMoreOlder, setHasMoreOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
 
   // Group state
   const [groups, setGroups] = useState<Group[]>([]);
@@ -509,6 +515,7 @@ export function MessagesView() {
   const [fileError, setFileError] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const skipAutoScrollRef = useRef(false);
   const socketRef = useRef<Socket | null>(null);
   const imgInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -592,11 +599,42 @@ export function MessagesView() {
       });
       const data = await res.json();
       setMessages(data.messages || []);
+      setHasMoreOlder(!!data.hasMore);
       setConversations(prev => prev.map(c => c.id === conversationId ? { ...c, unread_count: 0 } : c));
       socketRef.current?.emit('mark_read', { conversationId });
-    } catch { setMessages([]); }
+    } catch { setMessages([]); setHasMoreOlder(false); }
     finally { setMessagesLoading(false); }
   }, [token]);
+
+  // Pages further back into DM history, prepending older messages. Guarded
+  // against concurrent calls and against running when nothing older exists.
+  const loadOlderMessages = useCallback(async () => {
+    if (!token || loadingOlder || !hasMoreOlder || messages.length === 0) return;
+    const conversationId = messages[0].conversation_id;
+    if (!conversationId) return;
+    const oldestId = messages[0].id;
+    setLoadingOlder(true);
+    try {
+      const res = await fetch(`${API_URL}/api/messages/${conversationId}?before=${oldestId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      const older: ChatMessage[] = data.messages || [];
+      setMessages(prev => {
+        const existing = new Set(prev.map(m => m.id));
+        const deduped = older.filter(m => !existing.has(m.id));
+        if (deduped.length === 0) return prev;
+        skipAutoScrollRef.current = true; // this is a prepend, don't jump to bottom
+        return [...deduped, ...prev];
+      });
+      setHasMoreOlder(!!data.hasMore);
+    } catch {
+      // leave existing messages untouched; the button stays for a retry
+    } finally {
+      setLoadingOlder(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, loadingOlder, hasMoreOlder, messages]);
 
   // ── Fetch group messages ───────────────────────────────────────────────────
   const fetchGroupMessages = useCallback(async (groupId: number) => {
@@ -665,6 +703,13 @@ export function MessagesView() {
 
   // ── Auto-scroll ────────────────────────────────────────────────────────────
   useEffect(() => {
+    // Skip when the messages array grew by a prepend (load-older) rather than
+    // an append — otherwise loading history immediately scrolls back to the
+    // bottom and undoes what the user just asked for.
+    if (skipAutoScrollRef.current) {
+      skipAutoScrollRef.current = false;
+      return;
+    }
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, groupMessages, typingText]);
 
@@ -1453,6 +1498,18 @@ export function MessagesView() {
                     </div>
                   ) : (
                     <div className="space-y-1">
+                      {hasMoreOlder && (
+                        <div className="flex justify-center pb-2">
+                          <button
+                            type="button"
+                            onClick={loadOlderMessages}
+                            disabled={loadingOlder}
+                            className="rounded-full px-4 py-1.5 text-caption font-semibold text-brand-600 transition hover:bg-surface disabled:opacity-60 dark:hover:bg-[#1a1a1a]"
+                          >
+                            {loadingOlder ? 'Loading…' : 'Load earlier messages'}
+                          </button>
+                        </div>
+                      )}
                       {messages.map((msg, idx) => {
                         const isSent = msg.sender_id === user.id;
                         const isLastSent = msg.id === lastSentMsg?.id && isSent;

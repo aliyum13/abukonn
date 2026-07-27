@@ -100,7 +100,13 @@ async function getUnreadCount(userId) {
   return parseInt(result.rows[0].count, 10);
 }
 
-async function getMessages(conversationId, userId) {
+// Chat history was fetched in full on every open, with no LIMIT at all --
+// same category of bug the feed had before pagination. A long-running
+// conversation re-fetches and re-renders its ENTIRE history every single
+// time the thread is opened, which is exactly what "opening a DM feels slow"
+// reports. Defaults to the most recent `limit` messages; pass `before` (a
+// message id) to page further back into history.
+async function getMessages(conversationId, userId, { limit = 50, before } = {}) {
   const conv = await pool.query(
     'SELECT * FROM abukonn.conversations WHERE id = $1 AND (user1_id = $2 OR user2_id = $2)',
     [conversationId, userId]
@@ -108,16 +114,34 @@ async function getMessages(conversationId, userId) {
 
   if (!conv.rows[0]) return null;
 
+  const params = [conversationId];
+  let beforeClause = '';
+  if (before) {
+    params.push(before);
+    beforeClause = `AND m.id < $${params.length}`;
+  }
+  params.push(limit + 1); // fetch one extra to know if there's more before this page
+
+  // Innermost query grabs the most recent `limit+1` rows (or the `limit+1`
+  // rows immediately before `before`), then the outer ORDER BY re-sorts them
+  // ascending for display -- messages render oldest-to-newest either way.
   const result = await pool.query(
-    `SELECT m.*, u.full_name AS sender_name
-     FROM abukonn.messages m
-     JOIN abukonn.users u ON m.sender_id = u.id
-     WHERE m.conversation_id = $1
-     ORDER BY m.created_at ASC`,
-    [conversationId]
+    `SELECT * FROM (
+       SELECT m.*, u.full_name AS sender_name
+       FROM abukonn.messages m
+       JOIN abukonn.users u ON m.sender_id = u.id
+       WHERE m.conversation_id = $1 ${beforeClause}
+       ORDER BY m.id DESC
+       LIMIT $${params.length}
+     ) page
+     ORDER BY id ASC`,
+    params
   );
 
-  return { conversation: conv.rows[0], messages: result.rows };
+  const hasMore = result.rows.length > limit;
+  const messages = hasMore ? result.rows.slice(1) : result.rows; // drop the extra probe row (the oldest one, since ASC)
+
+  return { conversation: conv.rows[0], messages, hasMore };
 }
 
 async function sendMessage({ conversationId, senderId, content, imageUrl = null, fileUrl = null, fileName = null, fileSize = null }) {

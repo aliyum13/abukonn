@@ -36,6 +36,13 @@ export default function Chat() {
 
   const [messages, setMessages] = useState<Msg[]>([]);
   const [loading, setLoading] = useState(true);
+  // Older-history pagination. `pinScrollRef` suppresses the auto-scroll-to-end
+  // that onContentSizeChange normally does — without it, prepending older
+  // messages grows the list and yanks the view straight back to the bottom,
+  // undoing the thing the user just asked for.
+  const [hasMoreOlder, setHasMoreOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const pinScrollRef = useRef(false);
   const [text, setText] = useState('');
   const [theyreTyping, setTheyreTyping] = useState(false);
   const [replyTo, setReplyTo] = useState<{ id: number; senderName: string; preview: string } | null>(null);
@@ -51,19 +58,49 @@ export default function Chat() {
 
   const load = useCallback(async () => {
     try {
-      const data = await apiFetch<{ messages: Msg[] }>(`/api/messages/${id}`);
+      const data = await apiFetch<{ messages: Msg[]; hasMore?: boolean }>(`/api/messages/${id}`);
       setMessages(data.messages || []);
+      setHasMoreOlder(!!data.hasMore);
     } catch {
       setMessages([]);
+      setHasMoreOlder(false);
     } finally {
       setLoading(false);
     }
   }, [id]);
 
+  // Pages further back into history, prepending older messages. Guarded
+  // against concurrent calls and against running when nothing older exists.
+  const loadOlder = useCallback(async () => {
+    if (loadingOlder || !hasMoreOlder || messages.length === 0) return;
+    const oldestId = messages[0].id;
+    setLoadingOlder(true);
+    pinScrollRef.current = true; // don't let the prepend bounce us to the bottom
+    try {
+      const data = await apiFetch<{ messages: Msg[]; hasMore?: boolean }>(
+        `/api/messages/${id}?before=${oldestId}`
+      );
+      const older = data.messages || [];
+      setMessages(prev => {
+        const existing = new Set(prev.map(m => m.id));
+        const deduped = older.filter(m => !existing.has(m.id));
+        return deduped.length > 0 ? [...deduped, ...prev] : prev;
+      });
+      setHasMoreOlder(!!data.hasMore);
+    } catch {
+      // leave existing messages untouched; user can tap again to retry
+    } finally {
+      setLoadingOlder(false);
+      // Release the scroll pin a tick later, after the prepend has laid out.
+      setTimeout(() => { pinScrollRef.current = false; }, 300);
+    }
+  }, [id, loadingOlder, hasMoreOlder, messages]);
+
   // Append a message unless we already have it (the socket echoes back messages
   // we sent, and load() may overlap) — dedupe by id.
   const addMessage = useCallback((m: Msg) => {
     setMessages(prev => (prev.some(x => x.id === m.id) ? prev : [...prev, m]));
+    if (pinScrollRef.current) return; // mid load-older; don't yank to bottom
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
   }, []);
 
@@ -290,7 +327,24 @@ export default function Chat() {
             data={messages}
             keyExtractor={m => String(m.id)}
             contentContainerStyle={{ padding: 12 }}
-            onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+            onContentSizeChange={() => {
+              if (pinScrollRef.current) return; // prepending older history — stay put
+              listRef.current?.scrollToEnd({ animated: false });
+            }}
+            ListHeaderComponent={
+              hasMoreOlder ? (
+                <TouchableOpacity
+                  style={s.loadOlderBtn}
+                  onPress={loadOlder}
+                  disabled={loadingOlder}
+                  activeOpacity={0.7}
+                >
+                  {loadingOlder
+                    ? <ActivityIndicator size="small" color={colors.brand} />
+                    : <Text style={s.loadOlderText}>Load earlier messages</Text>}
+                </TouchableOpacity>
+              ) : null
+            }
             renderItem={({ item, index }) => {
               const mine = item.sender_id === user?.id;
               const showReceipt = mine && item.id === lastSentId;
@@ -417,6 +471,8 @@ const make_s = (colors: Palette) => StyleSheet.create({
   msgTime: { fontSize: 11, color: colors.muted, marginTop: -4, marginBottom: 4 },
   msgTimeMine: { marginRight: 4 },
   msgTimeTheirs: { marginLeft: 4 },
+  loadOlderBtn: { alignItems: 'center', justifyContent: 'center', paddingVertical: 12, marginBottom: 4 },
+  loadOlderText: { fontSize: 13, fontWeight: '700', color: colors.brand },
   mine: { alignSelf: 'flex-end', backgroundColor: colors.brand },
   // Was a hardcoded '#f3f4f6' that never changed with theme. MessageBody.tsx's
   // theirsText correctly uses colors.text (which turns near-white in dark
