@@ -1303,7 +1303,7 @@ export function MessagesView() {
       <div className="mx-auto max-w-5xl px-4 py-4 sm:px-6">
         <Card className="flex h-[calc(100svh-8rem)] overflow-hidden">
           {/* ── Conversation / Group list ──────────────────────────────── */}
-          <div className={cn('flex w-full flex-col border-r border-border sm:w-80 sm:shrink-0', mobileShowChat && (activeId || activeGroupId) ? 'hidden sm:flex' : 'flex')}>
+          <div className={cn('flex w-full flex-col border-r border-border', mobileShowChat && (activeId || activeGroupId) ? 'hidden' : 'flex')}>
             <div className="flex items-center justify-between border-b border-border px-4 py-3.5">
               <h2 className="font-semibold text-ink">Messages</h2>
               <div className="flex items-center gap-1">
@@ -1427,12 +1427,12 @@ export function MessagesView() {
           </div>
 
           {/* ── Chat panel ──────────────────────────────────────────────── */}
-          <div className={cn('flex flex-1 flex-col', showList ? 'hidden sm:flex' : 'flex')}>
+          <div className={cn('flex flex-1 flex-col', showList ? 'hidden' : 'flex')}>
             {activeId && activeConversation ? (
               /* DM chat */
               <>
                 <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
-                  <button type="button" onClick={() => { setMobileShowChat(false); setTypingText(''); }} className="rounded-lg p-1 text-ink-secondary hover:bg-surface-subtle sm:hidden" aria-label="Back">
+                  <button type="button" onClick={() => { setMobileShowChat(false); setTypingText(''); }} className="rounded-lg p-1 text-ink-secondary hover:bg-surface-subtle" aria-label="Back">
                     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
                   </button>
                   <Link href={`/profile/${activeConversation.other_user_id}`} className="relative shrink-0">
@@ -1626,7 +1626,7 @@ export function MessagesView() {
               /* Group chat */
               <>
                 <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
-                  <button type="button" onClick={() => setMobileShowChat(false)} className="rounded-lg p-1 text-ink-secondary hover:bg-surface-subtle sm:hidden" aria-label="Back">
+                  <button type="button" onClick={() => setMobileShowChat(false)} className="rounded-lg p-1 text-ink-secondary hover:bg-surface-subtle" aria-label="Back">
                     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
                   </button>
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-100">
