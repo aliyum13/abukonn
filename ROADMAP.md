@@ -90,12 +90,8 @@ repo so it survives across work sessions.
 
 ### Mobile deep links
 - Make `abukonn.com/u/<name>` open the app (universal links / app association),
-  not just the browser. Blocked behind the iOS build anyway.
-
-### CGPA calculator
-- Wanted feature. Recommendation: keep it FREE — it's a growth/retention driver,
-  low build cost, high word-of-mouth. (Was proposed as a Pro feature; better as a
-  free hook.)
+  not just the browser. Was blocked behind the iOS build — that's resolved now
+  (build 17 launches clean), so this is unblocked.
 
 ---
 
