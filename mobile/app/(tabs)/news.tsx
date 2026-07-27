@@ -8,6 +8,8 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../../src/lib/api';
+import { optimizedImage } from '../../src/lib/image';
+import { ImageLightbox } from '../../src/components/ImageLightbox';
 import { colors, radius, shadow } from '../../src/theme';
 import { useTabScrollToTop } from '../../src/lib/useScrollToTop';
 
@@ -49,6 +51,7 @@ export default function News() {
   const [refreshing, setRefreshing] = useState(false);
   const [cat, setCat] = useState('all');
   const [open, setOpen] = useState<Article | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -117,7 +120,7 @@ export default function News() {
           renderItem={({ item }) => (
             <TouchableOpacity style={s.card} activeOpacity={0.8} onPress={() => setOpen(item)}>
               {item.image_url ? (
-                <Image source={{ uri: item.image_url }} style={s.cardImg} resizeMode="contain" />
+                <Image source={{ uri: optimizedImage(item.image_url, 400) }} style={s.cardImg} resizeMode="contain" />
               ) : null}
               <View style={s.cardBody}>
                 <Text style={s.cat}>{item.category.toUpperCase()}</Text>
@@ -147,7 +150,9 @@ export default function News() {
           {open ? (
             <ScrollView contentContainerStyle={{ padding: 16 }}>
               {open.image_url ? (
-                <Image source={{ uri: open.image_url }} style={s.fullImg} resizeMode="contain" />
+                <TouchableOpacity activeOpacity={0.9} onPress={() => setLightboxUrl(open.image_url)}>
+                  <Image source={{ uri: optimizedImage(open.image_url) }} style={s.fullImg} resizeMode="contain" />
+                </TouchableOpacity>
               ) : null}
               <Text style={s.cat}>{open.category.toUpperCase()}</Text>
               <Text style={s.fullTitle}>{open.title}</Text>
@@ -159,6 +164,7 @@ export default function News() {
           ) : null}
         </SafeAreaView>
       </Modal>
+      <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
     </SafeAreaView>
   );
 }

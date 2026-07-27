@@ -39,6 +39,7 @@ export default function NewsDetailPage() {
   const [article, setArticle] = useState<NewsArticle | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`${API_URL}/api/news/${params.id}`)
@@ -72,7 +73,14 @@ export default function NewsDetailPage() {
 
       <article className="bg-white dark:bg-[#111] rounded-xl border border-gray-200 dark:border-[#222] shadow-sm overflow-hidden">
         {article.image_url ? (
-          <img src={optimizedImage(article.image_url)} alt={article.title} className="w-full h-56 object-cover" />
+          <button
+            type="button"
+            onClick={() => setLightboxUrl(article.image_url)}
+            className="block w-full"
+            aria-label="View full image"
+          >
+            <img src={optimizedImage(article.image_url)} alt={article.title} className="w-full h-56 object-cover transition hover:opacity-95" />
+          </button>
         ) : (
           <div className="w-full h-56 bg-gradient-to-br from-green-50 to-green-100 flex items-center justify-center">
             <span className="text-6xl font-bold text-[#16a34a]/20">ABU</span>
@@ -97,6 +105,30 @@ export default function NewsDetailPage() {
           </div>
         </div>
       </article>
+
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxUrl(null)}
+            className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+            aria-label="Close"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          <img
+            src={lightboxUrl}
+            alt="Full size"
+            className="max-h-[90vh] max-w-full rounded-xl object-contain shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }
