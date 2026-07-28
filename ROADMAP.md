@@ -182,6 +182,19 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
   Checked group messages for the same bug — found no push sent for those at
   all currently, a separate gap not touched here. [cb519e1]
 
+- [x] **Deleted messages showed a blank bubble instead of a placeholder**
+  (item 13, found during Android device testing, not part of the original
+  12). Root cause: mobile never handled deleted messages at all —
+  backend soft-deletes by clearing content to an empty string, so the
+  bubble rendered nothing. Confirmed via user report to also affect iOS —
+  expected, since this is shared React Native code with no Android-specific
+  branching (the "(Android)" in the fix commit's title just reflects where
+  it was first spotted, not where the bug actually lived). The fix already
+  pushed [f3a58fb] covers both platforms with the same commit; no separate
+  iOS fix needed. Also fixed in the same pass: group chat had a third,
+  different (worse) treatment — silently hiding deleted messages entirely —
+  and its own unfixed copy of the item-3 dark-mode bubble-contrast bug.
+
 ---
 
 ## 🟡 Queued features (post-launch, roughly in priority order)
