@@ -103,7 +103,7 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
 
 ## 🔍 Reported from device testing (iPhone via Expo Go)
 
-9 of 12 fixed so far, rest still queued.
+10 of 12 fixed so far, rest still queued.
 
 - [x] **Feed post images and story images load noticeably slowly** (mobile).
   Root cause: mobile was loading full-resolution Cloudinary originals
@@ -171,12 +171,16 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
   Mobile: Ionicons, matching the exact icon names library.tsx already uses
   for Timetable/Academic Calendar rather than picking arbitrary ones.
   [134b7c8]
-- [ ] **Push notification shows raw JSON instead of readable text** — a
+- [x] **Push notification shows raw JSON instead of readable text** — a
   message-reply push notification displayed as `Ahman Umar:
   {"type":"message_reply","quoted_sender":"ali muhammad","quoted_text":"Go...`
-  on the lock screen, instead of a normal sentence. Looks like the
-  notification body is being set to the raw data payload rather than a
-  formatted message.
+  on the lock screen, instead of a normal sentence. Root cause confirmed:
+  messageController.js used the raw message content directly as the push
+  preview, with no awareness that replies/shared-posts are stored as JSON
+  envelopes rather than plain text. Ported the same friendly-preview logic
+  both clients already use for the conversation list to the backend.
+  Checked group messages for the same bug — found no push sent for those at
+  all currently, a separate gap not touched here. [cb519e1]
 
 ---
 
