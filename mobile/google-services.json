@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "364335363610",
+    "project_id": "abukonn-43c38",
+    "storage_bucket": "abukonn-43c38.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:364335363610:android:8bbb03b7a0be3ef52ec3a3",
+        "android_client_info": {
+          "package_name": "com.abukonn.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC-arMWu7PGmPCPlQdB6Vcqintqo67ffBM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
