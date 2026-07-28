@@ -18,6 +18,7 @@
     },
     "android": {
       "package": "com.abukonn.app",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundColor": "#16a34a"
@@ -40,7 +41,13 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#16a34a"
+        }
+      ],
       [
         "expo-image-picker",
         {
