@@ -103,7 +103,7 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
 
 ## 🔍 Reported from device testing (iPhone via Expo Go)
 
-7 of 12 fixed so far, rest still queued.
+8 of 12 fixed so far, rest still queued.
 
 - [x] **Feed post images and story images load noticeably slowly** (mobile).
   Root cause: mobile was loading full-resolution Cloudinary originals
@@ -149,8 +149,14 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
   mobile: fixed 260px box). Extracted mobile's lightbox (from item 6) into a
   shared component since news needed it a second time; added the same
   lightbox markup to web's news detail page. [baea08e]
-- [ ] **Match News section design between web and mobile** — currently they
-  look different; make them consistent.
+- [x] **Match News section design between web and mobile** — currently they
+  look different; make them consistent. Web's card was a rich social-post
+  style (author avatar+name, expandable content, colored category pill,
+  like/comment/share row); mobile had none of that — plain uppercase
+  category text, hard-truncated preview, no actions. Rebuilt mobile's list
+  card to match, keeping mobile's own card-boxing convention (boxed vs
+  web's flat divider list — a reasonable platform difference, not something
+  to force-match). [5f7ee8b]
 - [ ] **Profile layout alignment + missing Status section on mobile** — mobile's
   profile is centered, web's is left-aligned; make both centered. Also web
   has a "Status" section on profile that mobile doesn't have — add it.
