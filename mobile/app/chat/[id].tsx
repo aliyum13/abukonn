@@ -25,6 +25,7 @@ interface Msg {
   content: string;
   image_url?: string | null;
   is_read?: boolean;
+  is_deleted?: boolean;
   created_at: string;
 }
 
@@ -348,6 +349,7 @@ export default function Chat() {
             renderItem={({ item, index }) => {
               const mine = item.sender_id === user?.id;
               const showReceipt = mine && item.id === lastSentId;
+              const isDeleted = !!item.is_deleted;
               const prevMsg = messages[index - 1];
               const showDateSeparator = index === 0 || !isSameDay(item.created_at, prevMsg.created_at);
               return (
@@ -358,14 +360,24 @@ export default function Chat() {
                     </View>
                   ) : null}
                   <View style={{ alignItems: mine ? 'flex-end' : 'flex-start' }}>
-                    <TouchableOpacity activeOpacity={0.8} onLongPress={() => openMessageMenu(item)} delayLongPress={250}>
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onLongPress={isDeleted ? undefined : () => openMessageMenu(item)}
+                      delayLongPress={250}
+                    >
                       <View style={[s.bubble, mine ? s.mine : s.theirs]}>
-                        {item.image_url ? (
-                          <Image source={{ uri: item.image_url }} style={s.msgImage} resizeMode="contain" />
-                        ) : null}
-                        {item.content ? (
-                          <MessageBody content={item.content} mine={mine} />
-                        ) : null}
+                        {isDeleted ? (
+                          <Text style={[s.deletedText, mine ? s.deletedTextMine : null]}>This message was deleted</Text>
+                        ) : (
+                          <>
+                            {item.image_url ? (
+                              <Image source={{ uri: item.image_url }} style={s.msgImage} resizeMode="contain" />
+                            ) : null}
+                            {item.content ? (
+                              <MessageBody content={item.content} mine={mine} />
+                            ) : null}
+                          </>
+                        )}
                       </View>
                     </TouchableOpacity>
                     <Text style={[s.msgTime, mine ? s.msgTimeMine : s.msgTimeTheirs]}>
@@ -473,6 +485,8 @@ const make_s = (colors: Palette) => StyleSheet.create({
   msgTimeTheirs: { marginLeft: 4 },
   loadOlderBtn: { alignItems: 'center', justifyContent: 'center', paddingVertical: 12, marginBottom: 4 },
   loadOlderText: { fontSize: 13, fontWeight: '700', color: colors.brand },
+  deletedText: { fontSize: 15, fontStyle: 'italic', color: colors.muted },
+  deletedTextMine: { color: 'rgba(255,255,255,0.85)' },
   mine: { alignSelf: 'flex-end', backgroundColor: colors.brand },
   // Was a hardcoded '#f3f4f6' that never changed with theme. MessageBody.tsx's
   // theirsText correctly uses colors.text (which turns near-white in dark

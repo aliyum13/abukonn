@@ -188,12 +188,13 @@ export default function GroupChat() {
         ) : (
           <FlatList
             ref={listRef}
-            data={messages.filter(m => !m.is_deleted)}
+            data={messages}
             keyExtractor={m => String(m.id)}
             contentContainerStyle={{ padding: 12 }}
             onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
             renderItem={({ item }) => {
               const mine = item.sender_id === user?.id;
+              const isDeleted = !!item.is_deleted;
               return (
                 <View style={[s.msgRow, mine ? s.msgRowMine : null]}>
                   {!mine ? (
@@ -207,14 +208,25 @@ export default function GroupChat() {
                       </View>
                     )
                   ) : null}
-                  <TouchableOpacity activeOpacity={0.85} onLongPress={() => openMessageMenu(item)} delayLongPress={250} style={[s.bubble, mine ? s.mine : s.theirs]}>
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onLongPress={isDeleted ? undefined : () => openMessageMenu(item)}
+                    delayLongPress={250}
+                    style={[s.bubble, mine ? s.mine : s.theirs]}
+                  >
                     {!mine ? <Text style={s.senderName}>{item.sender_name}</Text> : null}
-                    {item.image_url ? (
-                      <Image source={{ uri: item.image_url }} style={s.msgImage} resizeMode="contain" />
-                    ) : null}
-                    {item.content ? (
-                      <Text style={mine ? s.mineText : s.theirsText}>{item.content}</Text>
-                    ) : null}
+                    {isDeleted ? (
+                      <Text style={[s.deletedText, mine ? s.deletedTextMine : null]}>This message was deleted</Text>
+                    ) : (
+                      <>
+                        {item.image_url ? (
+                          <Image source={{ uri: item.image_url }} style={s.msgImage} resizeMode="contain" />
+                        ) : null}
+                        {item.content ? (
+                          <Text style={mine ? s.mineText : s.theirsText}>{item.content}</Text>
+                        ) : null}
+                      </>
+                    )}
                   </TouchableOpacity>
                 </View>
               );
@@ -299,10 +311,16 @@ const make_s = (colors: Palette) => StyleSheet.create({
   avatarLetter: { color: colors.brand, fontWeight: '700', fontSize: 12 },
   bubble: { maxWidth: '76%', borderRadius: 16, paddingHorizontal: 12, paddingVertical: 8 },
   mine: { alignSelf: 'flex-end', backgroundColor: colors.brand },
-  theirs: { alignSelf: 'flex-start', backgroundColor: '#f3f4f6' },
+  // Same bug as chat/[id].tsx had before 031455d: a hardcoded background that
+  // never changed with theme, paired with theme-reactive text that turns
+  // near-white in dark mode. Never actually fixed here even though it's the
+  // same screen shape -- found while fixing the deleted-message gap below.
+  theirs: { alignSelf: 'flex-start', backgroundColor: colors.surfaceSubtle },
   senderName: { fontSize: 12, fontWeight: '700', color: colors.brand, marginBottom: 2 },
   mineText: { color: '#fff', fontSize: 15 },
   theirsText: { color: colors.text, fontSize: 15 },
+  deletedText: { fontSize: 15, fontStyle: 'italic', color: colors.muted },
+  deletedTextMine: { color: 'rgba(255,255,255,0.85)' },
   msgImage: { width: 200, height: 200, borderRadius: 10, marginBottom: 4 },
   bar: {
     flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12,
