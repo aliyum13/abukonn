@@ -103,7 +103,7 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
 
 ## 🔍 Reported from device testing (iPhone via Expo Go)
 
-8 of 12 fixed so far, rest still queued.
+9 of 12 fixed so far, rest still queued.
 
 - [x] **Feed post images and story images load noticeably slowly** (mobile).
   Root cause: mobile was loading full-resolution Cloudinary originals
@@ -163,9 +163,14 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
 - [ ] **Library wording consistency** — Library itself is fine, but match the
   copy/labels ("all materials," "notes," and other option names) between web
   and mobile so they read the same.
-- [ ] **Dropdown navbar emoji icons** — a dropdown menu (both web and mobile)
+- [x] **Dropdown navbar emoji icons** — a dropdown menu (both web and mobile)
   currently uses emoji as its icons; should switch to proper icons matching
-  the rest of the navbar's icon style.
+  the rest of the navbar's icon style. Web's logo-menu dropdown and mobile's
+  equivalent MenuSheet both had this. Web: lucide-react (already a
+  dependency, already used once elsewhere) instead of adding anything new.
+  Mobile: Ionicons, matching the exact icon names library.tsx already uses
+  for Timetable/Academic Calendar rather than picking arbitrary ones.
+  [134b7c8]
 - [ ] **Push notification shows raw JSON instead of readable text** — a
   message-reply push notification displayed as `Ahman Umar:
   {"type":"message_reply","quoted_sender":"ali muhammad","quoted_text":"Go...`
