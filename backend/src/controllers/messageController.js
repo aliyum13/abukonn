@@ -2,6 +2,7 @@ const Message = require('../models/Message');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 const { sendPushToUsers } = require('../lib/push');
+const { plainMessagePreview } = require('../lib/messagePreview');
 const { isBlocked } = require('../models/ReportBlock');
 const cloudinary = require('../config/cloudinary');
 
@@ -162,7 +163,7 @@ async function sendMessageHandler(req, res) {
       conversation.user1_id === req.user.id ? conversation.user2_id : conversation.user1_id;
 
     if (recipientId) {
-      const preview = (content || '').trim();
+      const preview = plainMessagePreview(content).trim();
       sendPushToUsers([recipientId], {
         title: 'ABUkonn',
         body: preview
