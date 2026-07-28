@@ -3,20 +3,26 @@ import { useThemedStyles } from '../theme/ThemeContext';
 import type { Palette } from '../theme';
 import { Modal, View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import type { ComponentProps } from 'react';
 import { apiFetch } from '../lib/api';
 import { colors } from '../theme';
 
 // Mirrors the web logo menu: destinations that aren't in the bottom tab bar.
 // Feed / News / Library / Profile are tabs; everything else lives here.
-const LINKS: { path: string; label: string; icon: string; badge?: 'messages' | 'alerts' }[] = [
-  { path: '/(tabs)/messages', label: 'Messages', icon: '💬', badge: 'messages' },
-  { path: '/(tabs)/notifications', label: 'Notifications', icon: '🔔', badge: 'alerts' },
-  { path: '/discover', label: 'Discover People', icon: '🧭' },
-  { path: '/groups', label: 'Groups', icon: '👥' },
-  { path: '/timetable', label: 'Timetable', icon: '🗓️' },
-  { path: '/academic-calendar', label: 'Academic Calendar', icon: '📅' },
-  { path: '/settings', label: 'Settings', icon: '⚙️' },
-  { path: '/support', label: 'Support', icon: '🛟' },
+// Icons are Ionicons, matching this app's established convention elsewhere
+// (e.g. library.tsx's own calendar-outline/time-outline quick-link cards) —
+// not emoji, which render inconsistently across OS/device font sets.
+type IoniconName = ComponentProps<typeof Ionicons>['name'];
+const LINKS: { path: string; label: string; icon: IoniconName; badge?: 'messages' | 'alerts' }[] = [
+  { path: '/(tabs)/messages', label: 'Messages', icon: 'chatbubble-outline', badge: 'messages' },
+  { path: '/(tabs)/notifications', label: 'Notifications', icon: 'notifications-outline', badge: 'alerts' },
+  { path: '/discover', label: 'Discover People', icon: 'compass-outline' },
+  { path: '/groups', label: 'Groups', icon: 'people-outline' },
+  { path: '/timetable', label: 'Timetable', icon: 'time-outline' },
+  { path: '/academic-calendar', label: 'Academic Calendar', icon: 'calendar-outline' },
+  { path: '/settings', label: 'Settings', icon: 'settings-outline' },
+  { path: '/support', label: 'Support', icon: 'help-buoy-outline' },
 ];
 
 export function MenuSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
@@ -64,7 +70,7 @@ export function MenuSheet({ visible, onClose }: { visible: boolean; onClose: () 
             {LINKS.flatMap(l => {
               const rows = [(
                 <TouchableOpacity key={l.path} style={s.row} onPress={() => go(l.path)}>
-                  <Text style={s.icon}>{l.icon}</Text>
+                  <Ionicons name={l.icon} size={22} color={colors.brand} style={s.icon} />
                   <Text style={s.label}>{l.label}</Text>
                   {badgeFor(l.badge)}
                   <Text style={s.arrow}>›</Text>
@@ -74,7 +80,7 @@ export function MenuSheet({ visible, onClose }: { visible: boolean; onClose: () 
               if (l.path === '/groups' && isRep) {
                 rows.push(
                   <TouchableOpacity key="/class-rep" style={s.row} onPress={() => go('/class-rep')}>
-                    <Text style={s.icon}>🎓</Text>
+                    <Ionicons name="school-outline" size={22} color={colors.brand} style={s.icon} />
                     <Text style={s.label}>Class Rep Tools</Text>
                     <Text style={s.arrow}>›</Text>
                   </TouchableOpacity>
@@ -101,7 +107,7 @@ const make_s = (colors: Palette) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 16,
     borderBottomWidth: 1, borderBottomColor: colors.border,
   },
-  icon: { fontSize: 22 },
+  icon: { width: 22 },
   label: { flex: 1, fontSize: 16, fontWeight: '600', color: colors.text },
   arrow: { fontSize: 22, color: colors.muted },
   badge: {

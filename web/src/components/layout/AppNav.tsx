@@ -8,6 +8,10 @@ import { excerpt, timeAgo } from '@/lib/format';
 import { triggerPageRefresh } from '@/lib/refresh';
 import { useEffect, useRef, useState, useCallback, KeyboardEvent } from 'react';
 import { io } from 'socket.io-client';
+import {
+  Home, Compass, Users, MessageCircle, Newspaper, BookOpen,
+  CalendarDays, Calendar, Bell, User, Settings, LifeBuoy,
+} from 'lucide-react';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -19,20 +23,23 @@ const NAV_LINKS = [
 ];
 
 // Full destination list for the logo menu — everything the top bar and bottom
-// tabs don't have room for.
+// tabs don't have room for. Icons are lucide-react components (already a
+// dependency, used elsewhere in this app), not emoji — emoji render
+// inconsistently across OS/browser font sets and don't match the outline-SVG
+// style the rest of this navbar already uses (see the chevron below).
 const MENU_LINKS = [
-  { href: '/feed', label: 'Feed', icon: '🏠' },
-  { href: '/discover', label: 'Discover People', icon: '🧭' },
-  { href: '/groups', label: 'Groups', icon: '👥' },
-  { href: '/messages', label: 'Messages', icon: '💬' },
-  { href: '/news', label: 'News', icon: '📰' },
-  { href: '/library', label: 'Library', icon: '📚' },
-  { href: '/timetable', label: 'Timetable', icon: '🗓️' },
-  { href: '/academic-calendar', label: 'Academic Calendar', icon: '📅' },
-  { href: '/notifications', label: 'Notifications', icon: '🔔' },
-  { href: '/profile', label: 'Profile', icon: '👤' },
-  { href: '/settings', label: 'Settings', icon: '⚙️' },
-  { href: '/support', label: 'Support', icon: '🛟' },
+  { href: '/feed', label: 'Feed', icon: Home },
+  { href: '/discover', label: 'Discover People', icon: Compass },
+  { href: '/groups', label: 'Groups', icon: Users },
+  { href: '/messages', label: 'Messages', icon: MessageCircle },
+  { href: '/news', label: 'News', icon: Newspaper },
+  { href: '/library', label: 'Library', icon: BookOpen },
+  { href: '/timetable', label: 'Timetable', icon: CalendarDays },
+  { href: '/academic-calendar', label: 'Academic Calendar', icon: Calendar },
+  { href: '/notifications', label: 'Notifications', icon: Bell },
+  { href: '/profile', label: 'Profile', icon: User },
+  { href: '/settings', label: 'Settings', icon: Settings },
+  { href: '/support', label: 'Support', icon: LifeBuoy },
 ];
 
 interface SearchUser {
@@ -324,6 +331,7 @@ export function AppNav() {
             <div className="absolute left-0 top-full z-50 mt-2 w-60 overflow-hidden rounded-2xl border border-border bg-white py-1.5 shadow-lg dark:border-[#222] dark:bg-[#111]">
               {MENU_LINKS.map(link => {
                 const active = pathname === link.href;
+                const Icon = link.icon;
                 return (
                   <Link
                     key={link.href}
@@ -335,7 +343,7 @@ export function AppNav() {
                         : 'text-ink hover:bg-surface-muted dark:hover:bg-[#1a1a1a]'
                     }`}
                   >
-                    <span className="w-5 text-center">{link.icon}</span>
+                    <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
                     <span>{link.label}</span>
                   </Link>
                 );
