@@ -171,9 +171,16 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
   to centered instead (avatar/name/bio/stats stacked and centered, Edit
   profile moved below stats to match mobile's exact order). My Status
   section added to mobile, reusing my-stories.tsx's endpoints. [3f0dc3b]
-- [ ] **Library wording consistency** — Library itself is fine, but match the
-  copy/labels ("all materials," "notes," and other option names) between web
-  and mobile so they read the same.
+- [x] **Library wording consistency** — turned out to be more than wording.
+  Mobile's filter categories used different KEY VALUES than web/the backend's
+  only material-creation path (admin upload), not just different display
+  text. Real consequences: "Notes" always showed zero results (real
+  materials are tagged `lecture_note`, mobile filtered on `note`), every
+  individual lecture-note material's icon fell through to the wrong
+  fallback, and "Slides" was a permanently dead filter — nothing can ever
+  create that value. Fixed to the four real values with web's exact wording.
+  Web needed no changes; it was already correct. Last of the 13
+  device-testing items — all now fixed. [55deee9]
 - [x] **Dropdown navbar emoji icons** — a dropdown menu (both web and mobile)
   currently uses emoji as its icons; should switch to proper icons matching
   the rest of the navbar's icon style. Web's logo-menu dropdown and mobile's
