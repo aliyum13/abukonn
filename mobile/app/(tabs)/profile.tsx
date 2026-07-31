@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Image, Alert, FlatList,
-  ActivityIndicator, RefreshControl,
+  ActivityIndicator, RefreshControl, ScrollView,
 } from 'react-native';
 import { useThemedStyles } from '../../src/theme/ThemeContext';
 import type { Palette } from '../../src/theme';
@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/context/AuthContext';
 import { RoleBadge } from '../../src/components/RoleBadge';
 import { apiFetch } from '../../src/lib/api';
+import { optimizedAvatar, optimizedImage } from '../../src/lib/image';
 import { useTabScrollToTop } from '../../src/lib/useScrollToTop';
 import { colors, radius, shadow } from '../../src/theme';
 
@@ -27,6 +28,14 @@ interface ProfileReply {
   id: number;
   content: string;
   post_id: number;
+  created_at: string;
+}
+interface MyStatusStory {
+  id: number;
+  media_url: string | null;
+  story_type: 'image' | 'video' | 'text';
+  text_content: string | null;
+  bg_color: string | null;
   created_at: string;
 }
 
@@ -51,18 +60,24 @@ export default function Profile() {
   const [tab, setTab] = useState<'posts' | 'replies'>('posts');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [myStories, setMyStories] = useState<MyStatusStory[]>([]);
+  const [deletingStoryId, setDeletingStoryId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const data = await apiFetch<{
-        user: { followers_count: number; following_count: number };
-        posts: ProfilePost[];
-        replies: ProfileReply[];
-      }>('/api/users/me');
+      const [data, storiesData] = await Promise.all([
+        apiFetch<{
+          user: { followers_count: number; following_count: number };
+          posts: ProfilePost[];
+          replies: ProfileReply[];
+        }>('/api/users/me'),
+        apiFetch<{ stories: MyStatusStory[] }>('/api/stories/mine').catch(() => ({ stories: [] })),
+      ]);
       setPosts(data.posts || []);
       setReplies(data.replies || []);
       setFollowers(data.user?.followers_count || 0);
       setFollowing(data.user?.following_count || 0);
+      setMyStories(storiesData.stories || []);
     } catch {
       // keep whatever we have
     } finally {
@@ -70,6 +85,18 @@ export default function Profile() {
       setRefreshing(false);
     }
   }, []);
+
+  const deleteStory = async (storyId: number) => {
+    setDeletingStoryId(storyId);
+    try {
+      await apiFetch(`/api/stories/${storyId}`, { method: 'DELETE' });
+      setMyStories(prev => prev.filter(st => st.id !== storyId));
+    } catch {
+      Alert.alert('Could not delete', 'Please try again.');
+    } finally {
+      setDeletingStoryId(null);
+    }
+  };
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
   useEffect(() => { setRefresh(load); }, [load, setRefresh]);
@@ -87,13 +114,25 @@ export default function Profile() {
   const header = (
     <View>
       <View style={s.top}>
-        {user?.profile_photo_url ? (
-          <Image source={{ uri: user.profile_photo_url }} style={s.avatar} />
-        ) : (
-          <View style={[s.avatar, s.fallback]}>
-            <Text style={s.letter}>{user?.full_name?.charAt(0).toUpperCase()}</Text>
+        <View style={s.topRow}>
+          {user?.profile_photo_url ? (
+            <Image source={{ uri: optimizedAvatar(user.profile_photo_url, 96) }} style={s.avatar} />
+          ) : (
+            <View style={[s.avatar, s.fallback]}>
+              <Text style={s.letter}>{user?.full_name?.charAt(0).toUpperCase()}</Text>
+            </View>
+          )}
+          <View style={s.topRowActions}>
+            <TouchableOpacity style={s.editBtn} onPress={() => router.push('/settings')}>
+              <Ionicons name="create-outline" size={16} color={colors.brand} />
+              <Text style={s.editText}>Edit profile</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.iconBtn} onPress={() => router.push('/settings')}>
+              <Ionicons name="settings-outline" size={20} color={colors.text} />
+            </TouchableOpacity>
           </View>
-        )}
+        </View>
+
         <Text style={s.name}>{user?.full_name}</Text>
         <View style={s.badgeRow}>
           <RoleBadge role={user?.role || (user?.is_admin ? 'admin' : user?.is_verified ? 'verified' : 'user')} />
@@ -126,16 +165,55 @@ export default function Profile() {
             <Text style={s.statLabel}>Following</Text>
           </TouchableOpacity>
         </View>
+      </View>
 
-        <View style={s.actionRow}>
-          <TouchableOpacity style={s.editBtn} onPress={() => router.push('/settings')}>
-            <Ionicons name="create-outline" size={16} color={colors.brand} />
-            <Text style={s.editText}>Edit profile</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={s.iconBtn} onPress={() => router.push('/settings')}>
-            <Ionicons name="settings-outline" size={20} color={colors.text} />
+      {/* My Status — mirrors web's profile page section: a compact story
+          strip (Add + thumbnails with inline delete) plus a link to the
+          full My Stories screen. Reuses the same /api/stories/mine data
+          my-stories.tsx already established. */}
+      <View style={s.statusSection}>
+        <View style={s.statusHeaderRow}>
+          <Text style={s.statusTitle}>My Status</Text>
+          <TouchableOpacity onPress={() => router.push('/my-stories')} hitSlop={6}>
+            <Text style={s.statusManageLink}>Manage all →</Text>
           </TouchableOpacity>
         </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.statusRow}>
+          <TouchableOpacity style={s.statusItem} onPress={() => router.push('/(tabs)/feed')}>
+            <View style={s.statusAddCircle}>
+              <Ionicons name="add" size={22} color={colors.brand} />
+            </View>
+            <Text style={s.statusItemLabel}>Add</Text>
+          </TouchableOpacity>
+          {myStories.map(story => (
+            <View key={story.id} style={s.statusItem}>
+              <TouchableOpacity style={s.statusThumbWrap} onPress={() => router.push('/my-stories')}>
+                {story.story_type === 'text' ? (
+                  <View style={[s.statusThumb, { backgroundColor: story.bg_color || colors.brand, alignItems: 'center', justifyContent: 'center', padding: 4 }]}>
+                    <Text style={s.statusThumbText} numberOfLines={3}>{story.text_content}</Text>
+                  </View>
+                ) : story.story_type === 'video' ? (
+                  <View style={[s.statusThumb, { backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' }]}>
+                    <Ionicons name="play" size={16} color="#fff" />
+                  </View>
+                ) : (
+                  <Image source={{ uri: optimizedImage(story.media_url, 120) }} style={s.statusThumb} />
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={s.statusDeleteBtn}
+                disabled={deletingStoryId === story.id}
+                onPress={() => deleteStory(story.id)}
+              >
+                {deletingStoryId === story.id
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Ionicons name="close" size={11} color="#fff" />}
+              </TouchableOpacity>
+              <Text style={s.statusItemLabel}>{timeAgo(story.created_at)}</Text>
+            </View>
+          ))}
+        </ScrollView>
+        <Text style={s.statusFootnote}>Stories disappear after 24 hours</Text>
       </View>
 
       <View style={s.tabBar}>
@@ -222,7 +300,9 @@ const make_s = (colors: Palette) => StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: '700', color: colors.text },
   logoutLink: { color: colors.danger, fontSize: 14, fontWeight: '600' },
   center: { paddingVertical: 48, alignItems: 'center' },
-  top: { alignItems: 'center', paddingTop: 24, paddingHorizontal: 24, paddingBottom: 8, backgroundColor: colors.surface },
+  top: { paddingTop: 20, paddingHorizontal: 16, paddingBottom: 8, backgroundColor: colors.surface },
+  topRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  topRowActions: { flexDirection: 'row', gap: 10, alignItems: 'center', marginTop: 4 },
   avatar: { width: 88, height: 88, borderRadius: 44, backgroundColor: colors.brand100 },
   fallback: { alignItems: 'center', justifyContent: 'center' },
   letter: { fontSize: 32, fontWeight: '800', color: colors.brand },
@@ -230,23 +310,48 @@ const make_s = (colors: Palette) => StyleSheet.create({
   badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
   creatorBadge: { backgroundColor: 'rgba(217,119,6,0.15)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
   creatorBadgeText: { fontSize: 11, fontWeight: '700', color: '#d97706' },
-  muted: { fontSize: 14, color: colors.muted },
-  bio: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', marginTop: 8, lineHeight: 20 },
-  stats: { flexDirection: 'row', gap: 32, marginTop: 18 },
-  stat: { alignItems: 'center' },
-  statNum: { fontSize: 18, fontWeight: '800', color: colors.text },
+  muted: { fontSize: 14, color: colors.muted, marginTop: 4 },
+  bio: { fontSize: 14, color: colors.textSecondary, marginTop: 8, lineHeight: 20 },
+  stats: { flexDirection: 'row', gap: 28, marginTop: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.border },
+  stat: { alignItems: 'flex-start' },
+  statNum: { fontSize: 17, fontWeight: '800', color: colors.text },
   statLabel: { fontSize: 12, color: colors.muted, marginTop: 2 },
-  actionRow: { flexDirection: 'row', gap: 10, marginTop: 18, alignItems: 'center' },
   editBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     borderWidth: 1, borderColor: colors.brand, borderRadius: radius.full,
-    paddingVertical: 9, paddingHorizontal: 20,
+    paddingVertical: 8, paddingHorizontal: 16,
   },
-  editText: { color: colors.brand, fontWeight: '700', fontSize: 14 },
+  editText: { color: colors.brand, fontWeight: '700', fontSize: 13 },
   iconBtn: {
     borderWidth: 1, borderColor: colors.border, borderRadius: radius.full,
-    padding: 9, backgroundColor: colors.surface,
+    padding: 8, backgroundColor: colors.surface,
   },
+  statusSection: {
+    backgroundColor: colors.surface, paddingHorizontal: 16, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
+  },
+  statusHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  statusTitle: { fontSize: 13, fontWeight: '700', color: colors.text },
+  statusManageLink: { fontSize: 12, fontWeight: '600', color: colors.brand },
+  statusRow: { flexDirection: 'row', gap: 14 },
+  statusItem: { alignItems: 'center', width: 56 },
+  statusAddCircle: {
+    width: 56, height: 56, borderRadius: 28, borderWidth: 2, borderStyle: 'dashed',
+    borderColor: colors.brand, backgroundColor: colors.brand50,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  statusItemLabel: { fontSize: 11, color: colors.muted, marginTop: 4 },
+  statusThumbWrap: {
+    width: 56, height: 56, borderRadius: 28, borderWidth: 2, borderColor: colors.brand, overflow: 'hidden',
+  },
+  statusThumb: { width: '100%', height: '100%', backgroundColor: colors.surfaceSubtle },
+  statusThumbText: { color: '#fff', fontSize: 8, fontWeight: '700', textAlign: 'center' },
+  statusDeleteBtn: {
+    position: 'absolute', top: -2, right: -2, width: 18, height: 18, borderRadius: 9,
+    backgroundColor: '#ef4444', alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: colors.surface,
+  },
+  statusFootnote: { fontSize: 11, color: colors.muted, marginTop: 10 },
   tabBar: {
     flexDirection: 'row', backgroundColor: colors.surface,
     borderBottomWidth: 1, borderBottomColor: colors.border, marginTop: 8,
