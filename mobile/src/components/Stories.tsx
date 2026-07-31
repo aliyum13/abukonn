@@ -7,6 +7,7 @@ import {
   ActivityIndicator, Pressable, FlatList,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../lib/api';
 import { optimizedImage, optimizedAvatar } from '../lib/image';
@@ -42,6 +43,7 @@ export interface StoryGroup {
 
 // ── Story bar ────────────────────────────────────────────────────────────────
 export function StoryBar() {
+  const router = useRouter();
   const s = useThemedStyles(make_s);
   const [groups, setGroups] = useState<StoryGroup[]>([]);
   const [seen, setSeen] = useState<Set<number>>(new Set());
@@ -112,9 +114,18 @@ export function StoryBar() {
                   </View>
                 )}
               </View>
-              <Text style={s.name} numberOfLines={1}>
-                {g.is_own ? 'You' : g.user_name.split(' ')[0]}
-              </Text>
+              {/* Web shows a distinct "My Stories" link under the own-story
+                  ring, separate from tapping the avatar (opens the viewer).
+                  Nested TouchableOpacity claims the tap without bubbling to
+                  the parent's onPress, same pattern used elsewhere in this
+                  app for overlapping touch targets. */}
+              {g.is_own ? (
+                <TouchableOpacity onPress={() => router.push('/my-stories')} hitSlop={4}>
+                  <Text style={[s.name, s.myStoriesLinkText]} numberOfLines={1}>My Stories</Text>
+                </TouchableOpacity>
+              ) : (
+                <Text style={s.name} numberOfLines={1}>{g.user_name.split(' ')[0]}</Text>
+              )}
             </TouchableOpacity>
           );
         })}
@@ -774,6 +785,7 @@ const make_s = (colors: Palette) => StyleSheet.create({
   fallback: { alignItems: 'center', justifyContent: 'center' },
   letter: { color: colors.brand, fontWeight: '700', fontSize: 18 },
   name: { fontSize: 11, color: colors.muted, marginTop: 4, maxWidth: 62 },
+  myStoriesLinkText: { color: colors.brand, fontWeight: '600' },
 });
 
 const make_v = (colors: Palette) => StyleSheet.create({
