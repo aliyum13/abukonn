@@ -265,13 +265,6 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
   reviewing and either finishing/committing it or discarding it deliberately,
   rather than leaving it to sit uncommitted.
 
-- **Group chat history is still unbounded.** `Group.getGroupMessages()` has
-  the identical no-LIMIT pattern that made opening a DM slow (fixed for DMs
-  in 6c0e145). Left alone at the time to keep that fix scoped to the
-  reported bug, but the same slowness will show up in any group whose
-  history grows. Same fix shape applies: limit + `before` cursor, plus the
-  "Load earlier messages" control both clients already have for DMs.
-
 - **Rotate the GitHub PAT** used for pushes — it's been live across many sessions.
   Urgent, unrelated to features.
 - Consider a **staging branch** — `main` auto-deploys straight to production
