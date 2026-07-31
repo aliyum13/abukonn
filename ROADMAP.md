@@ -162,9 +162,15 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
   card to match, keeping mobile's own card-boxing convention (boxed vs
   web's flat divider list — a reasonable platform difference, not something
   to force-match). [5f7ee8b]
-- [ ] **Profile layout alignment + missing Status section on mobile** — mobile's
+- [x] **Profile layout alignment + missing Status section on mobile** — mobile's
   profile is centered, web's is left-aligned; make both centered. Also web
   has a "Status" section on profile that mobile doesn't have — add it.
+  First attempt (d0cd355) got the direction backwards — made mobile match
+  web's left alignment instead of the other way round. Caught it myself
+  before reporting done, reverted mobile's alignment, and restructured web
+  to centered instead (avatar/name/bio/stats stacked and centered, Edit
+  profile moved below stats to match mobile's exact order). My Status
+  section added to mobile, reusing my-stories.tsx's endpoints. [3f0dc3b]
 - [ ] **Library wording consistency** — Library itself is fine, but match the
   copy/labels ("all materials," "notes," and other option names) between web
   and mobile so they read the same.
