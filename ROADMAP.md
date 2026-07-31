@@ -277,23 +277,26 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
   When done: weight recency heavily. Infer interest from department/level +
   engagement rather than a sign-up interest step (don't add onboarding friction).
 
-### Mobile deep links
-- Make `abukonn.com/u/<name>` open the app (universal links / app association),
-  not just the browser. Was blocked behind the iOS build — that's resolved now
-  (build 17 launches clean), so this is unblocked.
-
 ### Academic Calendar Integration
 - Admin creates university-wide events (Mid-Semester Break, Public Holidays,
   Exams, Semester Breaks). Any class falling within those dates should
   automatically show the right status (e.g. Cancelled / No Classes) without
   the admin having to edit every class individually.
 
-### Bulk Timetable Status Update
-- Admin can update the status of multiple classes at once instead of editing
-  each individually. E.g. for a mid-semester break, public holiday, strike, or
-  any event affecting the whole university or a faculty, admin selects a date
-  range (or a full week) and marks all scheduled classes as Cancelled in one
-  action.
+### ✅ Bulk Timetable Status Update — SHIPPED [ae436f6]
+- Admin can select a date range + scope (whole university, one faculty, or
+  one department + optional level) and cancel every matching class in one
+  action — instead of editing each class individually. Built on the
+  existing timetable_overrides mechanism (temporary, date-specific,
+  auto-expiring) rather than the permanent per-class status field, since a
+  holiday/strike is inherently date-bound. Web admin UI: date range, scope
+  picker, and a required preview step (exact count + per-department
+  breakdown) before confirming, given the potential blast radius of a bulk
+  action. Safe to re-run over an overlapping range — can't double-cancel.
+  One pre-existing, unrelated limitation noted while building this: the
+  Week view doesn't merge timetable_overrides at all (only the Today view
+  does), so a bulk-cancelled class shows correctly on its actual day but not
+  in the week-ahead view yet.
 
 ---
 
