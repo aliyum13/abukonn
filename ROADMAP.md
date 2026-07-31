@@ -223,26 +223,23 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
 
 ## 🐛 Reported bugs (not yet triaged or fixed)
 
-- [ ] **Reposts don't stay linked to the original post — raised before, still
-  broken.** Currently a repost behaves like an independent, separate post:
-  engagement (likes/comments/reposts/views) on the repost stays on the
-  repost instead of counting toward the original. E.g. an original post
-  with 5 likes/2 comments gets reposted, and any new engagement on that
-  repost never reflects back on the original — splitting engagement across
-  two posts instead of consolidating it.
-  Expected behavior (matching X/TikTok/Instagram's model):
-  - A repost always stays linked to the original post, never becomes an
-    independent post of its own
-  - The repost clearly shows who the original author is
-  - All engagement — likes, comments, reposts, views — is counted on the
-    original post regardless of where it's viewed (feed, repost, etc.)
-  - Liking or commenting on a repost increases the *original* post's
-    engagement, not a separate count
-  - Notifications from repost-driven engagement should say so explicitly
-    (e.g. "Someone liked your post via a repost") rather than reading like
-    engagement on a brand new post
-  - A repost should increase the original's *reach*, not fork its
-    engagement or ownership
+- [x] **Reposts don't stay linked to the original post — FIXED (code), one
+  manual migration step pending.** Was behaving like an independent post:
+  engagement stayed on the repost, notifications went to the reposter.
+  Fixed so every interaction (like/comment/view) resolves to the one true
+  canonical original before reading or writing, on both platforms and both
+  the feed and post-detail surfaces. Notifications now go to the original
+  author, worded "via a repost". Reposting a repost resolves to the true
+  root. [c344553]
+  - **PENDING (manual, not yet run):** a dry-run-default migration script
+    [da96a45, backend/scripts/migrate-repost-engagement.js] consolidates
+    ALREADY-SPLIT historical engagement (existing likes/comments sitting on
+    old reposts) onto their originals. The code fix handles all NEW
+    interactions correctly; this backfills the old data. Run the dry run
+    first, review the counts against live data, then `--apply` manually.
+    Deliberately not auto-run — it moves production rows.
+  - Same known limitation as elsewhere: none. The fix recomputes counters
+    from actual rows, so no drift.
 
 - [ ] **Badge visibility inconsistent depending on whose profile you're
   viewing.** Admin and Verified badges show correctly everywhere (someone
