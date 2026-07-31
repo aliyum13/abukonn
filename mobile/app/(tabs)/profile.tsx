@@ -114,25 +114,13 @@ export default function Profile() {
   const header = (
     <View>
       <View style={s.top}>
-        <View style={s.topRow}>
-          {user?.profile_photo_url ? (
-            <Image source={{ uri: optimizedAvatar(user.profile_photo_url, 96) }} style={s.avatar} />
-          ) : (
-            <View style={[s.avatar, s.fallback]}>
-              <Text style={s.letter}>{user?.full_name?.charAt(0).toUpperCase()}</Text>
-            </View>
-          )}
-          <View style={s.topRowActions}>
-            <TouchableOpacity style={s.editBtn} onPress={() => router.push('/settings')}>
-              <Ionicons name="create-outline" size={16} color={colors.brand} />
-              <Text style={s.editText}>Edit profile</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={s.iconBtn} onPress={() => router.push('/settings')}>
-              <Ionicons name="settings-outline" size={20} color={colors.text} />
-            </TouchableOpacity>
+        {user?.profile_photo_url ? (
+          <Image source={{ uri: optimizedAvatar(user.profile_photo_url, 96) }} style={s.avatar} />
+        ) : (
+          <View style={[s.avatar, s.fallback]}>
+            <Text style={s.letter}>{user?.full_name?.charAt(0).toUpperCase()}</Text>
           </View>
-        </View>
-
+        )}
         <Text style={s.name}>{user?.full_name}</Text>
         <View style={s.badgeRow}>
           <RoleBadge role={user?.role || (user?.is_admin ? 'admin' : user?.is_verified ? 'verified' : 'user')} />
@@ -163,6 +151,16 @@ export default function Profile() {
           >
             <Text style={s.statNum}>{following}</Text>
             <Text style={s.statLabel}>Following</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={s.actionRow}>
+          <TouchableOpacity style={s.editBtn} onPress={() => router.push('/settings')}>
+            <Ionicons name="create-outline" size={16} color={colors.brand} />
+            <Text style={s.editText}>Edit profile</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.iconBtn} onPress={() => router.push('/settings')}>
+            <Ionicons name="settings-outline" size={20} color={colors.text} />
           </TouchableOpacity>
         </View>
       </View>
@@ -300,9 +298,7 @@ const make_s = (colors: Palette) => StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: '700', color: colors.text },
   logoutLink: { color: colors.danger, fontSize: 14, fontWeight: '600' },
   center: { paddingVertical: 48, alignItems: 'center' },
-  top: { paddingTop: 20, paddingHorizontal: 16, paddingBottom: 8, backgroundColor: colors.surface },
-  topRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  topRowActions: { flexDirection: 'row', gap: 10, alignItems: 'center', marginTop: 4 },
+  top: { alignItems: 'center', paddingTop: 24, paddingHorizontal: 24, paddingBottom: 8, backgroundColor: colors.surface },
   avatar: { width: 88, height: 88, borderRadius: 44, backgroundColor: colors.brand100 },
   fallback: { alignItems: 'center', justifyContent: 'center' },
   letter: { fontSize: 32, fontWeight: '800', color: colors.brand },
@@ -310,21 +306,22 @@ const make_s = (colors: Palette) => StyleSheet.create({
   badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
   creatorBadge: { backgroundColor: 'rgba(217,119,6,0.15)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
   creatorBadgeText: { fontSize: 11, fontWeight: '700', color: '#d97706' },
-  muted: { fontSize: 14, color: colors.muted, marginTop: 4 },
-  bio: { fontSize: 14, color: colors.textSecondary, marginTop: 8, lineHeight: 20 },
-  stats: { flexDirection: 'row', gap: 28, marginTop: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.border },
-  stat: { alignItems: 'flex-start' },
-  statNum: { fontSize: 17, fontWeight: '800', color: colors.text },
+  muted: { fontSize: 14, color: colors.muted },
+  bio: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', marginTop: 8, lineHeight: 20 },
+  stats: { flexDirection: 'row', gap: 32, marginTop: 18 },
+  stat: { alignItems: 'center' },
+  statNum: { fontSize: 18, fontWeight: '800', color: colors.text },
   statLabel: { fontSize: 12, color: colors.muted, marginTop: 2 },
+  actionRow: { flexDirection: 'row', gap: 10, marginTop: 18, alignItems: 'center' },
   editBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     borderWidth: 1, borderColor: colors.brand, borderRadius: radius.full,
-    paddingVertical: 8, paddingHorizontal: 16,
+    paddingVertical: 9, paddingHorizontal: 20,
   },
-  editText: { color: colors.brand, fontWeight: '700', fontSize: 13 },
+  editText: { color: colors.brand, fontWeight: '700', fontSize: 14 },
   iconBtn: {
     borderWidth: 1, borderColor: colors.border, borderRadius: radius.full,
-    padding: 8, backgroundColor: colors.surface,
+    padding: 9, backgroundColor: colors.surface,
   },
   statusSection: {
     backgroundColor: colors.surface, paddingHorizontal: 16, paddingVertical: 14,

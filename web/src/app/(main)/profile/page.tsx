@@ -416,7 +416,10 @@ export default function ProfilePage() {
           <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>
         )}
 
-        <div className="flex items-start justify-between gap-4">
+        {/* Centered layout, matching mobile's design exactly -- avatar, then
+            everything else stacked and centered below it, Edit profile
+            moved after the stats row rather than sitting beside the avatar. */}
+        <div className="flex flex-col items-center text-center">
           <div className="relative shrink-0">
             <div className="h-24 w-24 rounded-full bg-gradient-to-tr from-brand-500 to-emerald-400 p-[2.5px]">
               <button
@@ -431,109 +434,109 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          <div className="pt-1">
-            <Link href="/settings#account">
-              <Button variant="secondary" size="sm" className="rounded-full px-5">
-                Edit profile
-              </Button>
-            </Link>
-          </div>
-        </div>
-
-        {/* Name + badge */}
-        <div className="mt-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-[22px] font-bold leading-tight text-ink">{user.full_name}</h1>
-            <RoleBadge role={profileRole} />
-            {classRepFor.length > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-brand-100 px-2 py-0.5 text-[11px] font-semibold text-brand-700 dark:bg-brand-950 dark:text-brand-300">
-                🎓 Class Rep
-              </span>
-            )}
-          </div>
-          {classRepFor.length > 0 && (
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <p className="text-[12px] text-ink-muted">
-                Rep for {classRepFor.map(c => `${c.department} (${c.level})`).join(', ')}
-              </p>
-              <Link href="/class-rep" className="rounded-full bg-brand-600 px-3 py-1 text-[12px] font-semibold text-white hover:bg-brand-700">
-                Manage timetable →
-              </Link>
+          {/* Name + badge */}
+          <div className="mt-4">
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <h1 className="text-[22px] font-bold leading-tight text-ink">{user.full_name}</h1>
+              <RoleBadge role={profileRole} />
+              {classRepFor.length > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-brand-100 px-2 py-0.5 text-[11px] font-semibold text-brand-700 dark:bg-brand-950 dark:text-brand-300">
+                  🎓 Class Rep
+                </span>
+              )}
             </div>
-          )}
-          <p className="mt-0.5 text-[14px] text-ink-muted">@{displayUsername}</p>
-
-          {/* Shareable profile link */}
-          {displayUsername ? (
-            <button
-              type="button"
-              onClick={() => {
-                const link = `${window.location.origin}/u/${displayUsername}`;
-                navigator.clipboard?.writeText(link).then(
-                  () => { setShareCopied(true); setTimeout(() => setShareCopied(false), 2000); },
-                  () => {},
-                );
-              }}
-              className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1 text-[12px] font-medium text-ink-muted transition hover:border-brand-300 hover:text-brand-600 dark:border-[#333]"
-            >
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
-              </svg>
-              {shareCopied ? 'Link copied!' : 'Share profile'}
-            </button>
-          ) : null}
-
-          {/* Bio */}
-          {user.bio
-            ? <p className="mt-3 text-[15px] leading-relaxed text-ink">{user.bio}</p>
-            : (
-              <p className="mt-3 text-[14px] italic text-ink-muted">
-                No bio yet —{' '}
-                <Link href="/settings#account" className="text-brand-600 hover:underline dark:text-brand-400">
-                  add one in Settings
+            {classRepFor.length > 0 && (
+              <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+                <p className="text-[12px] text-ink-muted">
+                  Rep for {classRepFor.map(c => `${c.department} (${c.level})`).join(', ')}
+                </p>
+                <Link href="/class-rep" className="rounded-full bg-brand-600 px-3 py-1 text-[12px] font-semibold text-white hover:bg-brand-700">
+                  Manage timetable →
                 </Link>
-              </p>
+              </div>
             )}
+            <p className="mt-0.5 text-[14px] text-ink-muted">@{displayUsername}</p>
 
-          {/* Meta row */}
-          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[13px] text-ink-muted">
-            <span className="flex items-center gap-1.5">
-              <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-              </svg>
-              {user.email}
-            </span>
-            {(user as { created_at?: string }).created_at && (
+            {/* Shareable profile link */}
+            {displayUsername ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const link = `${window.location.origin}/u/${displayUsername}`;
+                  navigator.clipboard?.writeText(link).then(
+                    () => { setShareCopied(true); setTimeout(() => setShareCopied(false), 2000); },
+                    () => {},
+                  );
+                }}
+                className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1 text-[12px] font-medium text-ink-muted transition hover:border-brand-300 hover:text-brand-600 dark:border-[#333]"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+                </svg>
+                {shareCopied ? 'Link copied!' : 'Share profile'}
+              </button>
+            ) : null}
+
+            {/* Bio */}
+            {user.bio
+              ? <p className="mt-3 text-[15px] leading-relaxed text-ink">{user.bio}</p>
+              : (
+                <p className="mt-3 text-[14px] italic text-ink-muted">
+                  No bio yet —{' '}
+                  <Link href="/settings#account" className="text-brand-600 hover:underline dark:text-brand-400">
+                    add one in Settings
+                  </Link>
+                </p>
+              )}
+
+            {/* Meta row */}
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-[13px] text-ink-muted">
               <span className="flex items-center gap-1.5">
                 <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
                 </svg>
-                Joined {new Date(String((user as { created_at?: string }).created_at)).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
+                {user.email}
               </span>
-            )}
+              {(user as { created_at?: string }).created_at && (
+                <span className="flex items-center gap-1.5">
+                  <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5" />
+                  </svg>
+                  Joined {new Date(String((user as { created_at?: string }).created_at)).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
+                </span>
+              )}
+            </div>
+
+            {/* Dept + level pills */}
+            <div className="mt-3 flex flex-wrap justify-center gap-2">
+              <span className="rounded-full bg-brand-50 px-3 py-1 text-[12px] font-medium text-brand-700">{user.department}</span>
+              <span className="rounded-full bg-gray-100 dark:bg-[#1a1a1a] px-3 py-1 text-[12px] font-medium text-gray-600 dark:text-gray-400">{user.level}</span>
+            </div>
           </div>
 
-          {/* Dept + level pills */}
-          <div className="mt-3 flex flex-wrap gap-2">
-            <span className="rounded-full bg-brand-50 px-3 py-1 text-[12px] font-medium text-brand-700">{user.department}</span>
-            <span className="rounded-full bg-gray-100 dark:bg-[#1a1a1a] px-3 py-1 text-[12px] font-medium text-gray-600 dark:text-gray-400">{user.level}</span>
+          {/* Stats row */}
+          <div className="mt-5 flex justify-center gap-8 border-b border-border pb-4 w-full">
+            <div className="text-center">
+              <p className="text-[17px] font-bold text-ink">{posts.length}</p>
+              <p className="text-[12px] text-ink-muted">Posts</p>
+            </div>
+            <button type="button" onClick={() => openModal('followers')} className="text-center transition hover:opacity-70">
+              <p className="text-[17px] font-bold text-ink">{followersCount}</p>
+              <p className="text-[12px] text-ink-muted">Followers</p>
+            </button>
+            <button type="button" onClick={() => openModal('following')} className="text-center transition hover:opacity-70">
+              <p className="text-[17px] font-bold text-ink">{followingCount}</p>
+              <p className="text-[12px] text-ink-muted">Following</p>
+            </button>
           </div>
-        </div>
 
-        {/* Stats row */}
-        <div className="mt-5 flex gap-8 border-b border-border pb-4">
-          <div>
-            <p className="text-[17px] font-bold text-ink">{posts.length}</p>
-            <p className="text-[12px] text-ink-muted">Posts</p>
-          </div>
-          <button type="button" onClick={() => openModal('followers')} className="text-left transition hover:opacity-70">
-            <p className="text-[17px] font-bold text-ink">{followersCount}</p>
-            <p className="text-[12px] text-ink-muted">Followers</p>
-          </button>
-          <button type="button" onClick={() => openModal('following')} className="text-left transition hover:opacity-70">
-            <p className="text-[17px] font-bold text-ink">{followingCount}</p>
-            <p className="text-[12px] text-ink-muted">Following</p>
-          </button>
+          {/* Edit profile -- moved here (below stats), matching mobile's
+              order, rather than sitting beside the avatar. */}
+          <Link href="/settings#account" className="mt-4">
+            <Button variant="secondary" size="sm" className="rounded-full px-5">
+              Edit profile
+            </Button>
+          </Link>
         </div>
       </div>
 
