@@ -38,10 +38,15 @@ file lists. Ticking off one at a time before more feature work.
       calendar); mobile has none. Large enough to be its own feature if
       actually needed — decide whether admins need to moderate from their
       phones before building anything.
-- [ ] **My Stories management screen (mobile)** — web has a dedicated page
-      listing all your active stories with view counts. Mobile only shows
-      view count / delete inline while watching your own story in the
-      viewer, no list. Smallest item, lowest priority.
+- [x] **My Stories management screen (mobile)** — web has a dedicated page
+      listing all your active stories with view counts. Turned out this was
+      already built (the untracked my-stories.tsx from item 6) — reviewed
+      and confirmed genuinely functional (correct endpoints, schema matches
+      field-for-field, follows this codebase's conventions), just had no
+      entry point anywhere in the app. Wired the feed-side link web has
+      (own-story label now reads "My Stories", navigates there). Profile-page
+      entry point deliberately deferred to item 9, which is where the "My
+      Status" section it belongs under actually gets built. [29a7a91]
 
 Checked and confirmed already at parity (no action needed): notification
 preferences, blocked users management, profile editing, followers/following
@@ -257,13 +262,6 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
 ---
 
 ## 🧹 Housekeeping / debt
-
-- **Untracked file sitting in the mobile working tree:** `mobile/app/my-stories.tsx`
-  (found while working on device-testing item 6). Not in git history, not
-  written by this session. Looks like a real, substantial My Stories
-  management screen implementation (the parity backlog item) — worth
-  reviewing and either finishing/committing it or discarding it deliberately,
-  rather than leaving it to sit uncommitted.
 
 - **Rotate the GitHub PAT** used for pushes — it's been live across many sessions.
   Urgent, unrelated to features.
