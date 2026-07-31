@@ -33,11 +33,17 @@ file lists. Ticking off one at a time before more feature work.
       Apple/Google's verification crawlers need to fetch them from the live
       domain; (2) a fresh EAS build for both platforms — `associatedDomains`
       and `intentFilters` are native config, only take effect in a new binary.
-- [ ] **Admin panel on mobile — needs a decision, not a build.** Web has full
-      admin (users, whitelist, reports, news, highlights, library, timetable,
-      calendar); mobile has none. Large enough to be its own feature if
-      actually needed — decide whether admins need to moderate from their
-      phones before building anything.
+- [x] **Admin panel — decided: web-only, no native mobile build needed.**
+      Admin work (moderating reports, managing users/whitelist, uploading
+      library materials, posting news, editing timetables) is inherently
+      desk-shaped — careful review, multi-field forms, file uploads — none
+      of which is meaningfully better on a phone. Decision: web's admin
+      panel is reachable via any mobile browser, and it's genuinely usable
+      there, not just technically accessible — checked the actual layout
+      code (web/src/app/admin/layout.tsx) and confirmed it already has a
+      proper responsive pattern (collapsible sidebar with a mobile overlay,
+      `lg:hidden` toggle), not a desktop-only layout that would break on a
+      phone. No native mobile admin screen needed.
 - [x] **My Stories management screen (mobile)** — web has a dedicated page
       listing all your active stories with view counts. Turned out this was
       already built (the untracked my-stories.tsx from item 6) — reviewed
