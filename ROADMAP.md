@@ -221,6 +221,43 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
 
 ---
 
+## 🐛 Reported bugs (not yet triaged or fixed)
+
+- [ ] **Reposts don't stay linked to the original post — raised before, still
+  broken.** Currently a repost behaves like an independent, separate post:
+  engagement (likes/comments/reposts/views) on the repost stays on the
+  repost instead of counting toward the original. E.g. an original post
+  with 5 likes/2 comments gets reposted, and any new engagement on that
+  repost never reflects back on the original — splitting engagement across
+  two posts instead of consolidating it.
+  Expected behavior (matching X/TikTok/Instagram's model):
+  - A repost always stays linked to the original post, never becomes an
+    independent post of its own
+  - The repost clearly shows who the original author is
+  - All engagement — likes, comments, reposts, views — is counted on the
+    original post regardless of where it's viewed (feed, repost, etc.)
+  - Liking or commenting on a repost increases the *original* post's
+    engagement, not a separate count
+  - Notifications from repost-driven engagement should say so explicitly
+    (e.g. "Someone liked your post via a repost") rather than reading like
+    engagement on a brand new post
+  - A repost should increase the original's *reach*, not fork its
+    engagement or ownership
+
+- [ ] **Badge visibility inconsistent depending on whose profile you're
+  viewing.** Admin and Verified badges show correctly everywhere (someone
+  else's profile, search results). Other role badges — Class Representative,
+  Influencer, and any other special roles — currently only show on the
+  *owner's own* profile view, not when other users view that same profile
+  or find them in search. Should be visible consistently regardless of who's
+  looking.
+
+- [ ] **Profile picture can only be changed, never removed.** No way to
+  delete a profile picture entirely (e.g. revert to no photo / default
+  avatar) — only replacing it with a different image is currently possible.
+
+---
+
 ## 🟡 Queued features (post-launch, roughly in priority order)
 
 ### Multi-media posts — 2–3 images/videos per post
