@@ -28,20 +28,30 @@ interface Material {
   created_at: string;
 }
 
+// Must match the only values that can ever actually exist: the admin
+// upload form (backend/src/routes/library.js's single POST /admin/upload,
+// the only material-creation path -- there's no non-admin upload route) is
+// hardcoded to exactly these four: past_question, lecture_note, textbook,
+// other. Confirmed by reading web/src/app/admin/library/page.tsx's own
+// TYPES array directly, not assumed.
+//
+// This wasn't just a wording mismatch -- it was two live bugs. 'note' never
+// matched anything (real materials are always 'lecture_note'), so tapping
+// "Notes" always showed zero results. 'slide' could never have data at all,
+// since nothing in the admin form (the only place that creates materials)
+// ever produces that value -- a permanently dead filter.
 const TYPES = [
-  { key: 'all', label: 'All' },
-  { key: 'past_question', label: 'Past Qs' },
-  { key: 'note', label: 'Notes' },
-  { key: 'textbook', label: 'Books' },
-  { key: 'slide', label: 'Slides' },
+  { key: 'all', label: 'All Materials' },
+  { key: 'past_question', label: 'Past Questions' },
+  { key: 'lecture_note', label: 'Lecture Notes' },
+  { key: 'textbook', label: 'Textbooks' },
   { key: 'other', label: 'Other' },
 ];
 
 const TYPE_ICON: Record<string, string> = {
   past_question: '📄',
-  note: '📝',
+  lecture_note: '📝',
   textbook: '📚',
-  slide: '📊',
   other: '📁',
 };
 
