@@ -5,7 +5,7 @@ const uploadAny = require('../middleware/uploadAny');
 const {
   getTodayClasses, getWeekClasses, getTimetableByDeptLevel,
   uploadTimetable, deleteTimetable, getUploads, previewCSV,
-  updateClass, addClass, deleteClass, setClassStatus,
+  updateClass, addClass, deleteClass, setClassStatus, bulkCancelClasses,
 } = require('../controllers/timetableController');
 
 const router = express.Router();
@@ -19,6 +19,10 @@ router.get('/admin/uploads', adminAuth, getUploads);
 router.post('/admin/upload', adminAuth, uploadAny.single('csv'), uploadTimetable);
 router.post('/admin/preview', adminAuth, uploadAny.single('csv'), previewCSV);
 router.delete('/admin/:department/:level', adminAuth, deleteTimetable);
+
+// Bulk status update: cancel every class across a date range + scope in one
+// action, instead of editing each class individually.
+router.post('/admin/bulk-cancel', adminAuth, bulkCancelClasses);
 
 // Individual class CRUD (admin)
 router.post('/admin/class', adminAuth, addClass);

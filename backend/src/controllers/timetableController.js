@@ -1,7 +1,9 @@
 const pool = require('../config/db');
 const Timetable = require('../models/Timetable');
+const TimetableOverride = require('../models/TimetableOverride');
 const User = require('../models/User');
 const { normalizeTime } = require('../lib/time');
+const { DEPARTMENT_GROUPS } = require('../lib/departments');
 
 const VALID_DAYS = new Set(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']);
 
@@ -254,9 +256,60 @@ async function deleteClass(req, res) {
   }
 }
 
+// Admin bulk-cancel: select a date range + scope (whole university, one
+// faculty, or one department [+ optional level]) and cancel every matching
+// class across that range in one action, instead of editing each class
+// individually. Reuses the same override mechanism class reps already use
+// for single-class overrides -- these are temporary, date-specific 'cancel'
+// overrides (auto-expire once the date passes), NOT a permanent change to
+// the recurring timetable's own status field, since a holiday/strike is
+// inherently date-bound, not "cancel this course forever."
+//
+// dryRun: true returns the count/breakdown WITHOUT writing anything, for the
+// admin UI's confirm-before-committing preview step.
+async function bulkCancelClasses(req, res) {
+  try {
+    const { startDate, endDate, scope, department, level, note, dryRun } = req.body;
+
+    if (!startDate || !endDate || !scope) {
+      return res.status(400).json({ message: 'startDate, endDate and scope are required' });
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      return res.status(400).json({ message: 'startDate/endDate must be YYYY-MM-DD' });
+    }
+    if (endDate < startDate) {
+      return res.status(400).json({ message: 'endDate must not be before startDate' });
+    }
+    if (!['university', 'faculty', 'department'].includes(scope)) {
+      return res.status(400).json({ message: "scope must be 'university', 'faculty', or 'department'" });
+    }
+
+    let departments = null;
+    if (scope === 'faculty') {
+      if (!department) return res.status(400).json({ message: 'faculty name is required (passed as `department`) for scope=faculty' });
+      const group = DEPARTMENT_GROUPS.find((g) => g.faculty === department);
+      if (!group) return res.status(400).json({ message: `Unknown faculty: ${department}` });
+      departments = group.departments;
+    } else if (scope === 'department') {
+      if (!department) return res.status(400).json({ message: 'department is required for scope=department' });
+      departments = [department];
+    }
+
+    const result = await TimetableOverride.bulkCancel({
+      startDate, endDate, scope, departments, level: level || null,
+      note: note || null, createdBy: req.user.id, dryRun: !!dryRun,
+    });
+    res.json(result);
+  } catch (err) {
+    console.error('bulkCancelClasses:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
 module.exports = {
   getTodayClasses, getWeekClasses, getTimetableByDeptLevel,
   uploadTimetable, deleteTimetable, getUploads, previewCSV, updateClass, addClass, deleteClass, setClassStatus,
+  bulkCancelClasses,
 };
 
 

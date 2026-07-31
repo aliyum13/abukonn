@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 import { Button, Card, CardContent, CardHeader, CardTitle, Skeleton, Input } from '@/components/ui';
-import { DepartmentOptions } from '@/lib/departments';
+import { DepartmentOptions, DEPARTMENT_GROUPS } from '@/lib/departments';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -63,6 +63,19 @@ export default function AdminTimetablePage() {
   const [newClass, setNewClass] = useState(emptyClass());
   const [savingClass, setSavingClass] = useState(false);
   const [deletingClassId, setDeletingClassId] = useState<number | null>(null);
+
+  // Bulk cancel — a date range + scope, in one action, instead of editing
+  // each class individually.
+  const [bulkStart, setBulkStart] = useState('');
+  const [bulkEnd, setBulkEnd] = useState('');
+  const [bulkScope, setBulkScope] = useState<'university' | 'faculty' | 'department'>('university');
+  const [bulkFaculty, setBulkFaculty] = useState('');
+  const [bulkDept, setBulkDept] = useState('');
+  const [bulkLevel, setBulkLevel] = useState('');
+  const [bulkNote, setBulkNote] = useState('');
+  const [bulkPreview, setBulkPreview] = useState<{ count: number; byDepartment: Record<string, number> } | null>(null);
+  const [bulkPreviewing, setBulkPreviewing] = useState(false);
+  const [bulkApplying, setBulkApplying] = useState(false);
 
   const showToast = (msg: string, err = false) => {
     setToast(msg); setToastError(err);
@@ -240,6 +253,68 @@ export default function AdminTimetablePage() {
     a.click(); URL.revokeObjectURL(url);
   };
 
+  // Shared body-builder for both the preview (dryRun) and the actual apply
+  // call -- keeps the two requests from silently drifting apart.
+  const bulkCancelBody = (dryRun: boolean) => {
+    if (bulkScope === 'faculty' && !bulkFaculty) return null;
+    if (bulkScope === 'department' && !bulkDept) return null;
+    return {
+      startDate: bulkStart,
+      endDate: bulkEnd,
+      scope: bulkScope,
+      // Backend takes the faculty name in the same `department` field for
+      // scope=faculty -- matches how it looks up DEPARTMENT_GROUPS server-side.
+      department: bulkScope === 'faculty' ? bulkFaculty : bulkScope === 'department' ? bulkDept : undefined,
+      level: bulkScope === 'department' && bulkLevel ? bulkLevel : undefined,
+      note: bulkNote || undefined,
+      dryRun,
+    };
+  };
+
+  const runBulkPreview = async () => {
+    if (!bulkStart || !bulkEnd) { showToast('Pick a start and end date first', true); return; }
+    const body = bulkCancelBody(true);
+    if (!body) { showToast(bulkScope === 'faculty' ? 'Pick a faculty' : 'Pick a department', true); return; }
+    setBulkPreviewing(true);
+    setBulkPreview(null);
+    try {
+      const res = await fetch(`${API_URL}/api/timetable/admin/bulk-cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.message || 'Preview failed', true); return; }
+      setBulkPreview(data);
+    } catch {
+      showToast('Preview failed', true);
+    } finally {
+      setBulkPreviewing(false);
+    }
+  };
+
+  const applyBulkCancel = async () => {
+    const body = bulkCancelBody(false);
+    if (!body) return;
+    setBulkApplying(true);
+    try {
+      const res = await fetch(`${API_URL}/api/timetable/admin/bulk-cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.message || 'Bulk cancel failed', true); return; }
+      showToast(`Cancelled ${data.count} class${data.count === 1 ? '' : 'es'} across ${Object.keys(data.byDepartment).length} department${Object.keys(data.byDepartment).length === 1 ? '' : 's'}.`);
+      setBulkPreview(null);
+      setBulkNote('');
+    } catch {
+      showToast('Bulk cancel failed', true);
+    } finally {
+      setBulkApplying(false);
+    }
+  };
+
   const dayOrder = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   // Parse "H:MM" or "HH:MM" into minutes so 8:00 sorts before 10:00 (string
   // comparison would wrongly put "10:00" before "8:00").
@@ -274,6 +349,129 @@ export default function AdminTimetablePage() {
           {toast}
         </div>
       )}
+
+      {/* Bulk Cancel — a date range + scope in one action, instead of
+          editing each class individually. E.g. a mid-semester break, public
+          holiday, or strike affecting the whole university or one faculty. */}
+      <Card>
+        <CardHeader className="p-6 pb-0">
+          <CardTitle>Bulk Cancel Classes</CardTitle>
+          <p className="mt-1 text-body-sm text-ink-secondary">
+            Cancel every scheduled class across a date range in one action — for a mid-semester break,
+            public holiday, strike, or anything else affecting the whole university or a faculty.
+          </p>
+        </CardHeader>
+        <CardContent className="p-6 space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-body-sm font-medium text-ink">Start date</label>
+              <Input type="date" value={bulkStart} onChange={(e) => { setBulkStart(e.target.value); setBulkPreview(null); }} />
+            </div>
+            <div>
+              <label className="mb-1 block text-body-sm font-medium text-ink">End date</label>
+              <Input type="date" value={bulkEnd} onChange={(e) => { setBulkEnd(e.target.value); setBulkPreview(null); }} />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-body-sm font-medium text-ink">Scope</label>
+            <div className="flex flex-wrap gap-2">
+              {(['university', 'faculty', 'department'] as const).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => { setBulkScope(s); setBulkPreview(null); }}
+                  className={cn(
+                    'rounded-full border px-4 py-1.5 text-body-sm font-medium capitalize transition',
+                    bulkScope === s ? 'border-brand-600 bg-brand-600 text-white' : 'border-border text-ink-secondary hover:border-brand-300'
+                  )}
+                >
+                  {s === 'university' ? 'Whole university' : s}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {bulkScope === 'faculty' && (
+            <div>
+              <label className="mb-1 block text-body-sm font-medium text-ink">Faculty</label>
+              <select
+                value={bulkFaculty}
+                onChange={(e) => { setBulkFaculty(e.target.value); setBulkPreview(null); }}
+                className="w-full rounded-lg border border-border bg-white px-3 py-2 text-body-sm text-ink dark:bg-[#111] dark:border-[#333]"
+              >
+                <option value="">Select a faculty</option>
+                {DEPARTMENT_GROUPS.map((g) => (
+                  <option key={g.faculty} value={g.faculty}>{g.faculty}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {bulkScope === 'department' && (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-body-sm font-medium text-ink">Department</label>
+                <select
+                  value={bulkDept}
+                  onChange={(e) => { setBulkDept(e.target.value); setBulkPreview(null); }}
+                  className="w-full rounded-lg border border-border bg-white px-3 py-2 text-body-sm text-ink dark:bg-[#111] dark:border-[#333]"
+                >
+                  <option value="">Department</option>
+                  <DepartmentOptions />
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-body-sm font-medium text-ink">Level (optional — all levels if blank)</label>
+                <select
+                  value={bulkLevel}
+                  onChange={(e) => { setBulkLevel(e.target.value); setBulkPreview(null); }}
+                  className="w-full rounded-lg border border-border bg-white px-3 py-2 text-body-sm text-ink dark:bg-[#111] dark:border-[#333]"
+                >
+                  <option value="">All levels</option>
+                  {LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
+                </select>
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="mb-1 block text-body-sm font-medium text-ink">Reason (optional)</label>
+            <Input placeholder="e.g. Mid-semester break" value={bulkNote} onChange={(e) => setBulkNote(e.target.value)} />
+          </div>
+
+          {bulkPreview ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/40">
+              <p className="text-body-sm font-semibold text-ink">
+                {bulkPreview.count === 0
+                  ? 'No classes match this range/scope — nothing to cancel.'
+                  : `This will cancel ${bulkPreview.count} class${bulkPreview.count === 1 ? '' : 'es'} across ${Object.keys(bulkPreview.byDepartment).length} department${Object.keys(bulkPreview.byDepartment).length === 1 ? '' : 's'}.`}
+              </p>
+              {bulkPreview.count > 0 && (
+                <ul className="mt-2 space-y-0.5 text-body-sm text-ink-secondary">
+                  {Object.entries(bulkPreview.byDepartment).map(([dept, n]) => (
+                    <li key={dept}>{dept}: {n}</li>
+                  ))}
+                </ul>
+              )}
+              <p className="mt-3 text-caption text-ink-muted">
+                Only classes not already cancelled for their specific date are counted — running this again is
+                safe and won&apos;t double-cancel anything.
+              </p>
+              <div className="mt-3 flex gap-2">
+                {bulkPreview.count > 0 && (
+                  <Button onClick={applyBulkCancel} loading={bulkApplying} className="bg-red-600 hover:bg-red-700">
+                    Confirm — cancel {bulkPreview.count} class{bulkPreview.count === 1 ? '' : 'es'}
+                  </Button>
+                )}
+                <Button variant="outline" onClick={() => setBulkPreview(null)}>Back</Button>
+              </div>
+            </div>
+          ) : (
+            <Button onClick={runBulkPreview} loading={bulkPreviewing}>Preview</Button>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Inline Editor */}
       {editingUpload && (

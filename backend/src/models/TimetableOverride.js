@@ -42,6 +42,105 @@ async function createTimetableOverridesTable() {
 
 const normalizeLevel = (level) => (level ? level.replace(/\s*level\s*/i, '').trim() : level);
 
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+// Every date between startDate and endDate (inclusive), paired with its
+// day-of-week name -- e.g. a Mid-Semester Break spanning Mon-Fri needs a
+// cancel override created against whichever recurring class actually falls
+// on each of those specific calendar dates, not just "cancel Monday's slot
+// once." Dates are UTC-based (YYYY-MM-DD strings in, out) to avoid
+// timezone drift shifting a date to the wrong day-of-week.
+function datesInRange(startDate, endDate) {
+  const out = [];
+  const cur = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
+  while (cur <= end) {
+    out.push({ date: cur.toISOString().slice(0, 10), day: DAY_NAMES[cur.getUTCDay()] });
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return out;
+}
+
+// Admin bulk-cancel: an entire date range, scoped to the whole university, one
+// faculty (via departmentsInSameFaculty-style lookup, passed in as an array
+// by the caller so this file doesn't need to import departments.js directly),
+// or a single department (+ optional level -- all levels of that department
+// if omitted). Reuses the exact same override mechanism class reps already
+// use for single-class overrides -- this is just the same 'cancel' kind,
+// created for every (class, date) pair the scope+range matches, in one pass.
+//
+// dryRun computes the count/breakdown without writing anything, for the
+// admin UI's "this will cancel N classes across M departments -- confirm?"
+// preview step. Same query either way, just SELECT vs INSERT.
+async function bulkCancel({
+  startDate, endDate, scope, departments = null, level = null, note = null, createdBy = null, dryRun = false,
+}) {
+  const range = datesInRange(startDate, endDate);
+  if (range.length === 0) return { count: 0, byDepartment: {} };
+
+  let deptFilter = '';
+  const baseParams = [];
+  if (scope === 'faculty' || scope === 'department') {
+    baseParams.push(departments); // array of department names
+    deptFilter = `AND t.department = ANY($${baseParams.length})`;
+  }
+  let levelFilter = '';
+  if (scope === 'department' && level) {
+    baseParams.push(normalizeLevel(level).toLowerCase());
+    levelFilter = `AND REPLACE(LOWER(t.level), ' level', '') = $${baseParams.length}`;
+  }
+
+  let totalCount = 0;
+  const byDepartment = {};
+
+  for (const { date, day } of range) {
+    const params = [...baseParams, day, date];
+    const dayParamIdx = params.length - 1; // day is second-to-last
+    const dateParamIdx = params.length; // date is last
+
+    if (dryRun) {
+      const { rows } = await pool.query(
+        `SELECT t.department, COUNT(*)::int AS n
+         FROM abukonn.timetables t
+         WHERE t.day = $${dayParamIdx} ${deptFilter} ${levelFilter}
+           AND NOT EXISTS (
+             SELECT 1 FROM abukonn.timetable_overrides o
+             WHERE o.original_class_id = t.id AND o.override_date = $${dateParamIdx} AND o.kind = 'cancel'
+           )
+         GROUP BY t.department`,
+        params
+      );
+      for (const r of rows) {
+        byDepartment[r.department] = (byDepartment[r.department] || 0) + r.n;
+        totalCount += r.n;
+      }
+    } else {
+      params.push(note, createdBy);
+      const noteIdx = params.length - 1;
+      const createdByIdx = params.length;
+      const { rows } = await pool.query(
+        `INSERT INTO abukonn.timetable_overrides
+           (department, level, override_date, kind, original_class_id, note, created_by)
+         SELECT t.department, t.level, $${dateParamIdx}, 'cancel', t.id, $${noteIdx}, $${createdByIdx}
+         FROM abukonn.timetables t
+         WHERE t.day = $${dayParamIdx} ${deptFilter} ${levelFilter}
+           AND NOT EXISTS (
+             SELECT 1 FROM abukonn.timetable_overrides o
+             WHERE o.original_class_id = t.id AND o.override_date = $${dateParamIdx} AND o.kind = 'cancel'
+           )
+         RETURNING department`,
+        params
+      );
+      for (const r of rows) {
+        byDepartment[r.department] = (byDepartment[r.department] || 0) + 1;
+        totalCount += 1;
+      }
+    }
+  }
+
+  return { count: totalCount, byDepartment };
+}
+
 async function createOverride({
   department, level, overrideDate, kind, originalClassId = null,
   startTime = null, endTime = null, courseCode = null, courseTitle = null,
@@ -111,4 +210,5 @@ module.exports = {
   getUpcomingOverrides,
   deleteOverride,
   getOverrideById,
+  bulkCancel,
 };
