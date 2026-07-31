@@ -241,21 +241,30 @@ async function likePost(req, res) {
       return res.status(404).json({ message: 'Post not found' });
     }
 
-    const { post, is_liked } = await Post.toggleLike(postId, req.user.id);
+    // Reposts must never fork engagement -- resolve to the one true original
+    // (walks any pre-existing repost chains, stops safely if that original
+    // was deleted) before writing anything.
+    const canonical = await Post.resolveCanonicalPost(existing);
+    const viaRepost = canonical.id !== existing.id;
+    const likeBody = viaRepost ? '{name} liked your post via a repost' : '{name} liked your post';
 
-    // Notify post owner only when liking (not unliking), skip own posts
-    if (is_liked && existing.user_id !== req.user.id) {
+    const { post, is_liked } = await Post.toggleLike(canonical.id, req.user.id);
+
+    // Notify the ORIGINAL author, not whoever posted the repost being
+    // viewed -- and say so when it happened via a repost, rather than
+    // reading like a like on a brand new post.
+    if (is_liked && canonical.user_id !== req.user.id) {
       Notification.createNotification({
-        recipientId: existing.user_id,
+        recipientId: canonical.user_id,
         senderId: req.user.id,
         type: 'like',
-        postId,
+        postId: canonical.id,
       })
-        .then(() => emitNotification(req.app, existing.user_id, {
+        .then(() => emitNotification(req.app, canonical.user_id, {
           title: 'ABUkonn',
-          body: '{name} liked your post',
+          body: likeBody,
           senderId: req.user.id,
-          data: { type: 'post', postId },
+          data: { type: 'post', postId: canonical.id },
         }))
         .catch(() => {});
     }
@@ -270,7 +279,14 @@ async function likePost(req, res) {
 async function getComments(req, res) {
   try {
     const postId = parseInt(req.params.id, 10);
-    const comments = await Comment.getCommentsByPost(postId, req.user.id);
+    const existing = await Post.getPostById(postId);
+    if (!existing) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+    // Same resolution as addComment -- a repost's comment thread IS the
+    // original's, not a separate one.
+    const canonical = await Post.resolveCanonicalPost(existing);
+    const comments = await Comment.getCommentsByPost(canonical.id, req.user.id);
     res.json({ comments });
   } catch (err) {
     console.error('Get comments error:', err.message);
@@ -321,28 +337,36 @@ async function addComment(req, res) {
       return res.status(404).json({ message: 'Post not found' });
     }
 
+    // Comments made on a repost must land on the original's own thread --
+    // otherwise they'd only ever be visible on that one specific repost,
+    // invisible everywhere else the original (or any other repost of it) is
+    // viewed. Resolve first, same as likePost.
+    const canonical = await Post.resolveCanonicalPost(existing);
+    const viaRepost = canonical.id !== existing.id;
+
     const comment = await Comment.createComment({
-      postId,
+      postId: canonical.id,
       userId: req.user.id,
       content: content.trim(),
     });
 
-    await Post.incrementCommentsCount(postId);
-    const post = await Post.getPostById(postId);
+    await Post.incrementCommentsCount(canonical.id);
+    const post = await Post.getPostById(canonical.id);
 
-    // Notify post owner when someone else comments
-    if (existing.user_id !== req.user.id) {
+    // Notify the ORIGINAL author, not whoever posted the repost being
+    // viewed -- and say so when it happened via a repost.
+    if (canonical.user_id !== req.user.id) {
       Notification.createNotification({
-        recipientId: existing.user_id,
+        recipientId: canonical.user_id,
         senderId: req.user.id,
         type: 'comment',
-        postId,
+        postId: canonical.id,
       })
-        .then(() => emitNotification(req.app, existing.user_id, {
+        .then(() => emitNotification(req.app, canonical.user_id, {
           title: 'ABUkonn',
-          body: '{name} commented on your post',
+          body: viaRepost ? '{name} commented on your post via a repost' : '{name} commented on your post',
           senderId: req.user.id,
-          data: { type: 'post', postId },
+          data: { type: 'post', postId: canonical.id },
         }))
         .catch(() => {});
     }
@@ -350,7 +374,7 @@ async function addComment(req, res) {
     resolveMentions(content.trim(), req.user.id)
       .then(async mentioned => {
         await Promise.all(mentioned.map(u =>
-          Notification.createNotification({ recipientId: u.id, senderId: req.user.id, type: 'mention', postId })
+          Notification.createNotification({ recipientId: u.id, senderId: req.user.id, type: 'mention', postId: canonical.id })
         ));
         emitNotificationToMany(req.app, mentioned.map(u => u.id));
       })
@@ -390,7 +414,13 @@ async function repostPost(req, res) {
   try {
     const originalPostId = parseInt(req.params.id, 10);
     const newPost = await Post.repostPost(originalPostId, req.user.id);
-    res.status(201).json({ message: 'Reposted', post: newPost });
+    // The raw INSERT ... RETURNING * has no original_likes_count/
+    // original_author_photo/etc -- those only come from the joined feed
+    // query. Without this, a freshly-created repost would show 0
+    // likes/comments until the next full feed refresh, since the client
+    // prefers original_likes_count for reposts and it'd be undefined.
+    const full = await Post.getPostByIdForUser(newPost.id, req.user.id);
+    res.status(201).json({ message: 'Reposted', post: full || newPost });
   } catch (err) {
     console.error('Repost error:', err.message);
     res.status(500).json({ message: err.message === 'Post not found' ? 'Post not found' : 'Server error' });
@@ -400,7 +430,12 @@ async function repostPost(req, res) {
 async function viewPost(req, res) {
   try {
     const postId = parseInt(req.params.id, 10);
-    await Post.incrementViewCount(postId);
+    const existing = await Post.getPostById(postId);
+    if (!existing) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+    const canonical = await Post.resolveCanonicalPost(existing);
+    await Post.incrementViewCount(canonical.id);
     res.json({ message: 'Viewed' });
   } catch (err) {
     console.error('View post error:', err.message);

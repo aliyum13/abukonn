@@ -61,6 +61,9 @@ interface Post {
   original_author_photo?: string | null;
   original_author_id?: number | null;
   reposts_count?: number;
+  original_likes_count?: number;
+  original_comments_count?: number;
+  original_repost_count?: number;
   view_count?: number;
   created_at: string;
   post_subtype?: string | null;
@@ -148,6 +151,13 @@ const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, on
   const displayName = post.is_repost && post.original_author_full_name ? post.original_author_full_name : post.author_name;
   const displayPhoto = post.is_repost && post.original_author_photo !== undefined && post.original_author_photo !== null ? post.original_author_photo : post.author_photo;
   const displayAuthorId = post.is_repost && post.original_author_id ? post.original_author_id : post.user_id;
+  // Reposts must never fork engagement -- show the original's real counts,
+  // matching web's exact pattern (same reasoning: interacting with the
+  // repost writes to the original server-side now, so the original's count
+  // is what's authoritative either way).
+  const displayLikes = post.is_repost && post.original_likes_count !== undefined ? post.original_likes_count : post.likes_count;
+  const displayComments = post.is_repost && post.original_comments_count !== undefined ? post.original_comments_count : post.comments_count;
+  const displayReposts = post.is_repost && post.original_repost_count !== undefined ? post.original_repost_count : post.reposts_count;
   return (
     <View style={s.card}>
       {post.is_repost ? (
@@ -292,15 +302,15 @@ const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, on
             size={20}
             color={post.is_liked ? palette.danger : palette.textSecondary}
           />
-          <Text style={[s.actionText, post.is_liked ? s.liked : null]}>{post.likes_count}</Text>
+          <Text style={[s.actionText, post.is_liked ? s.liked : null]}>{displayLikes}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={s.action} onPress={() => onOpenComments(post)}>
           <Ionicons name="chatbubble-outline" size={19} color={palette.textSecondary} />
-          <Text style={s.actionText}>{post.comments_count}</Text>
+          <Text style={s.actionText}>{displayComments}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={s.action} onPress={() => onRepost(post)}>
           <Ionicons name="repeat-outline" size={20} color={post.is_reposted ? palette.brand : palette.textSecondary} />
-          {post.reposts_count ? <Text style={[s.actionText, post.is_reposted ? { color: palette.brand } : null]}>{post.reposts_count}</Text> : null}
+          {displayReposts ? <Text style={[s.actionText, post.is_reposted ? { color: palette.brand } : null]}>{displayReposts}</Text> : null}
         </TouchableOpacity>
         <TouchableOpacity style={s.action} onPress={() => onShare(post)}>
           <Ionicons name="paper-plane-outline" size={19} color={palette.textSecondary} />
@@ -551,15 +561,36 @@ export default function Feed() {
   }).current;
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
 
+  // Reposts display original_likes_count, not their own likes_count (see
+  // displayLikes above) -- that's the field that needs to move here too,
+  // or liking a repost visually does nothing even though the server-side
+  // write (now correctly redirected to the original) succeeds.
   const toggleLike = useCallback(async (post: Post) => {
     const was = post.is_liked;
-    mutateBoth(post.id, p => ({ ...p, is_liked: !was, likes_count: p.likes_count + (was ? -1 : 1) }));
+    mutateBoth(post.id, p => {
+      if (p.is_repost && p.original_likes_count !== undefined) {
+        return { ...p, is_liked: !was, original_likes_count: p.original_likes_count + (was ? -1 : 1) };
+      }
+      return { ...p, is_liked: !was, likes_count: p.likes_count + (was ? -1 : 1) };
+    });
     try {
       const res = await apiFetch<{ is_liked: boolean; post: Post }>(
         `/api/posts/${post.id}/like`, { method: 'POST' });
-      mutateBoth(post.id, p => ({ ...p, is_liked: res.is_liked, likes_count: res.post.likes_count }));
+      // res.post is now always the CANONICAL post (the original, if this was
+      // a repost) -- its likes_count is the real, authoritative count.
+      mutateBoth(post.id, p => {
+        if (p.is_repost && p.original_likes_count !== undefined) {
+          return { ...p, is_liked: res.is_liked, original_likes_count: res.post.likes_count };
+        }
+        return { ...p, is_liked: res.is_liked, likes_count: res.post.likes_count };
+      });
     } catch {
-      mutateBoth(post.id, p => ({ ...p, is_liked: was, likes_count: p.likes_count + (was ? 1 : -1) }));
+      mutateBoth(post.id, p => {
+        if (p.is_repost && p.original_likes_count !== undefined) {
+          return { ...p, is_liked: was, original_likes_count: p.original_likes_count + (was ? 1 : -1) };
+        }
+        return { ...p, is_liked: was, likes_count: p.likes_count + (was ? 1 : -1) };
+      });
     }
   }, [mutateBoth]);
 
@@ -708,8 +739,15 @@ export default function Feed() {
         `/api/posts/${commentsFor.id}/comments`,
         { method: 'POST', body: JSON.stringify({ content: body }) });
       setComments(prev => [...prev, res.comment]);
-      setPosts(prev => prev.map(p => p.id === commentsFor.id
-        ? { ...p, comments_count: p.comments_count + 1 } : p));
+      // Same repost-aware field selection as toggleLike -- reposts display
+      // original_comments_count, not their own.
+      setPosts(prev => prev.map(p => {
+        if (p.id !== commentsFor.id) return p;
+        if (p.is_repost && p.original_comments_count !== undefined) {
+          return { ...p, original_comments_count: p.original_comments_count + 1 };
+        }
+        return { ...p, comments_count: p.comments_count + 1 };
+      }));
     } catch (err) {
       Alert.alert('Could not post comment', err instanceof Error ? err.message : '');
       setCommentText(body); // don't lose what they typed

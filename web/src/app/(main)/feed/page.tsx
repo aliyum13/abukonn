@@ -2085,13 +2085,18 @@ export default function FeedPage() {
 
   const handleLike = async (postId: number) => {
     if (!token) return;
-    // Optimistic toggle
+    // Optimistic toggle -- reposts display original_likes_count, not their
+    // own likes_count (see displayLikes below), so that's the field that
+    // needs to move here too, or liking a repost visually does nothing.
     mutatePosts((prev) =>
-      prev.map((p) =>
-        p.id === postId
-          ? { ...p, is_liked: !p.is_liked, likes_count: p.is_liked ? p.likes_count - 1 : p.likes_count + 1 }
-          : p
-      )
+      prev.map((p) => {
+        if (p.id !== postId) return p;
+        const wasLiked = p.is_liked;
+        if (p.is_repost && p.original_likes_count !== undefined) {
+          return { ...p, is_liked: !wasLiked, original_likes_count: wasLiked ? p.original_likes_count - 1 : p.original_likes_count + 1 };
+        }
+        return { ...p, is_liked: !wasLiked, likes_count: wasLiked ? p.likes_count - 1 : p.likes_count + 1 };
+      })
     );
     try {
       const res = await fetch(`${API_URL}/api/posts/${postId}/like`, {
@@ -2100,19 +2105,30 @@ export default function FeedPage() {
       });
       if (res.ok) {
         const data = await res.json();
+        // The server response's `post` is now always the CANONICAL post
+        // (the original, if this was a repost) -- its likes_count is the
+        // real, authoritative count post-write. Apply it to whichever field
+        // this card actually displays.
         mutatePosts((prev) =>
-          prev.map((p) =>
-            p.id === postId ? { ...p, likes_count: data.post.likes_count, is_liked: data.is_liked } : p
-          )
+          prev.map((p) => {
+            if (p.id !== postId) return p;
+            if (p.is_repost && p.original_likes_count !== undefined) {
+              return { ...p, original_likes_count: data.post.likes_count, is_liked: data.is_liked };
+            }
+            return { ...p, likes_count: data.post.likes_count, is_liked: data.is_liked };
+          })
         );
       } else {
         // Revert on server error
         mutatePosts((prev) =>
-          prev.map((p) =>
-            p.id === postId
-              ? { ...p, is_liked: !p.is_liked, likes_count: p.is_liked ? p.likes_count - 1 : p.likes_count + 1 }
-              : p
-          )
+          prev.map((p) => {
+            if (p.id !== postId) return p;
+            const wasLiked = p.is_liked;
+            if (p.is_repost && p.original_likes_count !== undefined) {
+              return { ...p, is_liked: !wasLiked, original_likes_count: wasLiked ? p.original_likes_count - 1 : p.original_likes_count + 1 };
+            }
+            return { ...p, is_liked: !wasLiked, likes_count: wasLiked ? p.likes_count - 1 : p.likes_count + 1 };
+          })
         );
       }
     } catch {
@@ -2153,8 +2169,16 @@ export default function FeedPage() {
       });
       if (res.ok) {
         const data = await res.json();
+        // Same repost-aware field selection as handleLike -- data.post is
+        // now always the canonical post (the original, if this is a repost).
         mutatePosts((prev) =>
-          prev.map((p) => p.id === postId ? { ...p, comments_count: data.post.comments_count } : p)
+          prev.map((p) => {
+            if (p.id !== postId) return p;
+            if (p.is_repost && p.original_comments_count !== undefined) {
+              return { ...p, original_comments_count: data.post.comments_count };
+            }
+            return { ...p, comments_count: data.post.comments_count };
+          })
         );
         // Replace temp with real comment from server
         setComments((prev) => ({

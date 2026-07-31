@@ -55,6 +55,12 @@ interface Post {
   is_repost: boolean;
   original_post_id: number | null;
   original_author_name: string | null;
+  original_author_full_name?: string | null;
+  original_author_photo?: string | null;
+  original_author_id?: number | null;
+  original_likes_count?: number;
+  original_comments_count?: number;
+  original_repost_count?: number;
   is_following_author: boolean;
   created_at: string;
   author_name: string;
@@ -180,7 +186,15 @@ export default function PostDetailPage() {
 
   const handleLike = async () => {
     if (!token || !post) return;
-    setPost(p => p ? { ...p, is_liked: !p.is_liked, likes_count: p.is_liked ? p.likes_count - 1 : p.likes_count + 1 } : p);
+    // Reposts display original_likes_count, not their own -- same reasoning
+    // and pattern as feed/page.tsx's handleLike.
+    setPost(p => {
+      if (!p) return p;
+      if (p.is_repost && p.original_likes_count !== undefined) {
+        return { ...p, is_liked: !p.is_liked, original_likes_count: p.is_liked ? p.original_likes_count - 1 : p.original_likes_count + 1 };
+      }
+      return { ...p, is_liked: !p.is_liked, likes_count: p.is_liked ? p.likes_count - 1 : p.likes_count + 1 };
+    });
     try {
       const res = await fetch(`${API_URL}/api/posts/${post.id}/like`, {
         method: 'POST',
@@ -188,12 +202,32 @@ export default function PostDetailPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setPost(p => p ? { ...p, likes_count: data.post.likes_count, is_liked: data.is_liked } : p);
+        // data.post is now always the CANONICAL post (the original, if this
+        // was a repost) -- its likes_count is the real, authoritative count.
+        setPost(p => {
+          if (!p) return p;
+          if (p.is_repost && p.original_likes_count !== undefined) {
+            return { ...p, original_likes_count: data.post.likes_count, is_liked: data.is_liked };
+          }
+          return { ...p, likes_count: data.post.likes_count, is_liked: data.is_liked };
+        });
       } else {
-        setPost(p => p ? { ...p, is_liked: !p.is_liked, likes_count: p.is_liked ? p.likes_count - 1 : p.likes_count + 1 } : p);
+        setPost(p => {
+          if (!p) return p;
+          if (p.is_repost && p.original_likes_count !== undefined) {
+            return { ...p, is_liked: !p.is_liked, original_likes_count: p.is_liked ? p.original_likes_count - 1 : p.original_likes_count + 1 };
+          }
+          return { ...p, is_liked: !p.is_liked, likes_count: p.is_liked ? p.likes_count - 1 : p.likes_count + 1 };
+        });
       }
     } catch {
-      setPost(p => p ? { ...p, is_liked: !p.is_liked, likes_count: p.is_liked ? p.likes_count - 1 : p.likes_count + 1 } : p);
+      setPost(p => {
+        if (!p) return p;
+        if (p.is_repost && p.original_likes_count !== undefined) {
+          return { ...p, is_liked: !p.is_liked, original_likes_count: p.is_liked ? p.original_likes_count - 1 : p.original_likes_count + 1 };
+        }
+        return { ...p, is_liked: !p.is_liked, likes_count: p.is_liked ? p.likes_count - 1 : p.likes_count + 1 };
+      });
     }
   };
 
@@ -220,7 +254,15 @@ export default function PostDetailPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setPost(p => p ? { ...p, comments_count: data.post.comments_count } : p);
+        // Same repost-aware field selection as handleLike -- data.post is
+        // now always the canonical post (the original, if this is a repost).
+        setPost(p => {
+          if (!p) return p;
+          if (p.is_repost && p.original_comments_count !== undefined) {
+            return { ...p, original_comments_count: data.post.comments_count };
+          }
+          return { ...p, comments_count: data.post.comments_count };
+        });
         setComments(prev => [...prev.filter(c => c.id !== tempComment.id), data.comment]);
       } else {
         setComments(prev => prev.filter(c => c.id !== tempComment.id));
@@ -456,6 +498,16 @@ export default function PostDetailPage() {
 
   if (!user) return null;
 
+  // For reposts: show the original author, and the original's real
+  // engagement counts (interacting with a repost writes to the original
+  // server-side, so its count is authoritative either way). Matches the
+  // exact pattern already established in feed/page.tsx.
+  const displayName = post.is_repost && post.original_author_full_name ? post.original_author_full_name : post.author_name;
+  const displayPhoto = post.is_repost && post.original_author_photo !== undefined && post.original_author_photo !== null ? post.original_author_photo : post.author_photo;
+  const displayAuthorId = post.is_repost && post.original_author_id ? post.original_author_id : post.user_id;
+  const displayLikes = post.is_repost && post.original_likes_count !== undefined ? post.original_likes_count : post.likes_count;
+  const displayComments = post.is_repost && post.original_comments_count !== undefined ? post.original_comments_count : post.comments_count;
+
   return (
     <div className="mx-auto max-w-2xl">
       {/* Sticky header */}
@@ -486,9 +538,9 @@ export default function PostDetailPage() {
         )}
 
         <div className="flex gap-3">
-          {/* Avatar */}
-          <Link href={`/profile/${post.user_id}`} className="shrink-0">
-            <Avatar src={post.author_photo} name={post.author_name} size="md" className="mt-0.5" />
+          {/* Avatar — original author for reposts, else the poster */}
+          <Link href={`/profile/${displayAuthorId}`} className="shrink-0">
+            <Avatar src={displayPhoto} name={displayName} size="md" className="mt-0.5" />
           </Link>
 
           {/* Post body */}
@@ -497,9 +549,9 @@ export default function PostDetailPage() {
             <div className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <Link href={`/profile/${post.user_id}`}
+                  <Link href={`/profile/${displayAuthorId}`}
                     className="font-semibold text-[15px] text-ink hover:underline">
-                    {post.author_name}
+                    {displayName}
                   </Link>
                   <RoleBadge role={post.author_role || 'user'} iconOnly />
                   {post.category && post.category !== 'GENERAL' && (
@@ -578,7 +630,7 @@ export default function PostDetailPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
                   </svg>
                 </span>
-                {post.likes_count > 0 && <span>{post.likes_count}</span>}
+                {displayLikes > 0 && <span>{displayLikes}</span>}
               </button>
 
               {/* Comment indicator (always active since comments are always shown) */}
@@ -590,7 +642,7 @@ export default function PostDetailPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.74 1.676v2.954a.75.75 0 01-1.088.67L6.19 21.1a.75.75 0 01-.365-.633v-1.44C3.512 17.962 3 15.075 3 12z" />
                   </svg>
                 </span>
-                {post.comments_count > 0 && <span>{post.comments_count}</span>}
+                {displayComments > 0 && <span>{displayComments}</span>}
               </span>
 
               {/* Repost count (display only on detail page) */}

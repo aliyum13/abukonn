@@ -105,6 +105,12 @@ async function getFollowingPosts(currentUserId, limit = 50, offset = 0) {
             COALESCE(p.category, 'GENERAL') AS category,
             COALESCE(p.is_repost, FALSE) AS is_repost,
             p.original_post_id, p.original_author_name,
+            orig_u.full_name AS original_author_full_name,
+            orig_u.profile_photo_url AS original_author_photo,
+            orig_u.id AS original_author_id,
+            COALESCE(orig.likes_count, 0) AS original_likes_count,
+            COALESCE(orig.comments_count, 0) AS original_comments_count,
+            COALESCE(orig.repost_count, 0) AS original_repost_count,
             COALESCE(p.post_subtype, 'post') AS post_subtype,
             p.discussion_title,
             p.created_at,
@@ -129,6 +135,8 @@ async function getFollowingPosts(currentUserId, limit = 50, offset = 0) {
             EXISTS(SELECT 1 FROM abukonn.event_rsvps er WHERE er.post_id = p.id AND er.user_id = $1) AS is_attending
      FROM abukonn.posts p
      JOIN abukonn.users u ON p.user_id = u.id
+     LEFT JOIN abukonn.posts orig ON p.is_repost = TRUE AND orig.id = p.original_post_id
+     LEFT JOIN abukonn.users orig_u ON orig.user_id = orig_u.id
      WHERE p.user_id IN (
        SELECT following_id FROM abukonn.follows WHERE follower_id = $1
      )
@@ -206,6 +214,28 @@ async function getPostById(id) {
   return result.rows[0] || null;
 }
 
+// Reposts should always act on the ONE true original post -- not fork their
+// own engagement, not chain through an intermediate repost. Given this ran
+// for a while before that was true (repostPost previously copied whatever
+// post it was handed, including another repost, without resolving further),
+// existing data may already have chains. This walks up to 5 hops (a repost-
+// of-a-repost-of-a-repost is not a realistic real scenario; the cap is a
+// safety net against any data corruption forming a cycle, not a real limit).
+// If a link in the chain has been deleted, stops at the last post that
+// still exists rather than throwing -- a deleted original must never crash
+// an interaction with whatever repost of it is still visible.
+async function resolveCanonicalPost(post) {
+  let current = post;
+  let hops = 0;
+  while (current && current.is_repost && current.original_post_id && hops < 5) {
+    const next = await getPostById(current.original_post_id);
+    if (!next) break; // original was deleted -- stay on the last valid post
+    current = next;
+    hops += 1;
+  }
+  return current;
+}
+
 async function getPostByIdForUser(id, currentUserId) {
   const result = await pool.query(
     `SELECT p.id, p.user_id, p.content, p.image_url, p.likes_count, p.comments_count,
@@ -214,6 +244,12 @@ async function getPostByIdForUser(id, currentUserId) {
             COALESCE(p.category, 'GENERAL') AS category,
             COALESCE(p.is_repost, FALSE) AS is_repost,
             p.original_post_id, p.original_author_name,
+            orig_u.full_name AS original_author_full_name,
+            orig_u.profile_photo_url AS original_author_photo,
+            orig_u.id AS original_author_id,
+            COALESCE(orig.likes_count, 0) AS original_likes_count,
+            COALESCE(orig.comments_count, 0) AS original_comments_count,
+            COALESCE(orig.repost_count, 0) AS original_repost_count,
             COALESCE(p.post_subtype, 'post') AS post_subtype,
             p.discussion_title,
             p.created_at,
@@ -241,6 +277,8 @@ async function getPostByIdForUser(id, currentUserId) {
             EXISTS(SELECT 1 FROM abukonn.event_rsvps er WHERE er.post_id = p.id AND er.user_id = $2) AS is_attending
      FROM abukonn.posts p
      JOIN abukonn.users u ON p.user_id = u.id
+     LEFT JOIN abukonn.posts orig ON p.is_repost = TRUE AND orig.id = p.original_post_id
+     LEFT JOIN abukonn.users orig_u ON orig.user_id = orig_u.id
      WHERE p.id = $1`,
     [id, currentUserId]
   );
@@ -307,6 +345,12 @@ async function getPostsByUserId(userId, currentUserId = null) {
             COALESCE(p.category, 'GENERAL') AS category,
             COALESCE(p.is_repost, FALSE) AS is_repost,
             p.original_post_id, p.original_author_name,
+            orig_u.full_name AS original_author_full_name,
+            orig_u.profile_photo_url AS original_author_photo,
+            orig_u.id AS original_author_id,
+            COALESCE(orig.likes_count, 0) AS original_likes_count,
+            COALESCE(orig.comments_count, 0) AS original_comments_count,
+            COALESCE(orig.repost_count, 0) AS original_repost_count,
             COALESCE(p.post_subtype, 'post') AS post_subtype,
             p.discussion_title,
             p.created_at,
@@ -334,6 +378,8 @@ async function getPostsByUserId(userId, currentUserId = null) {
             EXISTS(SELECT 1 FROM abukonn.event_rsvps er WHERE er.post_id = p.id AND er.user_id = $2) AS is_attending
      FROM abukonn.posts p
      JOIN abukonn.users u ON p.user_id = u.id
+     LEFT JOIN abukonn.posts orig ON p.is_repost = TRUE AND orig.id = p.original_post_id
+     LEFT JOIN abukonn.users orig_u ON orig.user_id = orig_u.id
      WHERE p.user_id = $1
      ORDER BY p.created_at DESC`,
     [userId, viewerId]
@@ -342,8 +388,11 @@ async function getPostsByUserId(userId, currentUserId = null) {
 }
 
 async function repostPost(originalPostId, userId) {
-  const original = await getPostById(originalPostId);
-  if (!original) throw new Error('Post not found');
+  const target = await getPostById(originalPostId);
+  if (!target) throw new Error('Post not found');
+  // Reposting a repost must point at the ONE true original, not chain
+  // through the intermediate repost -- resolve first.
+  const original = await resolveCanonicalPost(target);
   const newPost = await pool.query(
     `INSERT INTO abukonn.posts
        (user_id, content, image_url, category, is_repost, original_post_id, original_author_name)
@@ -354,13 +403,13 @@ async function repostPost(originalPostId, userId) {
       original.content,
       original.image_url,
       original.category || 'GENERAL',
-      originalPostId,
+      original.id,
       original.author_name,
     ]
   );
   await pool.query(
     `UPDATE abukonn.posts SET repost_count = COALESCE(repost_count, 0) + 1 WHERE id = $1`,
-    [originalPostId]
+    [original.id]
   );
   return newPost.rows[0];
 }
@@ -442,6 +491,7 @@ module.exports = {
   getFollowingPosts,
   getPostsByUserId,
   getPostById,
+  resolveCanonicalPost,
   getPostByIdForUser,
   toggleLike,
   incrementCommentsCount,

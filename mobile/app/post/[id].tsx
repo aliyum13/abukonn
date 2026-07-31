@@ -36,6 +36,7 @@ interface Post {
   event_rsvp_count?: number; is_attending?: boolean;
   is_repost?: boolean; original_author_name?: string | null;
   original_author_full_name?: string | null; original_author_photo?: string | null; original_author_id?: number | null;
+  original_likes_count?: number; original_comments_count?: number; original_repost_count?: number;
 }
 interface Comment { id: number; user_id?: number; content: string; author_name: string; created_at: string; reply_count?: number; likes_count?: number; is_liked?: boolean }
 interface Reply { id: number; content: string; author_name: string; created_at: string }
@@ -125,12 +126,25 @@ export default function SinglePost() {
   const toggleLike = async () => {
     if (!post) return;
     const was = post.is_liked;
-    setPost({ ...post, is_liked: !was, likes_count: post.likes_count + (was ? -1 : 1) });
+    // Reposts display original_likes_count, not their own -- same pattern as
+    // feed.tsx. Server write is redirected to the original either way.
+    const bump = (p: Post, dir: number): Post =>
+      p.is_repost && p.original_likes_count !== undefined
+        ? { ...p, original_likes_count: p.original_likes_count + dir }
+        : { ...p, likes_count: p.likes_count + dir };
+    setPost({ ...bump(post, was ? -1 : 1), is_liked: !was });
     try {
       const res = await apiFetch<{ is_liked: boolean; post: Post }>(`/api/posts/${post.id}/like`, { method: 'POST' });
-      setPost(p => p ? { ...p, is_liked: res.is_liked, likes_count: res.post.likes_count } : p);
+      // res.post is the canonical (original) post -- authoritative count.
+      setPost(p => {
+        if (!p) return p;
+        if (p.is_repost && p.original_likes_count !== undefined) {
+          return { ...p, is_liked: res.is_liked, original_likes_count: res.post.likes_count };
+        }
+        return { ...p, is_liked: res.is_liked, likes_count: res.post.likes_count };
+      });
     } catch {
-      setPost(p => p ? { ...p, is_liked: was, likes_count: p.likes_count + (was ? 1 : -1) } : p);
+      setPost(p => p ? { ...bump(p, was ? 1 : -1), is_liked: was } : p);
     }
   };
 
@@ -230,7 +244,13 @@ export default function SinglePost() {
         text: 'Delete', style: 'destructive',
         onPress: async () => {
           setComments(prev => prev.filter(c => c.id !== commentId));
-          setPost(p => p ? { ...p, comments_count: Math.max(0, p.comments_count - 1) } : p);
+          setPost(p => {
+            if (!p) return p;
+            if (p.is_repost && p.original_comments_count !== undefined) {
+              return { ...p, original_comments_count: Math.max(0, p.original_comments_count - 1) };
+            }
+            return { ...p, comments_count: Math.max(0, p.comments_count - 1) };
+          });
           try {
             await apiFetch(`/api/posts/${id}/comments/${commentId}`, { method: 'DELETE' });
           } catch {
@@ -251,7 +271,13 @@ export default function SinglePost() {
         method: 'POST', body: JSON.stringify({ content: body }),
       });
       if (res.comment) setComments(prev => [...prev, res.comment]);
-      setPost(p => p ? { ...p, comments_count: p.comments_count + 1 } : p);
+      setPost(p => {
+        if (!p) return p;
+        if (p.is_repost && p.original_comments_count !== undefined) {
+          return { ...p, original_comments_count: p.original_comments_count + 1 };
+        }
+        return { ...p, comments_count: p.comments_count + 1 };
+      });
     } catch {
       setText(body);
     } finally {
@@ -320,15 +346,18 @@ export default function SinglePost() {
                 <View style={s.actions}>
                   <TouchableOpacity style={s.action} onPress={toggleLike}>
                     <Ionicons name={post.is_liked ? 'heart' : 'heart-outline'} size={20} color={post.is_liked ? colors.danger : colors.textSecondary} />
-                    <Text style={s.actionText}>{post.likes_count}</Text>
+                    <Text style={s.actionText}>{post.is_repost && post.original_likes_count !== undefined ? post.original_likes_count : post.likes_count}</Text>
                   </TouchableOpacity>
                   <View style={s.action}>
                     <Ionicons name="chatbubble-outline" size={19} color={colors.textSecondary} />
-                    <Text style={s.actionText}>{post.comments_count}</Text>
+                    <Text style={s.actionText}>{post.is_repost && post.original_comments_count !== undefined ? post.original_comments_count : post.comments_count}</Text>
                   </View>
                   <TouchableOpacity style={s.action} onPress={repost}>
                     <Ionicons name="repeat-outline" size={20} color={post.is_reposted ? colors.brand : colors.textSecondary} />
-                    {post.reposts_count ? <Text style={[s.actionText, post.is_reposted ? { color: colors.brand } : null]}>{post.reposts_count}</Text> : null}
+                    {(() => {
+                      const r = post.is_repost && post.original_repost_count !== undefined ? post.original_repost_count : post.reposts_count;
+                      return r ? <Text style={[s.actionText, post.is_reposted ? { color: colors.brand } : null]}>{r}</Text> : null;
+                    })()}
                   </TouchableOpacity>
                   <TouchableOpacity style={s.action} onPress={() => setShareOpen(true)}>
                     <Ionicons name="paper-plane-outline" size={19} color={colors.textSecondary} />
