@@ -44,14 +44,21 @@ async function getGroupMessages(req, res) {
     const member = await Group.isMember(groupId, req.user.id);
     if (!member) return res.status(403).json({ message: 'Not a member of this group' });
 
-    const [messages, group, members, pending] = await Promise.all([
-      Group.getGroupMessages(groupId),
+    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
+    const before = req.query.before ? parseInt(req.query.before, 10) : undefined;
+
+    const [messagesPage, group, members, pending] = await Promise.all([
+      Group.getGroupMessages(groupId, { limit, before }),
       Group.getGroupById(groupId),
       Group.getGroupMembers(groupId),
       Group.getPendingMembers(groupId),
     ]);
     const myRole = (await Group.isAdmin(groupId, req.user.id)) ? 'admin' : 'member';
-    res.json({ messages, group, members, pending, my_role: myRole });
+    res.json({
+      messages: messagesPage.messages,
+      hasMore: messagesPage.hasMore,
+      group, members, pending, my_role: myRole,
+    });
   } catch (err) {
     console.error('Get group messages error:', err.message);
     res.status(500).json({ message: 'Server error' });

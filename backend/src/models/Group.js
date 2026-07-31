@@ -292,17 +292,37 @@ async function deleteGroup(groupId) {
   await pool.query(`DELETE FROM abukonn.groups WHERE id = $1`, [groupId]);
 }
 
-async function getGroupMessages(groupId) {
+// Same unbounded-fetch bug DMs had before Message.getMessages() was fixed
+// (6c0e145) -- opening a group with a long history fetched and rendered
+// every message it ever had, every time. Same fix shape: most recent
+// `limit` by default, `before` (a message id) pages further back, `hasMore`
+// tells the client whether there's more history beyond this page.
+async function getGroupMessages(groupId, { limit = 50, before } = {}) {
+  const params = [groupId];
+  let beforeClause = '';
+  if (before) {
+    params.push(before);
+    beforeClause = `AND gm.id < $${params.length}`;
+  }
+  params.push(limit + 1); // probe row, same technique as Message.getMessages()
+
   const { rows } = await pool.query(
-    `SELECT gm.id, gm.group_id, gm.sender_id, gm.content, gm.image_url, gm.file_url, gm.file_name, gm.file_size, gm.created_at, gm.is_deleted,
-            u.full_name AS sender_name, u.profile_photo_url AS sender_photo
-     FROM abukonn.group_messages gm
-     JOIN abukonn.users u ON gm.sender_id = u.id
-     WHERE gm.group_id = $1
-     ORDER BY gm.created_at ASC`,
-    [groupId]
+    `SELECT * FROM (
+       SELECT gm.id, gm.group_id, gm.sender_id, gm.content, gm.image_url, gm.file_url, gm.file_name, gm.file_size, gm.created_at, gm.is_deleted,
+              u.full_name AS sender_name, u.profile_photo_url AS sender_photo
+       FROM abukonn.group_messages gm
+       JOIN abukonn.users u ON gm.sender_id = u.id
+       WHERE gm.group_id = $1 ${beforeClause}
+       ORDER BY gm.id DESC
+       LIMIT $${params.length}
+     ) page
+     ORDER BY id ASC`,
+    params
   );
-  return rows;
+
+  const hasMore = rows.length > limit;
+  const messages = hasMore ? rows.slice(1) : rows; // drop the oldest row (the probe), same as Message.getMessages()
+  return { messages, hasMore };
 }
 
 async function sendGroupMessage({ groupId, senderId, content, imageUrl, fileUrl = null, fileName = null, fileSize = null }) {

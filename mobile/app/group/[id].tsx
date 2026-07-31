@@ -12,6 +12,7 @@ import { apiFetch } from '../../src/lib/api';
 import { uploadImage } from '../../src/lib/upload';
 import { useAuth } from '../../src/context/AuthContext';
 import { plainText } from '../../src/lib/messagePreview';
+import { MessageBody } from '../../src/components/MessageBody';
 import { colors } from '../../src/theme';
 
 interface GroupMsg {
@@ -41,19 +42,51 @@ export default function GroupChat() {
   const [forwardingTo, setForwardingTo] = useState<number | null>(null);
   const [forwardedTo, setForwardedTo] = useState<Set<number>>(new Set());
   const listRef = useRef<FlatList<GroupMsg>>(null);
+  // Older-history pagination, same fix shape as chat/[id].tsx (item 4) --
+  // group history had the identical unbounded-fetch bug, just never reported
+  // separately since it was found while fixing the DM one.
+  const [hasMoreOlder, setHasMoreOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const pinScrollRef = useRef(false);
 
   const load = useCallback(async () => {
     try {
-      const data = await apiFetch<{ messages: GroupMsg[]; members: unknown[] }>(
+      const data = await apiFetch<{ messages: GroupMsg[]; members: unknown[]; hasMore?: boolean }>(
         `/api/groups/${id}/messages`);
       setMessages(data.messages || []);
       setMemberCount(data.members?.length || 0);
+      setHasMoreOlder(!!data.hasMore);
     } catch {
       setMessages([]);
+      setHasMoreOlder(false);
     } finally {
       setLoading(false);
     }
   }, [id]);
+
+  const loadOlder = useCallback(async () => {
+    if (loadingOlder || !hasMoreOlder || messages.length === 0) return;
+    const oldestId = messages[0].id;
+    setLoadingOlder(true);
+    pinScrollRef.current = true;
+    try {
+      const data = await apiFetch<{ messages: GroupMsg[]; hasMore?: boolean }>(
+        `/api/groups/${id}/messages?before=${oldestId}`
+      );
+      const older = data.messages || [];
+      setMessages(prev => {
+        const existing = new Set(prev.map(m => m.id));
+        const deduped = older.filter(m => !existing.has(m.id));
+        return deduped.length > 0 ? [...deduped, ...prev] : prev;
+      });
+      setHasMoreOlder(!!data.hasMore);
+    } catch {
+      // leave existing messages untouched; user can tap again to retry
+    } finally {
+      setLoadingOlder(false);
+      setTimeout(() => { pinScrollRef.current = false; }, 300);
+    }
+  }, [id, loadingOlder, hasMoreOlder, messages]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -191,7 +224,19 @@ export default function GroupChat() {
             data={messages}
             keyExtractor={m => String(m.id)}
             contentContainerStyle={{ padding: 12 }}
-            onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+            onContentSizeChange={() => {
+              if (pinScrollRef.current) return; // prepending older history — stay put
+              listRef.current?.scrollToEnd({ animated: false });
+            }}
+            ListHeaderComponent={
+              hasMoreOlder ? (
+                <TouchableOpacity style={s.loadOlderBtn} onPress={loadOlder} disabled={loadingOlder} activeOpacity={0.7}>
+                  {loadingOlder
+                    ? <ActivityIndicator size="small" color={colors.brand} />
+                    : <Text style={s.loadOlderText}>Load earlier messages</Text>}
+                </TouchableOpacity>
+              ) : null
+            }
             renderItem={({ item }) => {
               const mine = item.sender_id === user?.id;
               const isDeleted = !!item.is_deleted;
@@ -223,7 +268,7 @@ export default function GroupChat() {
                           <Image source={{ uri: item.image_url }} style={s.msgImage} resizeMode="contain" />
                         ) : null}
                         {item.content ? (
-                          <Text style={mine ? s.mineText : s.theirsText}>{item.content}</Text>
+                          <MessageBody content={item.content} mine={mine} />
                         ) : null}
                       </>
                     )}
@@ -321,6 +366,8 @@ const make_s = (colors: Palette) => StyleSheet.create({
   theirsText: { color: colors.text, fontSize: 15 },
   deletedText: { fontSize: 15, fontStyle: 'italic', color: colors.muted },
   deletedTextMine: { color: 'rgba(255,255,255,0.85)' },
+  loadOlderBtn: { alignItems: 'center', justifyContent: 'center', paddingVertical: 12, marginBottom: 4 },
+  loadOlderText: { fontSize: 13, fontWeight: '700', color: colors.brand },
   msgImage: { width: 200, height: 200, borderRadius: 10, marginBottom: 4 },
   bar: {
     flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12,

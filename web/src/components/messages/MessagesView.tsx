@@ -467,6 +467,8 @@ export function MessagesView() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [activeGroupId, setActiveGroupId] = useState<number | null>(null);
   const [groupMessages, setGroupMessages] = useState<GroupMessage[]>([]);
+  const [hasMoreOlderGroup, setHasMoreOlderGroup] = useState(false);
+  const [loadingOlderGroup, setLoadingOlderGroup] = useState(false);
   const [activeGroupInfo, setActiveGroupInfo] = useState<Group | null>(null);
   const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
   const [pendingMembers, setPendingMembers] = useState<GroupMember[]>([]);
@@ -646,6 +648,7 @@ export function MessagesView() {
       });
       const data = await res.json();
       setGroupMessages(data.messages || []);
+      setHasMoreOlderGroup(!!data.hasMore);
       if (data.group) {
         setActiveGroupInfo(data.group);
         setSettingsForm({
@@ -663,6 +666,34 @@ export function MessagesView() {
     } catch { setGroupMessages([]); }
     finally { setMessagesLoading(false); }
   }, [token]);
+
+  // Pages further back into group history, prepending older messages. Same
+  // guard shape as loadOlderMessages (the DM equivalent).
+  const loadOlderGroupMessages = useCallback(async () => {
+    if (!token || loadingOlderGroup || !hasMoreOlderGroup || groupMessages.length === 0 || !activeGroupId) return;
+    const oldestId = groupMessages[0].id;
+    setLoadingOlderGroup(true);
+    try {
+      const res = await fetch(`${API_URL}/api/groups/${activeGroupId}/messages?before=${oldestId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      const older: GroupMessage[] = data.messages || [];
+      setGroupMessages(prev => {
+        const existing = new Set(prev.map(m => m.id));
+        const deduped = older.filter(m => !existing.has(m.id));
+        if (deduped.length === 0) return prev;
+        skipAutoScrollRef.current = true;
+        return [...deduped, ...prev];
+      });
+      setHasMoreOlderGroup(!!data.hasMore);
+    } catch {
+      // leave existing messages untouched; the button stays for a retry
+    } finally {
+      setLoadingOlderGroup(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, loadingOlderGroup, hasMoreOlderGroup, groupMessages, activeGroupId]);
 
   useEffect(() => { if (activeId) fetchMessages(activeId); }, [activeId, fetchMessages]);
   useEffect(() => { if (activeGroupId) fetchGroupMessages(activeGroupId); }, [activeGroupId, fetchGroupMessages]);
@@ -1714,6 +1745,18 @@ export function MessagesView() {
                     </div>
                   ) : (
                     <div className="space-y-2">
+                      {hasMoreOlderGroup && (
+                        <div className="flex justify-center pb-2">
+                          <button
+                            type="button"
+                            onClick={loadOlderGroupMessages}
+                            disabled={loadingOlderGroup}
+                            className="rounded-full px-4 py-1.5 text-caption font-semibold text-brand-600 transition hover:bg-surface disabled:opacity-60 dark:hover:bg-[#1a1a1a]"
+                          >
+                            {loadingOlderGroup ? 'Loading…' : 'Load earlier messages'}
+                          </button>
+                        </div>
+                      )}
                       {groupMessages.map((msg, idx) => {
                         const isSent = msg.sender_id === user.id;
                         const prevMsg = groupMessages[idx - 1];
