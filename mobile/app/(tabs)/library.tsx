@@ -11,7 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../../src/lib/api';
 import { colors, radius, shadow } from '../../src/theme';
 import { useTabScrollToTop } from '../../src/lib/useScrollToTop';
-import { DEPARTMENTS, LEVELS } from '../../src/lib/departments';
+import { DEPARTMENTS, DEPARTMENT_GROUPS, LEVELS } from '../../src/lib/departments';
 
 interface Material {
   id: number;
@@ -64,36 +64,59 @@ export default function Library() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [type, setType] = useState('all');
+  const [faculty, setFaculty] = useState('');
   const [department, setDepartment] = useState('');
   const [level, setLevel] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const PAGE_LIMIT = 20; // must match backend Library.getMaterials limit
 
-  const load = useCallback(async (t: string, q: string, dept = '', lvl = '') => {
-    setLoading(true);
+  // Loads a page. page 1 replaces the list; higher pages append (infinite
+  // scroll). Mirrors web's server-side paging + filters, using append instead
+  // of Previous/Next since that's the native pattern.
+  const load = useCallback(async (t: string, q: string, fac = '', dept = '', lvl = '', pg = 1) => {
+    if (pg === 1) setLoading(true); else setLoadingMore(true);
     try {
       const params = new URLSearchParams();
       if (t && t !== 'all') params.append('type', t);
       if (q.trim()) params.append('search', q.trim());
+      if (fac) params.append('faculty', fac);
       if (dept) params.append('department', dept);
       if (lvl) params.append('level', lvl);
-      const data = await apiFetch<{ materials: Material[] }>(`/api/library?${params.toString()}`);
-      setMaterials(data.materials || []);
+      params.append('page', String(pg));
+      const data = await apiFetch<{ materials: Material[]; total: number }>(`/api/library?${params.toString()}`);
+      const rows = data.materials || [];
+      setMaterials(prev => (pg === 1 ? rows : [...prev, ...rows]));
+      setTotal(data.total || 0);
+      setPage(pg);
     } catch {
-      setMaterials([]);
+      if (pg === 1) setMaterials([]);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
       setRefreshing(false);
     }
   }, []);
 
-  useEffect(() => { load(type, search, department, level); }, [type, department, level]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { setRefresh(() => load(type, search, department, level)); }, [type, search, department, level, load, setRefresh]);
+  // Filter/search changes reset to page 1.
+  useEffect(() => { load(type, search, faculty, department, level, 1); }, [type, faculty, department, level]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setRefresh(() => load(type, search, faculty, department, level, 1)); }, [type, search, faculty, department, level, load, setRefresh]);
 
   // Debounce search so we're not firing a request on every keystroke.
   useEffect(() => {
-    const t = setTimeout(() => load(type, search, department, level), 400);
+    const t = setTimeout(() => load(type, search, faculty, department, level, 1), 400);
     return () => clearTimeout(t);
   }, [search]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Infinite scroll: fetch the next page when the list nears its end, but only
+  // if there's more to load and we're not already fetching.
+  const loadMore = useCallback(() => {
+    if (loadingMore || loading) return;
+    if (materials.length >= total) return; // all loaded
+    load(type, search, faculty, department, level, page + 1);
+  }, [loadingMore, loading, materials.length, total, type, search, faculty, department, level, page, load]);
 
   const openFile = async (m: Material) => {
     // Office files (Word/PPT/Excel) don't render natively — route them through
@@ -168,9 +191,9 @@ export default function Library() {
             </TouchableOpacity>
           )}
         />
-        <TouchableOpacity style={[s.filterBtn, (department || level) ? s.filterBtnActive : null]} onPress={() => setFilterOpen(true)}>
-          <Ionicons name="options-outline" size={18} color={(department || level) ? '#fff' : colors.textSecondary} />
-          {(department || level) ? <View style={s.filterDot} /> : null}
+        <TouchableOpacity style={[s.filterBtn, (faculty || department || level) ? s.filterBtnActive : null]} onPress={() => setFilterOpen(true)}>
+          <Ionicons name="options-outline" size={18} color={(faculty || department || level) ? '#fff' : colors.textSecondary} />
+          {(faculty || department || level) ? <View style={s.filterDot} /> : null}
         </TouchableOpacity>
       </View>
 
@@ -183,8 +206,15 @@ export default function Library() {
           keyExtractor={m => String(m.id)}
           refreshControl={
             <RefreshControl refreshing={refreshing}
-              onRefresh={() => { setRefreshing(true); load(type, search, department, level); }}
+              onRefresh={() => { setRefreshing(true); load(type, search, faculty, department, level, 1); }}
               tintColor={colors.brand} />
+          }
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={s.footerLoad}><ActivityIndicator color={colors.brand} /></View>
+            ) : null
           }
           ListEmptyComponent={
             <View style={s.center}>
@@ -220,7 +250,7 @@ export default function Library() {
           <View style={s.fSheet}>
             <View style={s.fHeader}>
               <Text style={s.fTitle}>Filter</Text>
-              <TouchableOpacity onPress={() => { setDepartment(''); setLevel(''); }} hitSlop={8}>
+              <TouchableOpacity onPress={() => { setFaculty(''); setDepartment(''); setLevel(''); }} hitSlop={8}>
                 <Text style={s.fClear}>Clear all</Text>
               </TouchableOpacity>
             </View>
@@ -236,12 +266,27 @@ export default function Library() {
                   </TouchableOpacity>
                 ))}
               </View>
+              <Text style={s.fLabel}>Faculty</Text>
+              <View style={s.fChips}>
+                <TouchableOpacity style={[s.fChip, !faculty ? s.fChipOn : null]} onPress={() => { setFaculty(''); setDepartment(''); }}>
+                  <Text style={!faculty ? s.fChipTextOn : s.fChipText}>All</Text>
+                </TouchableOpacity>
+                {DEPARTMENT_GROUPS.map(g => (
+                  <TouchableOpacity key={g.faculty} style={[s.fChip, faculty === g.faculty ? s.fChipOn : null]}
+                    onPress={() => { setFaculty(g.faculty); setDepartment(''); }}>
+                    <Text style={faculty === g.faculty ? s.fChipTextOn : s.fChipText} numberOfLines={1}>{g.faculty}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
               <Text style={s.fLabel}>Department</Text>
               <View style={s.fChips}>
                 <TouchableOpacity style={[s.fChip, !department ? s.fChipOn : null]} onPress={() => setDepartment('')}>
                   <Text style={!department ? s.fChipTextOn : s.fChipText}>All</Text>
                 </TouchableOpacity>
-                {DEPARTMENTS.map(d => (
+                {(faculty
+                  ? (DEPARTMENT_GROUPS.find(g => g.faculty === faculty)?.departments ?? [])
+                  : DEPARTMENTS
+                ).map(d => (
                   <TouchableOpacity key={d} style={[s.fChip, department === d ? s.fChipOn : null]} onPress={() => setDepartment(d)}>
                     <Text style={department === d ? s.fChipTextOn : s.fChipText} numberOfLines={1}>{d}</Text>
                   </TouchableOpacity>
@@ -301,6 +346,7 @@ const make_s = (colors: Palette) => StyleSheet.create({
   chipText: { fontSize: 13, color: colors.muted, fontWeight: '600' },
   chipTextOn: { fontSize: 13, color: '#fff', fontWeight: '700' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 6 },
+  footerLoad: { paddingVertical: 20, alignItems: 'center' },
   muted: { color: colors.muted, fontSize: 15, fontWeight: '600' },
   mutedSmall: { color: colors.muted, fontSize: 13 },
   card: {
