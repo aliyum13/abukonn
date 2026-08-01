@@ -14,10 +14,11 @@ interface CalendarEntry {
   activity: string;
   from_date: string | null;
   to_date: string | null;
+  entry_type?: 'info' | 'holiday' | 'break' | 'exam';
   period: string | null;
 }
 
-const EMPTY_FORM = { semester: 'first' as 'first' | 'second', activity: '', from_date: '', to_date: '', period: '' };
+const EMPTY_FORM = { semester: 'first' as 'first' | 'second', activity: '', from_date: '', to_date: '', period: '', entry_type: 'info' as 'info' | 'holiday' | 'break' | 'exam' };
 
 // Pre-filled with the official ABU 2025/2026 calendar so the admin has a
 // ready reference — they can edit dates for future sessions and re-upload.
@@ -103,6 +104,7 @@ export default function AdminAcademicCalendarPage() {
         from_date: form.from_date || null,
         to_date: form.to_date || null,
         period: form.period.trim() || null,
+        entry_type: form.entry_type,
       };
       const url = editingId
         ? `${API_URL}/api/academic-calendar/admin/entry/${editingId}`
@@ -133,6 +135,7 @@ export default function AdminAcademicCalendarPage() {
       from_date: toInputDate(e.from_date),
       to_date: toInputDate(e.to_date),
       period: e.period || '',
+      entry_type: e.entry_type || 'info',
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -265,7 +268,21 @@ export default function AdminAcademicCalendarPage() {
               <label className="mb-1 block text-caption text-ink-muted">To date</label>
               <input type="date" value={form.to_date} onChange={e => setForm(f => ({ ...f, to_date: e.target.value }))} className={inputCls} />
             </div>
+            <div>
+              <label className="mb-1 block text-caption text-ink-muted">Type</label>
+              <select value={form.entry_type} onChange={e => setForm(f => ({ ...f, entry_type: e.target.value as 'info' | 'holiday' | 'break' | 'exam' }))} className={inputCls}>
+                <option value="info">Info only</option>
+                <option value="break">Break (no classes)</option>
+                <option value="holiday">Holiday (no classes)</option>
+                <option value="exam">Exam period (no classes)</option>
+              </select>
+            </div>
           </div>
+          <p className="mt-2 text-caption text-ink-muted">
+            &ldquo;No classes&rdquo; types automatically mark every class in the date range as cancelled in students&rsquo;
+            timetables, with this entry&rsquo;s name as the reason. &ldquo;Info only&rdquo; entries are purely informational
+            and don&rsquo;t affect any schedule.
+          </p>
           <div className="mt-4 flex gap-2">
             <Button onClick={handleSubmit} loading={saving} disabled={!form.activity.trim() || (!activeSession)}>
               {editingId ? 'Save changes' : 'Add entry'}
@@ -346,7 +363,14 @@ export default function AdminAcademicCalendarPage() {
                   {list.map(e => (
                     <div key={e.id} className="flex items-center justify-between gap-3 rounded-xl border border-border p-3 dark:border-[#222]">
                       <div className="min-w-0">
-                        <p className="truncate font-medium text-ink">{e.activity}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="truncate font-medium text-ink">{e.activity}</p>
+                          {e.entry_type && e.entry_type !== 'info' && (
+                            <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-red-700 dark:bg-red-950/50 dark:text-red-400">
+                              No classes
+                            </span>
+                          )}
+                        </div>
                         <p className="text-caption text-ink-muted">
                           {e.from_date ? new Date(e.from_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—'}
                           {e.to_date ? ` → ${new Date(e.to_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}

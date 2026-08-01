@@ -78,9 +78,12 @@ function validSemester(s) {
 
 async function addEntry(req, res) {
   try {
-    const { session, semester, activity, from_date, to_date, period, sort_order } = req.body;
+    const { session, semester, activity, from_date, to_date, period, sort_order, entry_type } = req.body;
     if (!session || !validSemester(semester) || !activity?.trim()) {
       return res.status(400).json({ message: 'session, semester (first/second), and activity are required.' });
+    }
+    if (entry_type && !['info', 'holiday', 'break', 'exam'].includes(entry_type)) {
+      return res.status(400).json({ message: 'entry_type must be info, holiday, break, or exam.' });
     }
     const entry = await Calendar.addEntry({
       session: session.trim(),
@@ -90,6 +93,7 @@ async function addEntry(req, res) {
       toDate: to_date,
       period: period?.trim(),
       sortOrder: sort_order,
+      entryType: entry_type,
       createdBy: req.user.id,
     });
     res.status(201).json({ entry });
@@ -102,9 +106,12 @@ async function addEntry(req, res) {
 async function updateEntry(req, res) {
   try {
     const id = parseInt(req.params.id, 10);
-    const { semester, activity, from_date, to_date, period, sort_order } = req.body;
+    const { semester, activity, from_date, to_date, period, sort_order, entry_type } = req.body;
     if (semester && !validSemester(semester)) {
       return res.status(400).json({ message: 'semester must be first or second.' });
+    }
+    if (entry_type && !['info', 'holiday', 'break', 'exam'].includes(entry_type)) {
+      return res.status(400).json({ message: 'entry_type must be info, holiday, break, or exam.' });
     }
     const entry = await Calendar.updateEntry(id, {
       semester,
@@ -113,6 +120,7 @@ async function updateEntry(req, res) {
       toDate: to_date,
       period: period?.trim(),
       sortOrder: sort_order,
+      entryType: entry_type,
     });
     if (!entry) return res.status(404).json({ message: 'Entry not found.' });
     res.json({ entry });

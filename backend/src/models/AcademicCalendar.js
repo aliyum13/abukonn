@@ -16,6 +16,18 @@ const createAcademicCalendarTable = async () => {
     )
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_calendar_session ON abukonn.academic_calendar(session)`);
+  // entry_type drives timetable integration. 'info' (default) is purely
+  // informational — existing entries and anything not explicitly marked stay
+  // display-only, so adding this column changes no current behavior. Only the
+  // no-class types (holiday/break/exam) cause classes on those dates to show
+  // cancelled automatically.
+  await pool.query(
+    `ALTER TABLE abukonn.academic_calendar
+       ADD COLUMN IF NOT EXISTS entry_type VARCHAR(20) NOT NULL DEFAULT 'info'`
+  );
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_calendar_dates ON abukonn.academic_calendar(from_date, to_date)`
+  );
   console.log('Academic calendar table ready');
 };
 
@@ -30,7 +42,7 @@ async function getSessions() {
 // Returns all entries for a session, grouped-friendly (ordered by semester then sort_order/date)
 async function getEntriesBySession(session) {
   const { rows } = await pool.query(
-    `SELECT id, session, semester, activity, from_date, to_date, period, sort_order, created_at
+    `SELECT id, session, semester, activity, from_date, to_date, period, sort_order, entry_type, created_at
      FROM abukonn.academic_calendar
      WHERE session = $1
      ORDER BY
@@ -52,17 +64,17 @@ async function getLatestCalendar() {
   return { session, entries };
 }
 
-async function addEntry({ session, semester, activity, fromDate, toDate, period, sortOrder, createdBy }) {
+async function addEntry({ session, semester, activity, fromDate, toDate, period, sortOrder, entryType, createdBy }) {
   const { rows } = await pool.query(
     `INSERT INTO abukonn.academic_calendar
-       (session, semester, activity, from_date, to_date, period, sort_order, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-    [session, semester, activity, fromDate || null, toDate || null, period || null, sortOrder || 0, createdBy]
+       (session, semester, activity, from_date, to_date, period, sort_order, entry_type, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+    [session, semester, activity, fromDate || null, toDate || null, period || null, sortOrder || 0, entryType || 'info', createdBy]
   );
   return rows[0];
 }
 
-async function updateEntry(id, { semester, activity, fromDate, toDate, period, sortOrder }) {
+async function updateEntry(id, { semester, activity, fromDate, toDate, period, sortOrder, entryType }) {
   const { rows } = await pool.query(
     `UPDATE abukonn.academic_calendar
      SET semester = COALESCE($2, semester),
@@ -70,9 +82,10 @@ async function updateEntry(id, { semester, activity, fromDate, toDate, period, s
          from_date = $4,
          to_date = $5,
          period = $6,
-         sort_order = COALESCE($7, sort_order)
+         sort_order = COALESCE($7, sort_order),
+         entry_type = COALESCE($8, entry_type)
      WHERE id = $1 RETURNING *`,
-    [id, semester || null, activity || null, fromDate || null, toDate || null, period || null, sortOrder ?? null]
+    [id, semester || null, activity || null, fromDate || null, toDate || null, period || null, sortOrder ?? null, entryType || null]
   );
   return rows[0] || null;
 }
@@ -100,6 +113,23 @@ async function bulkAddEntries(entries) {
   return count;
 }
 
+// No-class calendar entries (holiday/break/exam) whose date range covers the
+// given date. Used by the timetable read path to auto-cancel classes on those
+// dates. 'info' entries are excluded — they never affect the schedule. An
+// entry with only from_date (no to_date) covers that single day.
+async function getNoClassEntriesForDate(date) {
+  const { rows } = await pool.query(
+    `SELECT id, activity, entry_type, from_date, to_date
+     FROM abukonn.academic_calendar
+     WHERE entry_type IN ('holiday', 'break', 'exam')
+       AND from_date IS NOT NULL
+       AND from_date <= $1
+       AND COALESCE(to_date, from_date) >= $1`,
+    [date]
+  );
+  return rows;
+}
+
 module.exports = {
   createAcademicCalendarTable,
   getSessions,
@@ -110,4 +140,5 @@ module.exports = {
   deleteEntry,
   deleteSession,
   bulkAddEntries,
+  getNoClassEntriesForDate,
 };

@@ -83,6 +83,31 @@ const getTodayClasses = async (department, level) => {
 // carries an `override` field describing the change (edited/cancelled/added)
 // so the frontend can show the original struck through + the change. Falls back
 // silently to the plain timetable if the overrides table doesn't exist yet.
+// Overlays academic-calendar no-class periods (holiday/break/exam) onto a
+// list of classes for a specific date. A class already cancelled by a
+// timetable_override keeps that override (manual/bulk cancels take precedence
+// over the calendar's blanket reason). Otherwise, if the date falls in a
+// no-class calendar entry, the class is marked cancelled with the entry's name
+// as the reason. Derived live from the calendar (not materialized as override
+// rows) so the calendar stays the single source of truth -- edit a break's
+// dates and the effect updates automatically.
+const applyCalendarClosure = async (classes, date) => {
+  let entries = [];
+  try {
+    const AcademicCalendar = require('./AcademicCalendar');
+    entries = await AcademicCalendar.getNoClassEntriesForDate(date);
+  } catch {
+    return classes; // calendar unavailable -> unchanged
+  }
+  if (entries.length === 0) return classes;
+  // Prefer a break/holiday label if several overlap; any is acceptable.
+  const reason = entries[0].activity;
+  return classes.map((cls) => {
+    if (cls.override) return cls; // manual/bulk override already applied
+    return { ...cls, override: { kind: 'cancel', note: reason, source: 'calendar' } };
+  });
+};
+
 const getTodayClassesWithOverrides = async (department, level) => {
   const base = await getTodayClasses(department, level);
   let overrides = [];
@@ -137,7 +162,10 @@ const getTodayClassesWithOverrides = async (department, level) => {
   // read "2:00 PM" as 02:00, so afternoon classes sorted before morning ones.
   merged.sort(byStartTime);
 
-  return { classes: merged, day: base.day, has_overrides: overrides.length > 0 };
+  const today = new Date().toISOString().slice(0, 10);
+  const withCalendar = await applyCalendarClosure(merged, today);
+
+  return { classes: withCalendar, day: base.day, has_overrides: overrides.length > 0 };
 };
 
 const DAY_TO_NUM = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
@@ -230,7 +258,34 @@ const getWeekClasses = async (department, level) => {
     });
   }
 
-  return merged.sort(byStartTime);
+  // Overlay academic-calendar no-class periods too, per class's own next date
+  // (each weekday maps to a different calendar date, so closures are checked
+  // date by date). A class already cancelled by an override keeps it.
+  let calendarByDate;
+  try {
+    const AcademicCalendar = require('./AcademicCalendar');
+    calendarByDate = new Map();
+    for (const cls of merged) {
+      const d = nextDateForDay(cls.day);
+      if (d && !calendarByDate.has(d)) {
+        calendarByDate.set(d, await AcademicCalendar.getNoClassEntriesForDate(d));
+      }
+    }
+  } catch {
+    return merged.sort(byStartTime); // calendar unavailable -> overrides-only week
+  }
+
+  const withCalendar = merged.map((cls) => {
+    if (cls.override) return cls;
+    const d = nextDateForDay(cls.day);
+    const entries = d ? calendarByDate.get(d) : null;
+    if (entries && entries.length > 0) {
+      return { ...cls, override: { kind: 'cancel', note: entries[0].activity, source: 'calendar' } };
+    }
+    return cls;
+  });
+
+  return withCalendar.sort(byStartTime);
 };
 
 const getTimetable = async (department, level) => {
