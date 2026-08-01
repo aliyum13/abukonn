@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, memo } from 'react';
+import { useEffect, useState, useCallback, useRef, memo, useMemo } from 'react';
 import { useThemedStyles } from '../../src/theme/ThemeContext';
 import type { Palette } from '../../src/theme';
 import {
@@ -69,6 +69,8 @@ interface Post {
   post_subtype?: string | null;
   is_hot?: boolean;
   is_trending?: boolean;
+  engagement_score?: number;
+  comment_velocity?: number;
   discussion_title?: string | null;
   poll_options?: Array<{ id: number; option_text: string; vote_count: number }> | null;
   voted_option_id?: number | null;
@@ -127,6 +129,7 @@ interface PostCardProps {
   onVote: (post: Post, optionId: number) => void;
   onRSVP: (post: Post) => void;
   onOpenImage: (url: string) => void;
+  maxEngagementScore: number;
 }
 
 const CATEGORY_CHIP: Record<string, { bg: string; fg: string; label: string }> = {
@@ -144,7 +147,7 @@ function formatCount(n: number): string {
   return String(n);
 }
 
-const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, onToggleLike, onOpenComments, onRepost, onShare, onMenu, onVote, onRSVP, onOpenImage }: PostCardProps) {
+const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, onToggleLike, onOpenComments, onRepost, onShare, onMenu, onVote, onRSVP, onOpenImage, maxEngagementScore }: PostCardProps) {
   const s = useThemedStyles(make_s);
   const { palette } = useTheme();
   const [expanded, setExpanded] = useState(false);
@@ -333,6 +336,30 @@ const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, on
           <Text style={s.actionText}>{formatCount(post.view_count ?? 0)}</Text>
         </View>
       </View>
+
+      {(post.comment_velocity ?? 0) > 3 ? (
+        <View style={s.activeDiscussionWrap}>
+          <View style={s.activeDiscussionPill}>
+            <Text style={s.activeDiscussionText}>💬 Active discussion</Text>
+          </View>
+        </View>
+      ) : null}
+
+      {(post.engagement_score ?? 0) > 0 ? (
+        <View style={s.engagementTrack}>
+          <View
+            style={[
+              s.engagementFill,
+              (post.engagement_score ?? 0) > 50
+                ? s.engagementHot
+                : (post.engagement_score ?? 0) > 20
+                ? s.engagementWarm
+                : s.engagementCool,
+              { width: `${Math.min(100, Math.max(3, ((post.engagement_score ?? 0) / maxEngagementScore) * 100))}%` },
+            ]}
+          />
+        </View>
+      ) : null}
     </View>
   );
 });
@@ -368,6 +395,22 @@ export default function Feed() {
 
   const insets = useSafeAreaInsets();
   const [posts, setPosts] = useState<Post[]>([]);
+
+  // Denominator for each post's engagement bar width (web parity: bar is
+  // relative to the hottest post currently in the feed). Guard >= 1.
+  const maxEngagementScore = useMemo(
+    () => Math.max(1, ...posts.map(p => p.engagement_score ?? 0)),
+    [posts]
+  );
+  // "People are talking": posts with comment activity this hour, hottest first,
+  // top 3 — mirrors web's activePosts.
+  const activePosts = useMemo(
+    () => [...posts]
+      .filter(p => (p.comment_velocity ?? 0) > 0)
+      .sort((a, b) => (b.comment_velocity ?? 0) - (a.comment_velocity ?? 0))
+      .slice(0, 3),
+    [posts]
+  );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -1022,6 +1065,34 @@ export default function Feed() {
           </View>
         </View>
       ) : null}
+
+      {/* People are talking — posts with live comment activity this hour.
+          Web shows this as a desktop sidebar card; on mobile it becomes a
+          feed-header section, like Trending. Same data (activePosts). */}
+      {activePosts.length > 0 ? (
+        <View style={s.talkingWrap}>
+          <Text style={s.talkingHeading}>People are talking</Text>
+          {activePosts.map(p => (
+            <TouchableOpacity
+              key={p.id}
+              style={s.talkingRow}
+              onPress={() => router.push({ pathname: '/post/[id]', params: { id: String(p.id) } })}
+            >
+              {p.author_photo ? (
+                <Image source={{ uri: optimizedAvatar(p.author_photo, 32) }} style={s.talkingAvatar} />
+              ) : (
+                <View style={[s.talkingAvatar, s.talkingAvatarFallback]}>
+                  <Text style={s.talkingAvatarLetter}>{p.author_name?.charAt(0).toUpperCase()}</Text>
+                </View>
+              )}
+              <View style={{ flex: 1 }}>
+                <Text style={s.talkingText} numberOfLines={2}>{p.discussion_title || p.content}</Text>
+                <Text style={s.talkingMeta}>💬 {p.comment_velocity} comment{p.comment_velocity !== 1 ? 's' : ''} this hour</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 
@@ -1193,6 +1264,7 @@ export default function Feed() {
               onVote={voteOnPoll}
               onRSVP={toggleRSVP}
               onOpenImage={setLightboxUrl}
+              maxEngagementScore={maxEngagementScore}
             />
           )}
           onEndReached={feedTab === 'for_you' ? loadMore : undefined}
@@ -1584,6 +1656,14 @@ const make_s = (colors: Palette) => StyleSheet.create({
   bdayNames: { fontSize: 14, color: colors.textSecondary, marginTop: 4, lineHeight: 20 },
   trendWrap: { paddingTop: 12, paddingBottom: 12, borderBottomWidth: 8, borderBottomColor: colors.bg },
   trendHeading: { fontSize: 16, fontWeight: '800', color: colors.text, paddingHorizontal: 16, marginBottom: 8 },
+  talkingWrap: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4, borderTopWidth: 1, borderTopColor: colors.border },
+  talkingHeading: { fontSize: 16, fontWeight: '800', color: colors.text, marginBottom: 10 },
+  talkingRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 7 },
+  talkingAvatar: { width: 32, height: 32, borderRadius: 16, marginTop: 1 },
+  talkingAvatarFallback: { backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
+  talkingAvatarLetter: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  talkingText: { fontSize: 13, color: colors.text, lineHeight: 18 },
+  talkingMeta: { fontSize: 11, fontWeight: '700', color: '#16a34a', marginTop: 2 },
   trendList: { paddingHorizontal: 12 },
   trendRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 4 },
   trendRank: { fontSize: 14, fontWeight: '800', color: colors.muted, width: 18, textAlign: 'center' },
@@ -1651,6 +1731,14 @@ const make_s = (colors: Palette) => StyleSheet.create({
   hotBadgeText: { fontSize: 11, fontWeight: '700', color: '#dc2626' },
   trendingBadgeBg: { backgroundColor: 'rgba(234,88,12,0.12)' },
   trendingBadgeText: { fontSize: 11, fontWeight: '700', color: '#ea580c' },
+  activeDiscussionWrap: { marginTop: 10 },
+  activeDiscussionPill: { alignSelf: 'flex-start', backgroundColor: 'rgba(22,163,74,0.12)', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  activeDiscussionText: { fontSize: 11, fontWeight: '700', color: '#16a34a' },
+  engagementTrack: { marginTop: 8, height: 3, borderRadius: 999, overflow: 'hidden', backgroundColor: 'rgba(120,120,120,0.2)' },
+  engagementFill: { height: '100%', borderRadius: 999 },
+  engagementHot: { backgroundColor: '#f87171' },
+  engagementWarm: { backgroundColor: '#fbbf24' },
+  engagementCool: { backgroundColor: '#4ade80' },
   content: { fontSize: 15, color: colors.text, lineHeight: 22 },
   showMore: { fontSize: 14, fontWeight: '600', color: colors.brand, marginTop: 2 },
   pollWrap: { marginTop: 10, gap: 8 },
