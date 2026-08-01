@@ -140,6 +140,21 @@ const getTodayClassesWithOverrides = async (department, level) => {
   return { classes: merged, day: base.day, has_overrides: overrides.length > 0 };
 };
 
+const DAY_TO_NUM = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
+
+// The date of the NEXT upcoming occurrence of a given weekday name, as a
+// YYYY-MM-DD string (today counts if it matches). Used to line each recurring
+// class up with the specific calendar date its override would be filed under.
+const nextDateForDay = (dayName) => {
+  const target = DAY_TO_NUM[dayName];
+  if (target === undefined) return null;
+  const now = new Date();
+  const todayNum = now.getUTCDay();
+  const delta = (target - todayNum + 7) % 7;
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + delta));
+  return d.toISOString().slice(0, 10);
+};
+
 const getWeekClasses = async (department, level) => {
   const normalLevel = normalizeLevel(level);
   const { rows } = await pool.query(
@@ -153,7 +168,69 @@ const getWeekClasses = async (department, level) => {
        (CASE WHEN start_time ~ '^[0-9]{1,2}:[0-9]{2}' THEN (LPAD(SPLIT_PART(start_time, ':', 1), 2, '0') || ':' || SPLIT_PART(start_time, ':', 2))::time ELSE '00:00'::time END) ASC`,
     [department, level, normalLevel, normalLevel.toLowerCase()]
   );
-  return [...rows].sort(byStartTime);
+  const classes = [...rows].sort(byStartTime);
+
+  // Merge date-specific overrides onto the recurring week, the same way
+  // getTodayClassesWithOverrides does for a single day -- previously the week
+  // view ignored overrides entirely, so a bulk-cancelled or rescheduled class
+  // showed as normal in the week-ahead view even though Today showed it
+  // cancelled. Each recurring class is matched to its next upcoming calendar
+  // date (per weekday), and any override filed for that class on that date is
+  // attached.
+  let overrides = [];
+  try {
+    const TimetableOverride = require('./TimetableOverride');
+    overrides = await TimetableOverride.getUpcomingOverrides(department, level);
+  } catch {
+    return classes; // overrides unavailable -> plain recurring week, unchanged
+  }
+  if (overrides.length === 0) return classes;
+
+  // Index overrides by (original_class_id + override_date) so each class only
+  // picks up the override filed against the specific date it recurs on next.
+  const byKey = new Map();
+  const additions = [];
+  for (const o of overrides) {
+    const oDate = o.override_date instanceof Date ? o.override_date.toISOString().slice(0, 10) : String(o.override_date).slice(0, 10);
+    if (o.kind === 'add') additions.push({ ...o, oDate });
+    else if (o.original_class_id != null) byKey.set(`${o.original_class_id}:${oDate}`, o);
+  }
+
+  const merged = classes.map((cls) => {
+    const classDate = nextDateForDay(cls.day);
+    const o = classDate ? byKey.get(`${cls.id}:${classDate}`) : null;
+    if (!o) return { ...cls, override: null };
+    if (o.kind === 'cancel') {
+      return { ...cls, override: { kind: 'cancel', note: o.note, override_id: o.id } };
+    }
+    return {
+      ...cls,
+      override: {
+        kind: 'edit', override_id: o.id, note: o.note,
+        new: {
+          start_time: o.start_time, end_time: o.end_time,
+          course_code: o.course_code, course_title: o.course_title,
+          venue: o.venue, lecturer: o.lecturer,
+        },
+      },
+    };
+  });
+
+  // One-off added classes: surface them on their weekday, mirroring the today
+  // view's handling.
+  for (const o of additions) {
+    const addDay = Object.keys(DAY_TO_NUM).find((d) => nextDateForDay(d) === o.oDate);
+    if (!addDay) continue; // outside the upcoming week window
+    merged.push({
+      id: `override-${o.id}`, department, level, day: addDay,
+      start_time: o.start_time, end_time: o.end_time,
+      course_code: o.course_code, course_title: o.course_title,
+      venue: o.venue, lecturer: o.lecturer, status: 'holding',
+      override: { kind: 'add', override_id: o.id, note: o.note },
+    });
+  }
+
+  return merged.sort(byStartTime);
 };
 
 const getTimetable = async (department, level) => {
