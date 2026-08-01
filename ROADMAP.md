@@ -253,9 +253,12 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
   in search too. Also removed a leftover debug console.log on the web
   other-profile page. [343962d]
 
-- [ ] **Profile picture can only be changed, never removed.** No way to
-  delete a profile picture entirely (e.g. revert to no photo / default
-  avatar) — only replacing it with a different image is currently possible.
+- [x] **Profile picture can only be changed, never removed — FIXED.** Added a
+  removePhoto handler (sets profile_photo_url NULL) with DELETE routes on
+  both /api/users/me/photo and /api/settings/photo, plus a "Remove photo"
+  control on web settings and mobile edit-profile (shown only when a photo
+  exists). Avatar components already fell back to initials on null, so no
+  display change needed. [9189dc5] — all three reported bugs now fixed.
 
 ---
 
