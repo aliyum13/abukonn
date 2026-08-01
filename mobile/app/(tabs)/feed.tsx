@@ -67,6 +67,8 @@ interface Post {
   view_count?: number;
   created_at: string;
   post_subtype?: string | null;
+  is_hot?: boolean;
+  is_trending?: boolean;
   discussion_title?: string | null;
   poll_options?: Array<{ id: number; option_text: string; vote_count: number }> | null;
   voted_option_id?: number | null;
@@ -83,6 +85,7 @@ interface Comment {
   content: string;
   author_name: string;
   created_at: string;
+  is_best_answer?: boolean;
 }
 
 function timeAgo(iso: string) {
@@ -203,6 +206,16 @@ const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, on
           <Ionicons name="ellipsis-horizontal" size={20} color={palette.muted} />
         </TouchableOpacity>
       </View>
+
+      {post.is_hot ? (
+        <View style={[s.trendingBadge, s.hotBadge]}>
+          <Text style={s.hotBadgeText}>⚡ Hot</Text>
+        </View>
+      ) : post.is_trending ? (
+        <View style={[s.trendingBadge, s.trendingBadgeBg]}>
+          <Text style={s.trendingBadgeText}>🔥 Trending</Text>
+        </View>
+      ) : null}
 
       {(post.post_subtype === 'question' || post.post_subtype === 'discussion')
         && post.discussion_title ? (
@@ -729,6 +742,24 @@ export default function Feed() {
       setCommentsLoading(false);
     }
   }, []);
+
+  const markBestAnswer = async (commentId: number) => {
+    if (!commentsFor) return;
+    // Optimistic: this comment becomes the sole best answer, matching web.
+    setComments(prev => prev.map(c => ({ ...c, is_best_answer: c.id === commentId })));
+    try {
+      await apiFetch(
+        `/api/posts/${commentsFor.id}/comments/${commentId}/best-answer`,
+        { method: 'POST' });
+    } catch (err) {
+      Alert.alert('Could not mark best answer', err instanceof Error ? err.message : '');
+      // Revert on failure by refetching the thread.
+      try {
+        const data = await apiFetch<{ comments: Comment[] }>(`/api/posts/${commentsFor.id}/comments`);
+        setComments(data.comments || []);
+      } catch { /* leave optimistic state */ }
+    }
+  };
 
   const sendComment = async () => {
     if (!commentText.trim() || !commentsFor) return;
@@ -1396,13 +1427,30 @@ export default function Feed() {
                 data={comments}
                 keyExtractor={c => String(c.id)}
                 ListEmptyComponent={<View style={s.center}><Text style={s.muted}>No comments yet</Text></View>}
-                renderItem={({ item }) => (
-                  <View style={s.commentRow}>
-                    <Text style={s.author}>{item.author_name}</Text>
-                    <Text style={s.content}>{item.content}</Text>
-                    <Text style={s.muted}>{timeAgo(item.created_at)}</Text>
-                  </View>
-                )}
+                renderItem={({ item }) => {
+                  const canMark = commentsFor?.post_subtype === 'question'
+                    && commentsFor?.user_id === user?.id
+                    && !item.is_best_answer;
+                  return (
+                    <View style={s.commentRow}>
+                      <Text style={s.author}>{item.author_name}</Text>
+                      <Text style={s.content}>{item.content}</Text>
+                      {item.is_best_answer ? (
+                        <View style={s.bestAnswerBadge}>
+                          <Text style={s.bestAnswerBadgeText}>✓ Best Answer</Text>
+                        </View>
+                      ) : null}
+                      <View style={s.commentMetaRow}>
+                        <Text style={s.muted}>{timeAgo(item.created_at)}</Text>
+                        {canMark ? (
+                          <TouchableOpacity onPress={() => markBestAnswer(item.id)} hitSlop={8}>
+                            <Text style={s.markBestText}>✓ Best Answer</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                    </View>
+                  );
+                }}
               />
             )}
 
@@ -1594,6 +1642,15 @@ const make_s = (colors: Palette) => StyleSheet.create({
   },
   creatorBadgeText: { fontSize: 10, color: '#d97706', fontWeight: '800' },
   title: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 4 },
+  trendingBadge: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, marginBottom: 8 },
+  hotBadge: { backgroundColor: 'rgba(220,38,38,0.12)' },
+  bestAnswerBadge: { alignSelf: 'flex-start', backgroundColor: 'rgba(22,163,74,0.12)', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2, marginTop: 4 },
+  bestAnswerBadgeText: { fontSize: 11, fontWeight: '700', color: '#16a34a' },
+  commentMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 4 },
+  markBestText: { fontSize: 12, fontWeight: '600', color: '#16a34a' },
+  hotBadgeText: { fontSize: 11, fontWeight: '700', color: '#dc2626' },
+  trendingBadgeBg: { backgroundColor: 'rgba(234,88,12,0.12)' },
+  trendingBadgeText: { fontSize: 11, fontWeight: '700', color: '#ea580c' },
   content: { fontSize: 15, color: colors.text, lineHeight: 22 },
   showMore: { fontSize: 14, fontWeight: '600', color: colors.brand, marginTop: 2 },
   pollWrap: { marginTop: 10, gap: 8 },
