@@ -148,6 +148,7 @@ const PERSON_SELECT = `
   COALESCE(u.is_verified,FALSE) AS is_verified,
   COALESCE(u.is_content_creator,FALSE) AS is_content_creator,
   COALESCE(u.is_admin,FALSE) AS is_admin,
+  EXISTS(SELECT 1 FROM abukonn.class_representatives cr WHERE cr.user_id = u.id) AS is_class_rep,
   (SELECT COUNT(*) FROM abukonn.follows ff WHERE ff.following_id = u.id)::int AS followers_count,
   EXISTS(SELECT 1 FROM abukonn.follows cf WHERE cf.follower_id = $1 AND cf.following_id = u.id) AS is_following
 `;

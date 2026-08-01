@@ -62,6 +62,7 @@ export default function Profile() {
   const [refreshing, setRefreshing] = useState(false);
   const [myStories, setMyStories] = useState<MyStatusStory[]>([]);
   const [deletingStoryId, setDeletingStoryId] = useState<number | null>(null);
+  const [classRepFor, setClassRepFor] = useState<Array<{ id: number; department: string; level: string }>>([]);
 
   const load = useCallback(async () => {
     try {
@@ -70,11 +71,13 @@ export default function Profile() {
           user: { followers_count: number; following_count: number };
           posts: ProfilePost[];
           replies: ProfileReply[];
+          class_rep_for?: Array<{ id: number; department: string; level: string }>;
         }>('/api/users/me'),
         apiFetch<{ stories: MyStatusStory[] }>('/api/stories/mine').catch(() => ({ stories: [] })),
       ]);
       setPosts(data.posts || []);
       setReplies(data.replies || []);
+      setClassRepFor(data.class_rep_for || []);
       setFollowers(data.user?.followers_count || 0);
       setFollowing(data.user?.following_count || 0);
       setMyStories(storiesData.stories || []);
@@ -127,7 +130,13 @@ export default function Profile() {
           {user?.is_content_creator ? (
             <View style={s.creatorBadge}><Text style={s.creatorBadgeText}>✎ Creator</Text></View>
           ) : null}
+          {classRepFor.length > 0 ? (
+            <View style={s.classRepBadge}><Text style={s.classRepBadgeText}>🎓 Class Rep</Text></View>
+          ) : null}
         </View>
+        {classRepFor.length > 0 ? (
+          <Text style={s.muted}>Rep for {classRepFor.map(c => `${c.department} (${c.level})`).join(', ')}</Text>
+        ) : null}
         {user?.department ? (
           <Text style={s.muted}>{user.department}{user.level ? ` · ${user.level}` : ''}</Text>
         ) : null}
@@ -305,6 +314,8 @@ const make_s = (colors: Palette) => StyleSheet.create({
   name: { fontSize: 22, fontWeight: '800', color: colors.text, marginTop: 12 },
   badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
   creatorBadge: { backgroundColor: 'rgba(217,119,6,0.15)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
+  classRepBadge: { backgroundColor: 'rgba(22,163,74,0.15)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
+  classRepBadgeText: { fontSize: 11, fontWeight: '700', color: '#16a34a' },
   creatorBadgeText: { fontSize: 11, fontWeight: '700', color: '#d97706' },
   muted: { fontSize: 14, color: colors.muted },
   bio: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', marginTop: 8, lineHeight: 20 },

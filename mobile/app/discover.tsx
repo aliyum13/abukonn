@@ -22,6 +22,7 @@ interface Person {
   is_verified?: boolean;
   is_content_creator?: boolean;
   is_admin?: boolean;
+  is_class_rep?: boolean;
   role?: string;
   followers_count?: number;
   is_following?: boolean;
@@ -66,6 +67,7 @@ function PersonRow({ person, onOpen }: { person: Person; onOpen: (id: number) =>
           <Text style={s.name} numberOfLines={1}>{person.full_name}</Text>
           <RoleBadge role={person.role || (person.is_admin ? 'admin' : person.is_verified ? 'verified' : 'user')} iconOnly />
           {person.is_content_creator ? <Text style={s.creatorIcon}>✎</Text> : null}
+          {person.is_class_rep ? <Text style={s.classRepIcon}>🎓</Text> : null}
         </View>
         {person.department ? (
           <Text style={s.sub} numberOfLines={1}>
@@ -278,6 +280,7 @@ const make_s = (colors: Palette) => StyleSheet.create({
   name: { fontSize: 15, fontWeight: '700', color: colors.text, flexShrink: 1 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   creatorIcon: { fontSize: 13, color: '#d97706', fontWeight: '800' },
+  classRepIcon: { fontSize: 13 },
   sub: { fontSize: 13, color: colors.muted, marginTop: 2 },
   followBtn: {
     backgroundColor: colors.brand, borderRadius: radius.full,

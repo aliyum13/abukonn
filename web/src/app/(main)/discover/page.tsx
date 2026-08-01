@@ -23,6 +23,7 @@ interface Person {
   is_verified: boolean;
   is_content_creator: boolean;
   is_admin: boolean;
+  is_class_rep?: boolean;
   followers_count: number;
   is_following: boolean;
 }
@@ -204,6 +205,9 @@ function PersonRow({ person, token }: { person: Person; token: string | null }) 
           <VerifiedBadge verified={person.is_verified} />
           <RoleBadge role={person.role} iconOnly />
           <ContentCreatorBadge isCreator={person.is_content_creator} iconOnly />
+          {person.is_class_rep && (
+            <span title="Class Representative" className="inline-flex items-center rounded-full bg-brand-100 px-1.5 py-0.5 text-[11px] font-semibold text-brand-700 dark:bg-brand-950 dark:text-brand-300">🎓</span>
+          )}
         </div>
         <p className="truncate text-[12px] text-ink-muted">
           {person.department}{person.level ? ` · ${formatLevel(person.level)}` : ''}

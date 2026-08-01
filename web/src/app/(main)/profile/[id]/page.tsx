@@ -344,6 +344,7 @@ export default function UserProfilePage() {
   const userId = params.id as string;
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [classRepFor, setClassRepFor] = useState<Array<{ id: number; department: string; level: string }>>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [replies, setReplies] = useState<ProfileReply[]>([]);
   const [loading, setLoading] = useState(true);
@@ -374,15 +375,8 @@ export default function UserProfilePage() {
         if (res.status === 404) { setNotFound(true); return; }
         if (!res.ok) throw new Error();
         const data = await res.json();
-        // Debug: log role to help diagnose Follow vs Connect display
-        if (process.env.NODE_ENV !== 'production') {
-          console.log('[Profile] user data from API:', {
-            id: data.user?.id,
-            role: data.user?.role,
-            is_admin: data.user?.is_admin,
-          });
-        }
         setProfile(data.user);
+        setClassRepFor(data.class_rep_for || []);
         setPosts(data.posts);
         setReplies(data.replies || []);
       } catch {
@@ -505,7 +499,17 @@ export default function UserProfilePage() {
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-[22px] font-bold leading-tight text-ink">{profile.full_name}</h1>
             <RoleBadge role={profileRole} />
+            {classRepFor.length > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-brand-100 px-2 py-0.5 text-[11px] font-semibold text-brand-700 dark:bg-brand-950 dark:text-brand-300">
+                🎓 Class Rep
+              </span>
+            )}
           </div>
+          {classRepFor.length > 0 && (
+            <p className="mt-1 text-[12px] text-ink-muted">
+              Rep for {classRepFor.map(c => `${c.department} (${c.level})`).join(', ')}
+            </p>
+          )}
           <p className="mt-0.5 text-[14px] text-ink-muted">@{displayUsername}</p>
 
           {displayUsername ? (
