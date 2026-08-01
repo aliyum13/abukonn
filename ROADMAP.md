@@ -281,11 +281,18 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
   When done: weight recency heavily. Infer interest from department/level +
   engagement rather than a sign-up interest step (don't add onboarding friction).
 
-### Academic Calendar Integration
-- Admin creates university-wide events (Mid-Semester Break, Public Holidays,
-  Exams, Semester Breaks). Any class falling within those dates should
-  automatically show the right status (e.g. Cancelled / No Classes) without
-  the admin having to edit every class individually.
+### ✅ Academic Calendar Integration — SHIPPED [014ceb6]
+- The calendar already existed as a display-only reference; this wires it
+  into the timetable. Admin marks a calendar entry as a no-class type
+  (Break / Holiday / Exam period) via a new Type selector; every class
+  falling in that entry's date range then auto-shows cancelled in students'
+  Today and Week timetables, with the entry's name as the reason — no
+  per-class editing. Derived at READ time (calendar stays the single source
+  of truth; edit/delete an entry and the effect updates automatically, no
+  materialized rows to clean up). Manual/bulk timetable_overrides take
+  precedence over the calendar's blanket closure. Existing entries and CSV
+  uploads default to "info" = no behavior change. No client change needed —
+  the timetable screens already render a cancel override with a note.
 
 ### ✅ Bulk Timetable Status Update — SHIPPED [ae436f6]
 - Admin can select a date range + scope (whole university, one faculty, or
@@ -297,10 +304,10 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
   picker, and a required preview step (exact count + per-department
   breakdown) before confirming, given the potential blast radius of a bulk
   action. Safe to re-run over an overlapping range — can't double-cancel.
-  One pre-existing, unrelated limitation noted while building this: the
-  Week view doesn't merge timetable_overrides at all (only the Today view
-  does), so a bulk-cancelled class shows correctly on its actual day but not
-  in the week-ahead view yet.
+  (The Week view initially didn't merge timetable_overrides, so a
+  bulk-cancelled class showed on its day but not the week-ahead view — now
+  FIXED in 6a7865d: getWeekClasses merges overrides per-class by each
+  weekday's next upcoming date.)
 
 ---
 
