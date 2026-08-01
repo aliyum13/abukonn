@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Image, Alert, FlatList,
-  ActivityIndicator, RefreshControl, ScrollView,
+  ActivityIndicator, RefreshControl, ScrollView, Share,
 } from 'react-native';
 import { useThemedStyles } from '../../src/theme/ThemeContext';
 import type { Palette } from '../../src/theme';
@@ -168,6 +168,15 @@ export default function Profile() {
             <Ionicons name="create-outline" size={16} color={colors.brand} />
             <Text style={s.editText}>Edit profile</Text>
           </TouchableOpacity>
+          {user?.username ? (
+            <TouchableOpacity style={s.iconBtn} onPress={() => {
+              Share.share({
+                message: `Check out my profile on ABUkonn: https://abukonn.com/u/${user.username}`,
+              }).catch(() => { /* dismissed */ });
+            }}>
+              <Ionicons name="share-social-outline" size={20} color={colors.text} />
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity style={s.iconBtn} onPress={() => router.push('/settings')}>
             <Ionicons name="settings-outline" size={20} color={colors.text} />
           </TouchableOpacity>

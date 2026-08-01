@@ -106,6 +106,12 @@ async function updateProfile(req, res) {
       user: User.toPrivateUser(user),
     });
   } catch (err) {
+    // Unique-constraint violation on username (users_username_unique) surfaces
+    // as Postgres 23505. Return a friendly "taken" message instead of a
+    // generic 500 -- benefits both web and mobile, which share this endpoint.
+    if (err.code === '23505' && /username/i.test(err.constraint || err.detail || '')) {
+      return res.status(409).json({ message: 'That username is already taken. Please choose another.' });
+    }
     console.error('Update profile error:', err.message);
     res.status(500).json({ message: 'Server error updating profile' });
   }

@@ -19,6 +19,7 @@ export default function EditProfile() {
   const { user, refresh } = useAuth();
 
   const [fullName, setFullName] = useState(user?.full_name ?? '');
+  const [username, setUsername] = useState(user?.username ?? '');
   const [bio, setBio] = useState(user?.bio ?? '');
   const [department, setDepartment] = useState(user?.department ?? '');
   const [level, setLevel] = useState(user?.level ?? '');
@@ -47,6 +48,10 @@ export default function EditProfile() {
       Alert.alert('Name required', 'Please enter your name.');
       return;
     }
+    if (username.trim() && !/^[a-zA-Z0-9_]{1,30}$/.test(username.trim())) {
+      Alert.alert('Invalid username', 'Username may only contain letters, numbers, and underscores (max 30 characters).');
+      return;
+    }
     setSaving(true);
     try {
       // 1) Text fields.
@@ -54,6 +59,7 @@ export default function EditProfile() {
         method: 'PUT',
         body: JSON.stringify({
           full_name: fullName.trim(),
+          username: username.trim() || undefined,
           bio: bio.trim(),
           department: department.trim() || null,
           level: level.trim() || null,
@@ -127,6 +133,22 @@ export default function EditProfile() {
           <Text style={s.label}>Name</Text>
           <TextInput style={s.input} value={fullName} onChangeText={setFullName} placeholder="Your name" placeholderTextColor={colors.muted} />
 
+          <Text style={s.label}>Username</Text>
+          <View style={s.usernameRow}>
+            <Text style={s.usernameAt}>@</Text>
+            <TextInput
+              style={s.usernameInput}
+              value={username}
+              onChangeText={t => setUsername(t.replace(/[^a-zA-Z0-9_]/g, ''))}
+              placeholder="username"
+              placeholderTextColor={colors.muted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              maxLength={30}
+            />
+          </View>
+          <Text style={s.helper}>Letters, numbers, underscores · max 30 chars</Text>
+
           <Text style={s.label}>Bio</Text>
           <TextInput
             style={[s.input, s.multiline]}
@@ -176,4 +198,11 @@ const make_s = (colors: Palette) => StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: colors.text,
   },
   multiline: { minHeight: 80, textAlignVertical: 'top' },
+  usernameRow: {
+    flexDirection: 'row', alignItems: 'center',
+    borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingHorizontal: 14,
+  },
+  usernameAt: { fontSize: 15, color: colors.muted, marginRight: 2 },
+  usernameInput: { flex: 1, paddingVertical: 12, fontSize: 15, color: colors.text },
+  helper: { fontSize: 12, color: colors.muted, marginTop: 6 },
 });

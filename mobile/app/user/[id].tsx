@@ -3,7 +3,7 @@ import { useThemedStyles } from '../../src/theme/ThemeContext';
 import type { Palette } from '../../src/theme';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, Image,
-  TouchableOpacity, RefreshControl, Alert,
+  TouchableOpacity, RefreshControl, Alert, Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -314,6 +314,19 @@ export default function UserProfile() {
             {user.created_at ? (
               <Text style={s.joined}>Joined {new Date(user.created_at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}</Text>
             ) : null}
+            {user.username ? (
+              <TouchableOpacity
+                style={s.shareProfileBtn}
+                onPress={() => {
+                  Share.share({
+                    message: `Check out ${user.full_name} on ABUkonn: https://abukonn.com/u/${user.username}`,
+                  }).catch(() => { /* dismissed */ });
+                }}
+              >
+                <Ionicons name="share-social-outline" size={14} color={colors.textSecondary} />
+                <Text style={s.shareProfileText}>Share profile</Text>
+              </TouchableOpacity>
+            ) : null}
 
             <View style={s.stats}>
               <View style={s.stat}>
@@ -461,6 +474,8 @@ const make_s = (colors: Palette) => StyleSheet.create({
   name: { fontSize: 20, fontWeight: '800', color: colors.text, marginTop: 12 },
   badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
   joined: { fontSize: 13, color: colors.muted, marginTop: 8 },
+  shareProfileBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'center', marginTop: 10, borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5 },
+  shareProfileText: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
   creatorBadge: { backgroundColor: 'rgba(217,119,6,0.15)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
   creatorBadgeText: { fontSize: 11, fontWeight: '700', color: '#d97706' },
   classRepBadge: { backgroundColor: 'rgba(22,163,74,0.15)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
