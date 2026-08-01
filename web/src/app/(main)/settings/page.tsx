@@ -310,6 +310,25 @@ export default function SettingsPage() {
     }
   };
 
+  const handleRemovePhoto = async () => {
+    if (!token || !user?.profile_photo_url) return;
+    setUploadingPhoto(true);
+    try {
+      const res = await fetch(`${API_URL}/api/settings/photo`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      updateUser(data.user);
+      showToast('Profile photo removed');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not remove photo', true);
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
   const handleEmailSave = async (e: FormEvent) => {
     e.preventDefault();
     if (!token) return;
@@ -512,6 +531,16 @@ export default function SettingsPage() {
                 <div>
                   <p className="text-[14px] font-medium text-ink">Profile photo</p>
                   <p className="text-[13px] text-ink-muted">Click to upload · JPG or PNG, max 5MB</p>
+                  {user.profile_photo_url && (
+                    <button
+                      type="button"
+                      onClick={handleRemovePhoto}
+                      disabled={uploadingPhoto}
+                      className="mt-1 text-[13px] font-medium text-red-600 transition hover:text-red-700 disabled:opacity-50 dark:text-red-400"
+                    >
+                      Remove photo
+                    </button>
+                  )}
                 </div>
               </div>
 

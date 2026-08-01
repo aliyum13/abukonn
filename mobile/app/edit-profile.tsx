@@ -24,6 +24,7 @@ export default function EditProfile() {
   const [level, setLevel] = useState(user?.level ?? '');
   const [dob, setDob] = useState(user?.date_of_birth ? String(user.date_of_birth).split('T')[0] : '');
   const [photo, setPhoto] = useState<string | null>(null);
+  const [removePhoto, setRemovePhoto] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const pickPhoto = async () => {
@@ -38,7 +39,7 @@ export default function EditProfile() {
       aspect: [1, 1],
       quality: 0.8,
     });
-    if (!res.canceled && res.assets[0]) setPhoto(res.assets[0].uri);
+    if (!res.canceled && res.assets[0]) { setPhoto(res.assets[0].uri); setRemovePhoto(false); }
   };
 
   const save = async () => {
@@ -60,7 +61,8 @@ export default function EditProfile() {
         }),
       });
 
-      // 2) Photo, if a new one was chosen — separate multipart endpoint.
+      // 2) Photo. A newly-picked photo uploads; choosing "remove" with no new
+      // pick deletes the existing one (reverts to the default initials avatar).
       if (photo) {
         const token = await getToken();
         const form = new FormData();
@@ -71,6 +73,13 @@ export default function EditProfile() {
           body: form,
         });
         if (!res.ok) throw new Error('Photo upload failed');
+      } else if (removePhoto) {
+        const token = await getToken();
+        const res = await fetch(`${API_URL}/api/users/me/photo`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error('Could not remove photo');
       }
 
       // Pull the fresh user into context so the change shows immediately.
@@ -83,7 +92,7 @@ export default function EditProfile() {
     }
   };
 
-  const currentPhoto = photo ?? user?.profile_photo_url ?? null;
+  const currentPhoto = removePhoto ? null : (photo ?? user?.profile_photo_url ?? null);
 
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
@@ -109,6 +118,11 @@ export default function EditProfile() {
             )}
             <Text style={s.changePhoto}>Change photo</Text>
           </TouchableOpacity>
+          {currentPhoto ? (
+            <TouchableOpacity onPress={() => { setRemovePhoto(true); setPhoto(null); }} style={s.removePhotoWrap}>
+              <Text style={s.removePhoto}>Remove photo</Text>
+            </TouchableOpacity>
+          ) : null}
 
           <Text style={s.label}>Name</Text>
           <TextInput style={s.input} value={fullName} onChangeText={setFullName} placeholder="Your name" placeholderTextColor={colors.muted} />
@@ -153,6 +167,8 @@ const make_s = (colors: Palette) => StyleSheet.create({
   fallback: { alignItems: 'center', justifyContent: 'center' },
   letter: { fontSize: 36, fontWeight: '800', color: colors.brand },
   changePhoto: { color: colors.brand, fontWeight: '600', fontSize: 14, marginTop: 10 },
+  removePhotoWrap: { alignItems: 'center', marginTop: 2, marginBottom: 20 },
+  removePhoto: { color: colors.danger, fontWeight: '600', fontSize: 13 },
   label: { fontSize: 13, fontWeight: '700', color: colors.muted, marginBottom: 6, marginTop: 14 },
   labelHint: { color: colors.muted, fontWeight: '400', fontSize: 12 },
   input: {

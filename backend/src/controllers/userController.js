@@ -198,4 +198,22 @@ async function resolveUsername(req, res) {
   }
 }
 
-module.exports = { getProfile, getUserById, updateProfile, uploadPhoto, getBirthdaysToday, searchForMention, resolveUsername };
+// Remove the profile photo entirely (revert to the default initials avatar),
+// as distinct from replacing it with a different image. Sets the column to
+// NULL; the clients' Avatar components already fall back to initials when
+// src is null, so no display change is needed.
+async function removePhoto(req, res) {
+  try {
+    const user = await User.updateProfilePhoto(req.user.id, null);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.json({
+      message: 'Photo removed',
+      user: User.toPrivateUser(user),
+    });
+  } catch (err) {
+    console.error('Remove photo error:', err.message);
+    res.status(500).json({ message: 'Server error removing photo' });
+  }
+}
+
+module.exports = { getProfile, getUserById, updateProfile, uploadPhoto, removePhoto, getBirthdaysToday, searchForMention, resolveUsername };

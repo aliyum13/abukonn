@@ -10,7 +10,7 @@ const {
   deactivateAccount,
   deleteAccount,
 } = require('../controllers/settingsController');
-const { updateProfile, uploadPhoto } = require('../controllers/userController');
+const { updateProfile, uploadPhoto, removePhoto } = require('../controllers/userController');
 
 const router = express.Router();
 router.use(auth);
@@ -21,6 +21,7 @@ router.patch('/password', changePassword);
 router.patch('/email', changeEmail);
 router.patch('/profile', updateProfile);
 router.post('/photo', upload.single('photo'), verifyFileSignature, uploadPhoto);
+router.delete('/photo', removePhoto);
 router.post('/deactivate', deactivateAccount);
 router.delete('/account', deleteAccount);
 
