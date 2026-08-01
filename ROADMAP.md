@@ -21,6 +21,25 @@ repo so it survives across work sessions.
 Full audit done — every route/screen compared, verified in code not just
 file lists. Ticking off one at a time before more feature work.
 
+### ✅ 4-section deep parity audit (report-first) — COMPLETE
+Re-audited Feed / News / Library / Profile one at a time, findings report
+per section, closing each before the next. Every gap found ran one
+direction — web had it, mobile didn't — and nearly all were backend-already-
+supported (mobile just wasn't using the data/endpoint). Results:
+- **Feed** [9838b1e, 0625a23]: Hot/Trending badges, Best Answer for
+  questions, engagement bar, "Active discussion" pill, "People are talking"
+  (web sidebar → mobile feed-header section). 5 gaps, all closed on mobile.
+- **News**: already at full parity, no code needed.
+- **Library** [5f606ee]: faculty filter (dependent departments) + pagination
+  (infinite scroll), both added to mobile.
+- **Profile** [0286792]: Share profile button (both screens) + username
+  editing, added to mobile. Also fixed a shared backend bug — duplicate
+  username now returns a friendly 409 instead of a generic 500 (helps web
+  too).
+Lesson logged: a grep/code comparison alone missed 3 Feed features; cross-
+checking web's commit history caught them. Did the same history check for
+Library and Profile.
+
 - [x] **Feed infinite scroll on web** — web's main feed was still capped at
       the first 50 posts (page=1 forever, no load-more). Ported the same
       pattern already proven on mobile. [149559a]
