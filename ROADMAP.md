@@ -241,13 +241,17 @@ platforms, sometimes via a different (appropriate) UI pattern per platform.
   - Same known limitation as elsewhere: none. The fix recomputes counters
     from actual rows, so no drift.
 
-- [ ] **Badge visibility inconsistent depending on whose profile you're
-  viewing.** Admin and Verified badges show correctly everywhere (someone
-  else's profile, search results). Other role badges — Class Representative,
-  Influencer, and any other special roles — currently only show on the
-  *owner's own* profile view, not when other users view that same profile
-  or find them in search. Should be visible consistently regardless of who's
-  looking.
+- [x] **Badge visibility inconsistent depending on whose profile you're
+  viewing — FIXED.** Turned out narrower than "all special-role badges":
+  the role-based ones (BOD/Influencer/Admin/Verified/Content Creator) come
+  from shared user fields and already showed everywhere. The genuinely
+  broken one was **Class Representative** — it's a separate class_rep_for
+  array, and only the own-profile web page ever read it; every other surface
+  (web other-profile, both mobile profiles) fetched it but silently dropped
+  it. Fixed all of them to render it, and added an is_class_rep field to the
+  shared discover/search query (cheap EXISTS) so class reps are identifiable
+  in search too. Also removed a leftover debug console.log on the web
+  other-profile page. [343962d]
 
 - [ ] **Profile picture can only be changed, never removed.** No way to
   delete a profile picture entirely (e.g. revert to no photo / default
