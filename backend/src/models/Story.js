@@ -33,7 +33,12 @@ ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS link_url TEXT;
 ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS link_title TEXT;
 ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS link_description TEXT;
 ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS link_image TEXT;
-ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS link_site_name TEXT;`;
+ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS link_site_name TEXT;
+-- Video stories (Pro feature): Cloudinary auto-generates both of these on
+-- upload, so they're captured at post time rather than derived later. Stay
+-- NULL for image/text stories.
+ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS thumbnail_url TEXT;
+ALTER TABLE abukonn.stories ADD COLUMN IF NOT EXISTS duration_seconds INTEGER;`;
 
 // The people named by a story's 'except'/'only' list. This is a SNAPSHOT taken
 // when the story is posted — deliberately not a live reference to the author's
@@ -117,14 +122,15 @@ async function createStoriesTable() {
   console.log('Stories table ready');
 }
 
-async function createStory({ userId, mediaUrl, mediaType = 'image', storyType = 'image', textContent = null, bgColor = null, caption = null, fontStyle = null, audience = 'all', link = null }) {
+async function createStory({ userId, mediaUrl, mediaType = 'image', storyType = 'image', textContent = null, bgColor = null, caption = null, fontStyle = null, audience = 'all', link = null, thumbnailUrl = null, durationSeconds = null }) {
   const result = await pool.query(
     `INSERT INTO abukonn.stories
        (user_id, media_url, media_type, story_type, text_content, bg_color, caption, font_style, audience,
-        link_url, link_title, link_description, link_image, link_site_name)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
+        link_url, link_title, link_description, link_image, link_site_name, thumbnail_url, duration_seconds)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *`,
     [userId, mediaUrl, mediaType, storyType, textContent, bgColor, caption, fontStyle, audience,
-     link?.url || null, link?.title || null, link?.description || null, link?.image || null, link?.site_name || null]
+     link?.url || null, link?.title || null, link?.description || null, link?.image || null, link?.site_name || null,
+     thumbnailUrl, durationSeconds]
   );
   return result.rows[0];
 }
@@ -166,6 +172,7 @@ async function getActiveStoriesForUser(userId) {
     `SELECT s.id, s.user_id, s.media_url, s.media_type, s.story_type, s.text_content, s.bg_color,
             s.caption, s.font_style, s.created_at, s.expires_at,
             s.link_url, s.link_title, s.link_description, s.link_image, s.link_site_name,
+            s.thumbnail_url, s.duration_seconds,
             u.full_name AS user_name, u.profile_photo_url AS user_photo,
             CASE WHEN s.user_id = $1 THEN COUNT(sv.id)::int ELSE NULL END AS view_count,
             -- Has THIS viewer seen this story? Read from story_views (the server
@@ -238,6 +245,7 @@ async function getMyActiveStories(userId) {
     `SELECT s.id, s.user_id, s.media_url, s.media_type, s.story_type, s.text_content, s.bg_color,
             s.caption, s.font_style, s.created_at, s.expires_at,
             s.link_url, s.link_title, s.link_description, s.link_image, s.link_site_name,
+            s.thumbnail_url, s.duration_seconds,
             COUNT(sv.id)::int AS view_count
      FROM abukonn.stories s
      LEFT JOIN abukonn.story_views sv ON sv.story_id = s.id

@@ -195,6 +195,12 @@ async function createStory(req, res) {
       const requestedFont = req.body?.font_style;
       const fontStyle = STORY_FONTS.includes(requestedFont) ? requestedFont : 'classic';
       if (!textContent) return res.status(400).json({ message: 'Text content is required' });
+
+      const activeText = await Story.getMyActiveStories(req.user.id);
+      if (activeText.length >= 3) {
+        return res.status(400).json({ message: 'You can have up to 3 active stories at a time. Wait for one to expire or delete one first.' });
+      }
+
       const story = await Story.createStory({
         userId: req.user.id,
         mediaUrl: null,
@@ -212,17 +218,34 @@ async function createStory(req, res) {
       return res.status(201).json({ story });
     }
 
-    // Direct upload: image was uploaded straight to Cloudinary from the browser
+    // Direct upload: image or video was uploaded straight to Cloudinary from
+    // the client (mobile/src/lib/upload.ts and web/src/lib/upload.ts's
+    // uploadMedia). Multi-item video stories are Pro-only (Option A: the
+    // is_pro gate check itself lands with the Paystack work; this is the
+    // insertion point for it -- everything else here is fully built).
     if (req.body?.direct_upload) {
       const mediaUrl = req.body?.media_url;
       if (!mediaUrl) return res.status(400).json({ message: 'media_url is required for direct upload' });
+      const requestedType = req.body?.media_type === 'video' ? 'video' : 'image';
+
+      // WhatsApp-style cap: up to 3 items in your current story "session" --
+      // defined as your currently-active (non-expired) stories, so the count
+      // naturally resets as old stories age out at 24h, with no separate
+      // session concept to track.
+      const active = await Story.getMyActiveStories(req.user.id);
+      if (active.length >= 3) {
+        return res.status(400).json({ message: 'You can have up to 3 active stories at a time. Wait for one to expire or delete one first.' });
+      }
+
       const story = await Story.createStory({
         userId: req.user.id,
         mediaUrl,
-        mediaType: 'image',
-        storyType: 'image',
+        mediaType: requestedType,
+        storyType: requestedType,
         caption,
         audience,
+        thumbnailUrl: requestedType === 'video' ? (req.body?.thumbnail_url || null) : null,
+        durationSeconds: requestedType === 'video' ? (Number(req.body?.duration_seconds) || null) : null,
       });
       await Story.setStoryAudience(story.id, audienceUserIds);
       notifyFollowersOfStory(req.app, req.user.id, audience, audienceUserIds);
@@ -231,9 +254,14 @@ async function createStory(req, res) {
 
     if (!req.file) return res.status(400).json({ message: 'Media file is required' });
 
-    // Reject video at the controller level even if somehow past middleware
+    // The legacy multipart path (non-direct-upload) predates the Cloudinary-
+    // direct-upload pattern and is kept only for any client still using it.
+    // It still routes the file through the backend, so it's still subject to
+    // Railway's proxy timeout on anything large -- video here would hit that
+    // exact hang, so video stays direct-upload-only; this path stays
+    // image-only rather than inheriting a timeout risk for no benefit.
     if (req.file.mimetype.startsWith('video/')) {
-      return res.status(400).json({ message: 'Video stories are coming in Phase 2. Only image stories are supported for now.' });
+      return res.status(400).json({ message: 'Video stories must be uploaded directly (direct_upload) -- please update the app.' });
     }
 
     let result;
@@ -242,6 +270,11 @@ async function createStory(req, res) {
     } catch (uploadErr) {
       console.error('[Cloudinary] upload error:', uploadErr);
       return res.status(500).json({ message: 'Failed to upload image' });
+    }
+
+    const activeLegacy = await Story.getMyActiveStories(req.user.id);
+    if (activeLegacy.length >= 3) {
+      return res.status(400).json({ message: 'You can have up to 3 active stories at a time. Wait for one to expire or delete one first.' });
     }
 
     const story = await Story.createStory({
