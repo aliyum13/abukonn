@@ -2,6 +2,8 @@ const Group = require('../models/Group');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 const { extractMentionedUsernames } = require('../utils/mentions');
+const { sendPushToUsers } = require('../lib/push');
+const { plainMessagePreview } = require('../lib/messagePreview');
 
 async function createGroup(req, res) {
   try {
@@ -89,27 +91,52 @@ async function sendGroupMessage(req, res) {
     const io = req.app.get('io');
     if (io) io.to(`group_${groupId}`).emit('receive_group_message', message);
 
-    // Notify any group members tagged with @username in this message
+    // Notify group members. Previously a group message only emitted a socket
+    // event (seen only if the app was open on that group) plus a mention
+    // notification for @tagged users -- so an offline or app-closed member
+    // never learned of a new group message unless specifically @mentioned.
+    // Now every active member (except the sender) gets a push. Mentioned
+    // members are excluded here because the mention branch below already
+    // notifies them, avoiding a double push.
     const mentioned = extractMentionedUsernames(content || '');
-    if (mentioned.length > 0) {
-      Group.getGroupMembers(groupId)
-        .then(members => {
-          const toNotify = members.filter(m =>
-            m.id !== req.user.id &&
-            m.username &&
-            mentioned.includes(m.username.toLowerCase())
-          );
-          return Promise.all(toNotify.map(m =>
-            Notification.createNotification({
-              recipientId: m.id,
-              senderId: req.user.id,
-              type: 'mention',
-              postId: null,
-            })
-          ));
-        })
-        .catch(err => console.error('Group mention notification error:', err.message));
-    }
+    Promise.all([Group.getGroupMembers(groupId), Group.getGroupById(groupId)])
+      .then(([members, group]) => {
+        const mentionedSet = new Set(mentioned);
+        const recipients = members
+          .filter(m => m.id !== req.user.id && m.status === 'active')
+          .filter(m => !(m.username && mentionedSet.has(m.username.toLowerCase())));
+
+        // Mention notifications (DB rows + their own push via emit path stays
+        // as-is below) — kept separate so mentioned users get the mention type.
+        const toMention = members.filter(m =>
+          m.id !== req.user.id &&
+          m.username &&
+          mentionedSet.has(m.username.toLowerCase())
+        );
+        const mentionWork = Promise.all(toMention.map(m =>
+          Notification.createNotification({
+            recipientId: m.id, senderId: req.user.id, type: 'mention', postId: null,
+          })
+        ));
+
+        // Group push to everyone else. Body mirrors the DM preview format but
+        // is prefixed with the group name so the member knows where it's from.
+        const groupName = group?.name || 'Group';
+        const preview = plainMessagePreview(content || '').trim();
+        if (recipients.length > 0) {
+          const body = preview
+            ? `{name} in ${groupName}: ${preview.length > 70 ? preview.slice(0, 70) + '…' : preview}`
+            : (image_url ? `{name} sent a photo in ${groupName}` : `{name} sent a message in ${groupName}`);
+          sendPushToUsers(recipients.map(m => m.id), {
+            title: groupName,
+            body,
+            senderId: req.user.id,
+            data: { type: 'group', groupId: String(groupId) },
+          }).catch(() => {});
+        }
+        return mentionWork;
+      })
+      .catch(err => console.error('Group message notification error:', err.message));
 
     res.status(201).json({ message });
   } catch (err) {
