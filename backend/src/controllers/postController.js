@@ -376,7 +376,15 @@ async function addComment(req, res) {
         await Promise.all(mentioned.map(u =>
           Notification.createNotification({ recipientId: u.id, senderId: req.user.id, type: 'mention', postId: canonical.id })
         ));
-        emitNotificationToMany(req.app, mentioned.map(u => u.id));
+        // Push too, matching how a mention in a POST already behaves -- a
+        // mention in a comment was writing the bell notification but sending
+        // no push, so an offline/app-closed user never heard about it.
+        emitNotificationToMany(req.app, mentioned.map(u => u.id), {
+          title: 'ABUkonn',
+          body: '{name} mentioned you in a comment',
+          senderId: req.user.id,
+          data: { type: 'post', postId: canonical.id },
+        });
       })
       .catch(err => console.error('Mention notification error:', err.message));
 
