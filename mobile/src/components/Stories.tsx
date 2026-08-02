@@ -9,6 +9,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { apiFetch } from '../lib/api';
 import { optimizedImage, optimizedAvatar } from '../lib/image';
 import { uploadMedia } from '../lib/upload';
@@ -159,6 +160,28 @@ export function StoryBar() {
 }
 
 // ── Full-screen viewer ───────────────────────────────────────────────────────
+
+// A video story plays automatically when viewed (unlike feed videos, which
+// are tap-to-play) and loops -- stories are short and self-advancing, so
+// autoplay matches how every stories UI behaves. Its own component so the
+// useVideoPlayer hook is called unconditionally (rules of hooks), same
+// pattern as the feed's MediaCarousel VideoItem.
+function StoryVideo({ uri }: { uri: string }) {
+  const player = useVideoPlayer(uri, p => {
+    p.loop = true;
+    p.muted = false;
+    p.play();
+  });
+  return (
+    <VideoView
+      player={player}
+      style={{ flex: 1, width: '100%' }}
+      contentFit="contain"
+      nativeControls={false}
+    />
+  );
+}
+
 function StoryViewer({
   group, order, seen, onSeen, onChangeGroup, onClose, onDeleted, onToggleMute,
 }: {
@@ -330,7 +353,11 @@ function StoryViewer({
             </View>
           ) : story.media_url ? (
             <>
-              <Image source={{ uri: optimizedImage(story.media_url) }} style={v.media} resizeMode="contain" />
+              {story.story_type === 'video' ? (
+                <StoryVideo uri={story.media_url} />
+              ) : (
+                <Image source={{ uri: optimizedImage(story.media_url) }} style={v.media} resizeMode="contain" />
+              )}
               {story.caption ? (
                 <View style={v.captionWrap}>
                   <Text style={v.caption} numberOfLines={3}>{story.caption}</Text>
