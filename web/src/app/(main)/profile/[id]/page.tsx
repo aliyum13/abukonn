@@ -9,7 +9,7 @@ import { optimizedImage } from '@/lib/image';
 import ReportModal from '@/components/ReportModal';
 import { cn } from '@/lib/utils';
 import { useFollow } from '@/hooks/useFollow';
-import { Avatar, Button, Skeleton, RoleBadge, PostContent } from '@/components/ui';
+import { Avatar, Button, Skeleton, RoleBadge, PostContent, MediaCarousel } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -35,6 +35,7 @@ interface Post {
   user_id: number;
   content: string;
   image_url: string | null;
+  media: Array<{ id: number; media_url: string; media_type: 'image' | 'video'; thumbnail_url: string | null; duration_seconds: number | null; position: number }>;
   likes_count: number;
   comments_count: number;
   created_at: string;
@@ -492,7 +493,9 @@ export default function UserProfilePage() {
                     </p>
                   )}
 
-                  {post.image_url && (
+                  {post.media && post.media.length > 0 ? (
+                    <MediaCarousel items={post.media} onOpenImage={(url) => window.open(url, '_blank')} />
+                  ) : post.image_url && (
                     <img src={optimizedImage(post.image_url)} alt="Post" className="mt-3 max-h-96 w-full rounded-2xl border border-border/60 bg-black/5 object-contain dark:bg-white/5" />
                   )}
 

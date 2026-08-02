@@ -42,3 +42,6 @@ export type { PasswordInputProps } from './PasswordInput';
 
 export { PasswordStrengthMeter, getPasswordStrength, COMMON_PASSWORDS } from './PasswordStrengthMeter';
 export type { PasswordStrength } from './PasswordStrengthMeter';
+
+export { MediaCarousel } from './MediaCarousel';
+export type { MediaItem } from './MediaCarousel';

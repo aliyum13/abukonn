@@ -15,6 +15,7 @@ import {
   Skeleton,
   RoleBadge,
   PostContent,
+  MediaCarousel,
 } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
@@ -46,6 +47,7 @@ interface Post {
   user_id: number;
   content: string;
   image_url: string | null;
+  media: Array<{ id: number; media_url: string; media_type: 'image' | 'video'; thumbnail_url: string | null; duration_seconds: number | null; position: number }>;
   likes_count: number;
   comments_count: number;
   repost_count: number;
@@ -610,8 +612,12 @@ export default function PostDetailPage() {
               )}
             </div>
 
-            {/* Post image */}
-            {post.image_url && (
+            {/* Post media: multi-media (Pro) takes priority; legacy single
+                image_url only populated when media[] is empty (mutually
+                exclusive at write time). */}
+            {post.media && post.media.length > 0 ? (
+              <MediaCarousel items={post.media} onOpenImage={setLightboxUrl} />
+            ) : post.image_url && (
               <button type="button" onClick={() => setLightboxUrl(post.image_url)}
                 className="mt-3 block w-full overflow-hidden rounded-2xl border border-border/60">
                 <img src={optimizedImage(post.image_url)} alt="Post" className="max-h-[500px] w-full bg-black/5 object-contain transition hover:opacity-95 dark:bg-white/5" />

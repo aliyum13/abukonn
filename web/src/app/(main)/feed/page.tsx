@@ -26,6 +26,7 @@ import {
   VerifiedBadge,
   ContentCreatorBadge,
   PostContent,
+  MediaCarousel,
 } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
@@ -175,6 +176,14 @@ interface Story {
 const STORY_SEEN_DWELL_MS = 1200;
 
 // Link preview card, used both in the composer and in the story viewer.
+// Renders a post's media[] (Pro multi-media: 1-3 images/video, any mix).
+// A single item renders full-width like the legacy image_url did; 2-3 items
+// become a horizontally-scrollable, snap-to strip with dot indicators, so it
+// works the same on trackpad-scroll and touch without needing a carousel
+// library. Video uses a native <video> element (web has no extra dependency
+// to add, unlike mobile) with its own controls; tapping an image opens the
+// existing lightbox, tapping a video does nothing extra (its native controls
+// already handle play/fullscreen).
 function LinkPreviewCard({
   url, title, description, image, siteName, compact = false,
 }: {
@@ -234,6 +243,7 @@ interface Post {
   user_id: number;
   content: string;
   image_url: string | null;
+  media: Array<{ id: number; media_url: string; media_type: 'image' | 'video'; thumbnail_url: string | null; duration_seconds: number | null; position: number }>;
   likes_count: number;
   comments_count: number;
   repost_count: number;
@@ -2918,8 +2928,13 @@ export default function FeedPage() {
                       )}
                     </div>
 
-                    {/* Post image */}
-                    {post.image_url && (
+                    {/* Post media: multi-media (Pro) takes priority; legacy
+                        single image_url only ever populated when media[] is
+                        empty (the two are mutually exclusive at write time,
+                        see postController's media[] handling). */}
+                    {post.media && post.media.length > 0 ? (
+                      <MediaCarousel items={post.media} onOpenImage={setLightboxUrl} />
+                    ) : post.image_url && (
                       <button type="button" onClick={e => { e.stopPropagation(); setLightboxUrl(post.image_url); }}
                         className="mt-3 block w-full overflow-hidden rounded-2xl border border-border/60">
                         <img src={optimizedImage(post.image_url)} alt="Post" className="max-h-[500px] w-full rounded-2xl bg-black/5 object-contain transition hover:opacity-95 dark:bg-white/5" loading="lazy" />
