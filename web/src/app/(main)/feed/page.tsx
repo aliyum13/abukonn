@@ -12,6 +12,7 @@ import { useFollow } from '@/hooks/useFollow';
 import { useMentionAutocomplete, MentionDropdown } from '@/hooks/useMentionAutocomplete';
 import ReportModal from '@/components/ReportModal';
 import { usePageRefresh } from '@/lib/refresh';
+import { uploadMedia, type UploadResult } from '@/lib/upload';
 import {
   Avatar,
   Badge,
@@ -98,6 +99,22 @@ const POST_CATEGORIES = [
 ] as const;
 
 type PostCategory = typeof POST_CATEGORIES[number]['value'];
+
+// One photo/video in the multi-media composer. `file` + `previewUrl` exist
+// the instant it's picked (a local object URL, instant feedback); `uploaded`
+// fills in once uploadMedia resolves — kept separate so per-item progress
+// can render without gating on every item finishing. `error` holds a
+// per-item upload failure so one bad file doesn't need to nuke the whole
+// selection.
+interface ComposerMediaItem {
+  id: string; // client-side only, for React keys and removal
+  file: File;
+  previewUrl: string;
+  kind: 'image' | 'video';
+  progress: number; // 0-100
+  uploaded: UploadResult | null;
+  error: string | null;
+}
 
 // Mirrors backend/src/lib/linkPreview.js's firstUrlIn exactly, so the live
 // composer preview only ever shows for links the server will actually save.
@@ -1276,8 +1293,13 @@ export default function FeedPage() {
     const t = setTimeout(() => setError(''), 8000);
     return () => clearTimeout(t);
   }, [error]);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  // Multi-media (Pro feature): up to 3 photos/video, any mix. Replaces the
+  // old single imageFile/imagePreview pair. Each item tracks its local
+  // preview immediately (instant feedback) and fills in `uploaded` once
+  // uploadMedia resolves — kept separate from the preview so the UI can show
+  // per-item progress without waiting for every item to finish before any of
+  // them render.
+  const [composerMedia, setComposerMedia] = useState<ComposerMediaItem[]>([]);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [comments, setComments] = useState<Record<number, Comment[]>>({});
   const [commentsLoading, setCommentsLoading] = useState<Record<number, boolean>>({});
@@ -1917,24 +1939,60 @@ export default function FeedPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      setError('Image must be under 5MB');
+  // Adds newly-picked files to the composer (up to the 3-item cap), gives
+  // each an immediate local preview, then uploads each in the background —
+  // the post button stays disabled (see the isUploading check at submit)
+  // until every item finishes, but items render and show progress
+  // independently rather than the whole picker blocking on the slowest one.
+  const handleMediaSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = ''; // allow re-selecting the same file
+    if (files.length === 0) return;
+
+    const room = 3 - composerMedia.length;
+    if (room <= 0) {
+      setError('A post can have up to 3 photos/videos.');
       return;
     }
-    setImageFile(file);
-    const reader = new FileReader();
-    reader.onloadend = () => setImagePreview(reader.result as string);
-    reader.readAsDataURL(file);
-    // reset input so the same file can be re-selected
-    e.target.value = '';
+    const accepted = files.slice(0, room);
+    if (files.length > room) {
+      setError(`Only added ${room} of ${files.length} — a post can have up to 3 photos/videos.`);
+    }
+
+    const newItems: ComposerMediaItem[] = accepted.map(file => ({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      file,
+      previewUrl: URL.createObjectURL(file),
+      kind: file.type.startsWith('video/') ? 'video' : 'image',
+      progress: 0,
+      uploaded: null,
+      error: null,
+    }));
+    setComposerMedia(prev => [...prev, ...newItems]);
+
+    // Kick off each upload independently. uploadMedia does its own pre-flight
+    // size/duration check and throws a clear message if a file is over the
+    // cap — surfaced per-item rather than blocking the others.
+    for (const item of newItems) {
+      uploadMedia(item.file, 'abukonn/posts', token, (pct) => {
+        setComposerMedia(prev => prev.map(m => m.id === item.id ? { ...m, progress: pct } : m));
+      })
+        .then(result => {
+          setComposerMedia(prev => prev.map(m => m.id === item.id ? { ...m, uploaded: result, progress: 100 } : m));
+        })
+        .catch(err => {
+          const msg = err instanceof Error ? err.message : 'Upload failed';
+          setComposerMedia(prev => prev.map(m => m.id === item.id ? { ...m, error: msg } : m));
+        });
+    }
   };
 
-  const removeImage = () => {
-    setImageFile(null);
-    setImagePreview(null);
+  const removeMediaItem = (id: string) => {
+    setComposerMedia(prev => {
+      const item = prev.find(m => m.id === id);
+      if (item) URL.revokeObjectURL(item.previewUrl);
+      return prev.filter(m => m.id !== id);
+    });
   };
 
   const handleCreatePost = async (e: FormEvent) => {
@@ -1943,7 +2001,8 @@ export default function FeedPage() {
     if ((composerMode === 'discussion' || composerMode === 'question') && !discussionTitle.trim()) return;
     if (composerMode === 'poll' && pollOptions.filter(o => o.trim()).length < 2) return;
     if (composerMode === 'event' && (!eventTitle.trim() || !eventDate)) return;
-    if (composerMode === 'post' && !newPost.trim()) return;
+    if (composerMode === 'post' && !newPost.trim() && composerMedia.length === 0) return;
+    if (composerMedia.some(m => !m.uploaded && !m.error)) { setError('Still uploading — give it a moment.'); return; }
     setPosting(true);
     setError('');
     try {
@@ -1966,47 +2025,20 @@ export default function FeedPage() {
         formData.append('event_date', eventDate);
         if (eventLocation.trim()) formData.append('event_location', eventLocation.trim());
       }
-      if (imageFile) formData.append('image', imageFile);
+      const readyMedia = composerMedia.filter(m => m.uploaded).map(m => m.uploaded as UploadResult);
+      if (readyMedia.length > 0) {
+        // Post_media rows expect media_url; the upload layer returns
+        // secure_url (Cloudinary's own name for it) — this is the mapping
+        // noted when the upload/controller layers were built.
+        formData.append('media', JSON.stringify(readyMedia.map(m => ({
+          media_url: m.secure_url,
+          media_type: m.media_type,
+          thumbnail_url: m.thumbnail_url,
+          duration_seconds: m.duration_seconds,
+        }))));
+      }
 
       const endpoint = `${API_URL}/api/posts`;
-
-      // If there is an image, upload it directly to Cloudinary first (bypasses Railway 30s timeout)
-      if (imageFile) {
-        const sigRes = await fetch(`${API_URL}/api/stories/upload-signature?folder=abukonn/posts`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!sigRes.ok) throw new Error('Failed to get upload signature');
-        const { signature, timestamp, api_key, cloud_name, folder } = await sigRes.json() as {
-          signature: string; timestamp: number; api_key: string; cloud_name: string; folder: string;
-        };
-        const cloudinaryUrl = await new Promise<string>((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          const tid = setTimeout(() => xhr.abort(), 120000);
-          xhr.onload = () => {
-            clearTimeout(tid);
-            if (xhr.status >= 200 && xhr.status < 300) {
-              try { resolve((JSON.parse(xhr.responseText) as { secure_url: string }).secure_url); }
-              catch { reject(new Error('Invalid Cloudinary response')); }
-            } else {
-              try { reject(new Error((JSON.parse(xhr.responseText) as { error?: { message: string } }).error?.message || 'Image upload failed')); }
-              catch { reject(new Error('Image upload failed')); }
-            }
-          };
-          xhr.onerror = () => { clearTimeout(tid); reject(new Error('Network error — check your connection')); };
-          xhr.onabort = () => { clearTimeout(tid); reject(new Error('Upload timed out — try a smaller image')); };
-          const fd = new FormData();
-          fd.append('file', imageFile);
-          fd.append('api_key', api_key);
-          fd.append('timestamp', String(timestamp));
-          fd.append('signature', signature);
-          fd.append('folder', folder);
-          xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloud_name}/image/upload`);
-          xhr.send(fd);
-        });
-        // Replace the image in formData with the Cloudinary URL
-        formData.delete('image');
-        formData.append('image_url', cloudinaryUrl);
-      }
 
       const res = await fetchWithRetry(endpoint, {
         method: 'POST',
@@ -2026,8 +2058,8 @@ export default function FeedPage() {
       setEventTitle('');
       setEventDate('');
       setEventLocation('');
-      setImageFile(null);
-      setImagePreview(null);
+      composerMedia.forEach(m => URL.revokeObjectURL(m.previewUrl));
+      setComposerMedia([]);
       await fetchPosts();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to create post';
@@ -3750,22 +3782,49 @@ export default function FeedPage() {
                     )}
                   </div>
 
-                  {imagePreview && (
-                    <div className="relative mt-3">
-                      <img src={imagePreview} alt="Preview" className="max-h-80 w-full rounded-2xl bg-black/5 object-contain dark:bg-white/5" />
-                      <button type="button" onClick={removeImage}
-                        className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition">
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
+                  {composerMedia.length > 0 && (
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      {composerMedia.map(item => (
+                        <div key={item.id} className="relative aspect-square overflow-hidden rounded-2xl bg-black/5 dark:bg-white/5">
+                          {item.kind === 'video' ? (
+                            <video src={item.previewUrl} className="h-full w-full object-cover" muted />
+                          ) : (
+                            <img src={item.previewUrl} alt="Preview" className="h-full w-full object-cover" />
+                          )}
+                          {item.kind === 'video' && (
+                            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-black/50">
+                                <svg className="h-4 w-4 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                              </div>
+                            </div>
+                          )}
+                          {!item.uploaded && !item.error && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                              <span className="text-[11px] font-semibold text-white">{item.progress}%</span>
+                            </div>
+                          )}
+                          {item.error && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-red-900/70 p-1 text-center">
+                              <span className="text-[10px] font-medium text-white">{item.error}</span>
+                            </div>
+                          )}
+                          <button type="button" onClick={() => removeMediaItem(item.id)}
+                            className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition">
+                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   )}
 
                   <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
                     <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                       <button type="button" onClick={() => imageInputRef.current?.click()}
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-brand-600 transition hover:bg-brand-50" title="Add photo">
+                        disabled={composerMedia.length >= 3}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-brand-600 transition hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+                        title={composerMedia.length >= 3 ? 'Up to 3 photos/videos' : 'Add photo or video'}>
                         <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
                         </svg>
@@ -3836,7 +3895,7 @@ export default function FeedPage() {
                     </Button>
                   </div>
 
-                  <input ref={imageInputRef} type="file" accept="image/*" onChange={handleImageSelect} className="hidden" />
+                  <input ref={imageInputRef} type="file" accept="image/*,video/*" multiple onChange={handleMediaSelect} className="hidden" />
                 </div>
               </div>
             </form>
