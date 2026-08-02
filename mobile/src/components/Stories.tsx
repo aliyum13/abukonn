@@ -480,6 +480,20 @@ function storyFontStyle(fontKey: string | null | undefined): object {
   return STORY_FONTS.find(f => f.key === fontKey)?.style ?? {};
 }
 
+// Mirrors backend/src/lib/linkPreview.js's firstUrlIn exactly, so the live
+// composer preview only ever shows for links the server will actually save.
+// Catches a full http(s) URL OR a bare domain typed without a protocol
+// (e.g. "meet.google.com/abc-defg") — the latter used to be invisible here,
+// so pasting a protocol-less meeting link showed no preview and, at save
+// time, produced a story with no clickable link at all.
+const URL_PATTERN = /(https?:\/\/[^\s<>"']+)|(\b(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(?:\/[^\s<>"']*)?)/;
+function firstUrlIn(text: string): string | null {
+  const m = text.match(URL_PATTERN);
+  if (!m) return null;
+  const trimmed = m[0].replace(/[.,!?;:)\]]+$/, '');
+  return trimmed.startsWith('http') ? trimmed : `https://${trimmed}`;
+}
+
 function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: () => void }) {
   const s = useThemedStyles(make_s);
   const c = useThemedStyles(make_c);
@@ -515,9 +529,8 @@ function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: (
 
   useEffect(() => {
     if (mode !== 'text') { setLinkPreview(null); return; }
-    const match = text.match(/https?:\/\/[^\s]+/);
-    if (!match) { setLinkPreview(null); return; }
-    const url = match[0];
+    const url = firstUrlIn(text);
+    if (!url) { setLinkPreview(null); return; }
     let live = true;
     const t = setTimeout(async () => {
       try {

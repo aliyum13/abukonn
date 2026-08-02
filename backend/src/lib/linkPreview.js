@@ -206,10 +206,30 @@ async function getLinkPreview(rawUrl) {
   }
 }
 
-// Find the first http(s) URL in a block of text.
+// Find the first URL in a block of text — a full http(s) URL, OR a bare
+// domain someone typed without a protocol (e.g. "meet.google.com/abc-defg",
+// "zoom.us/j/123"). The bare-domain half requires a real-looking TLD (2+
+// letters) and a word boundary before it, so it does NOT match things like
+// "e.g. this", "i.e. that", "CGPA is 3.5", or "version 2.5.1" — those have
+// no plausible TLD or aren't a domain shape at all.
+//
+// Trailing sentence punctuation (a period, comma, closing paren, etc. right
+// after the match) is stripped, since "check meet.google.com/abc." should
+// not turn into a broken link ending in a literal dot. A genuine trailing
+// file extension like ".html" is untouched — there's nothing AFTER it to
+// strip, so the rule only ever removes truly-trailing punctuation.
+//
+// Whatever this returns is later run through assertSafeUrl/safeFetch's
+// existing SSRF checks (scheme allow-list, private-IP rejection) exactly the
+// same as before — this only changes what text COUNTS as a URL, not how a
+// found URL is validated or fetched.
+const URL_PATTERN = /(https?:\/\/[^\s<>"']+)|(\b(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(?:\/[^\s<>"']*)?)/;
+
 function firstUrlIn(text = '') {
-  const m = text.match(/https?:\/\/[^\s<>"']+/i);
-  return m ? m[0] : null;
+  const m = text.match(URL_PATTERN);
+  if (!m) return null;
+  const trimmed = m[0].replace(/[.,!?;:)\]]+$/, '');
+  return trimmed.startsWith('http') ? trimmed : `https://${trimmed}`;
 }
 
 module.exports = { getLinkPreview, firstUrlIn, isPrivateIp };

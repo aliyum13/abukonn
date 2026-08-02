@@ -99,6 +99,20 @@ const POST_CATEGORIES = [
 
 type PostCategory = typeof POST_CATEGORIES[number]['value'];
 
+// Mirrors backend/src/lib/linkPreview.js's firstUrlIn exactly, so the live
+// composer preview only ever shows for links the server will actually save.
+// Catches a full http(s) URL OR a bare domain typed without a protocol
+// (e.g. "meet.google.com/abc-defg") — the latter used to be invisible here,
+// so pasting a protocol-less meeting link showed no preview and, at save
+// time, produced a story with no clickable link at all.
+const URL_PATTERN = /(https?:\/\/[^\s<>"']+)|(\b(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(?:\/[^\s<>"']*)?)/;
+function firstUrlIn(text: string): string | null {
+  const m = text.match(URL_PATTERN);
+  if (!m) return null;
+  const trimmed = m[0].replace(/[.,!?;:)\]]+$/, '');
+  return trimmed.startsWith('http') ? trimmed : `https://${trimmed}`;
+}
+
 function formatCount(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}K`;
@@ -1436,8 +1450,7 @@ export default function FeedPage() {
   // when the story is actually posted, so this is purely a composer courtesy.
   useEffect(() => {
     if (!token || storyTab !== 'text') return;
-    const match = storyText.match(/https?:\/\/[^\s<>"']+/i);
-    const url = match ? match[0] : null;
+    const url = firstUrlIn(storyText);
 
     if (!url) {
       setLinkPreview(null);
@@ -1470,8 +1483,7 @@ export default function FeedPage() {
   // when the story is actually posted, so this is purely a composer courtesy.
   useEffect(() => {
     if (!token || storyTab !== 'text') return;
-    const match = storyText.match(/https?:\/\/[^\s<>"']+/i);
-    const url = match ? match[0] : null;
+    const url = firstUrlIn(storyText);
 
     if (!url) {
       setLinkPreview(null);
