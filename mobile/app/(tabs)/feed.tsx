@@ -9,7 +9,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/theme/ThemeContext';
 import * as ImagePicker from 'expo-image-picker';
-import { uploadImage } from '../../src/lib/upload';
+import { uploadMedia } from '../../src/lib/upload';
 import { MenuSheet } from '../../src/components/MenuSheet';
 import { useTabScrollToTop } from '../../src/lib/useScrollToTop';
 import { apiFetch, API_URL } from '../../src/lib/api';
@@ -426,7 +426,21 @@ export default function Feed() {
 
   const [composeOpen, setComposeOpen] = useState(false);
   const [newPost, setNewPost] = useState('');
-  const [newImage, setNewImage] = useState<string | null>(null);
+  // Multi-media (Pro feature): up to 3 photos/video, any mix. Mirrors web's
+  // composerMedia (feed/page.tsx) exactly. previewUri is local (instant
+  // feedback the moment it's picked); uploaded fills in once uploadMedia
+  // resolves in the background, tracked separately so items can show their
+  // own progress without gating on each other.
+  const [composerMedia, setComposerMedia] = useState<Array<{
+    id: string;
+    previewUri: string;
+    kind: 'image' | 'video';
+    fileSizeBytes: number | null;
+    durationMs: number | null;
+    progress: number;
+    uploaded: { secure_url: string; media_type: 'image' | 'video'; duration_seconds: number | null; thumbnail_url: string | null } | null;
+    error: string | null;
+  }>>([]);
   const [composerMode, setComposerMode] = useState<'post' | 'discussion' | 'question' | 'poll' | 'event'>('post');
   const [composerCategory, setComposerCategory] = useState('GENERAL');
   const [discussionTitle, setDiscussionTitle] = useState('');
@@ -828,31 +842,83 @@ export default function Feed() {
     }
   };
 
+  // Starts uploading one picked asset in the background, tracking its own
+  // progress/result in composerMedia by id. Mirrors web's per-item pattern.
+  const startMediaUpload = (id: string, uri: string, kind: 'image' | 'video', fileSizeBytes: number | null, durationMs: number | null) => {
+    uploadMedia(uri, 'abukonn/posts', kind, fileSizeBytes, durationMs)
+      .then(result => {
+        setComposerMedia(prev => prev.map(m => m.id === id ? { ...m, uploaded: result, progress: 100 } : m));
+      })
+      .catch(err => {
+        const msg = err instanceof Error ? err.message : 'Upload failed';
+        setComposerMedia(prev => prev.map(m => m.id === id ? { ...m, error: msg } : m));
+      });
+  };
+
   const pickImage = async () => {
+    const room = 3 - composerMedia.length;
+    if (room <= 0) {
+      Alert.alert('Up to 3 items', 'A post can have up to 3 photos/videos.');
+      return;
+    }
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert('Permission needed', 'Allow photo access to add an image.');
+      Alert.alert('Permission needed', 'Allow photo access to add photos or videos.');
       return;
     }
     const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
+      mediaTypes: ['images', 'videos'],
+      allowsMultipleSelection: room > 1,
+      selectionLimit: room,
       quality: 0.8,
     });
-    if (!res.canceled && res.assets[0]) setNewImage(res.assets[0].uri);
+    if (res.canceled || res.assets.length === 0) return;
+
+    const accepted = res.assets.slice(0, room);
+    const newItems = accepted.map(asset => ({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      previewUri: asset.uri,
+      kind: (asset.type === 'video' ? 'video' : 'image') as 'image' | 'video',
+      fileSizeBytes: asset.fileSize ?? null,
+      durationMs: asset.duration ?? null,
+      progress: 0,
+      uploaded: null,
+      error: null,
+    }));
+    setComposerMedia(prev => [...prev, ...newItems]);
+    for (const item of newItems) {
+      startMediaUpload(item.id, item.previewUri, item.kind, item.fileSizeBytes, item.durationMs);
+    }
   };
 
   const takePhoto = async () => {
+    if (composerMedia.length >= 3) {
+      Alert.alert('Up to 3 items', 'A post can have up to 3 photos/videos.');
+      return;
+    }
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) {
       Alert.alert('Permission needed', 'Allow camera access to take a photo.');
       return;
     }
     const res = await ImagePicker.launchCameraAsync({ quality: 0.8 });
-    if (!res.canceled && res.assets[0]) setNewImage(res.assets[0].uri);
+    if (res.canceled || !res.assets[0]) return;
+    const asset = res.assets[0];
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setComposerMedia(prev => [...prev, {
+      id, previewUri: asset.uri, kind: 'image' as const,
+      fileSizeBytes: asset.fileSize ?? null, durationMs: null,
+      progress: 0, uploaded: null, error: null,
+    }]);
+    startMediaUpload(id, asset.uri, 'image', asset.fileSize ?? null, null);
+  };
+
+  const removeMediaItem = (id: string) => {
+    setComposerMedia(prev => prev.filter(m => m.id !== id));
   };
 
   const resetComposer = () => {
-    setNewPost(''); setNewImage(null); setComposerMode('post');
+    setNewPost(''); setComposerMedia([]); setComposerMode('post');
     setComposerCategory('GENERAL'); setDiscussionTitle('');
     setPollOptions(['', '']); setPollDuration(24);
     setEventTitle(''); setEventDate(''); setEventLocation('');
@@ -869,17 +935,33 @@ export default function Feed() {
     if (composerMode === 'event' && (!eventTitle.trim() || !eventDate.trim())) {
       Alert.alert('Event needs details', 'Add a title and date.'); return;
     }
-    if (composerMode === 'post' && !newPost.trim() && !newImage) return;
+    if (composerMode === 'post' && !newPost.trim() && composerMedia.length === 0) return;
+    if (composerMedia.some(m => !m.uploaded && !m.error)) {
+      Alert.alert('Still uploading', 'Give it a moment for your photos/videos to finish uploading.');
+      return;
+    }
 
     setPosting(true);
     try {
-      let imageUrl: string | null = null;
-      if (newImage) imageUrl = await uploadImage(newImage, 'abukonn/posts');
+      const readyMedia = composerMedia.filter(m => m.uploaded).map(m => m.uploaded!);
 
       const body: Record<string, unknown> = {
         content: newPost.trim(),
         category: composerCategory,
-        ...(imageUrl ? { image_url: imageUrl } : {}),
+        // post_media rows expect media_url; uploadMedia returns secure_url
+        // (Cloudinary's own name) -- same mapping web's composer does at
+        // submit. Stringified like poll_options below: mobile sends a plain
+        // JSON body, and the backend's media parsing (JSON.parse(req.body.media))
+        // expects a JSON string regardless of transport, matching the
+        // existing poll_options convention.
+        ...(readyMedia.length > 0 ? {
+          media: JSON.stringify(readyMedia.map(m => ({
+            media_url: m.secure_url,
+            media_type: m.media_type,
+            thumbnail_url: m.thumbnail_url,
+            duration_seconds: m.duration_seconds,
+          }))),
+        } : {}),
       };
       if (composerMode === 'discussion' || composerMode === 'question') {
         body.post_subtype = composerMode;
@@ -1446,23 +1528,43 @@ export default function Feed() {
                 ))}
               </ScrollView>
 
-              {newImage ? (
-                <View style={s.previewWrap}>
-                  <Image source={{ uri: newImage }} style={s.preview} resizeMode="contain" />
-                  <TouchableOpacity style={s.removeImg} onPress={() => setNewImage(null)}>
-                    <Text style={s.removeImgText}>✕</Text>
-                  </TouchableOpacity>
+              {composerMedia.length > 0 ? (
+                <View style={s.mediaGrid}>
+                  {composerMedia.map(item => (
+                    <View key={item.id} style={s.mediaGridItem}>
+                      {item.kind === 'video' ? (
+                        <View style={[s.preview, s.videoPlaceholder]}>
+                          <Ionicons name="videocam" size={28} color="#fff" />
+                        </View>
+                      ) : (
+                        <Image source={{ uri: item.previewUri }} style={s.preview} resizeMode="cover" />
+                      )}
+                      {!item.uploaded && !item.error ? (
+                        <View style={s.mediaOverlay}>
+                          <Text style={s.mediaOverlayText}>{item.progress}%</Text>
+                        </View>
+                      ) : null}
+                      {item.error ? (
+                        <View style={[s.mediaOverlay, s.mediaOverlayError]}>
+                          <Text style={s.mediaOverlayErrorText} numberOfLines={2}>{item.error}</Text>
+                        </View>
+                      ) : null}
+                      <TouchableOpacity style={s.removeImg} onPress={() => removeMediaItem(item.id)}>
+                        <Text style={s.removeImgText}>✕</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
                 </View>
               ) : null}
 
               <View style={s.composeTools}>
-                <TouchableOpacity style={s.tool} onPress={pickImage}>
-                  <Ionicons name="image-outline" size={20} color={colors.brand} />
-                  <Text style={s.toolText}>Photo</Text>
+                <TouchableOpacity style={s.tool} onPress={pickImage} disabled={composerMedia.length >= 3}>
+                  <Ionicons name="image-outline" size={20} color={composerMedia.length >= 3 ? colors.textSecondary : colors.brand} />
+                  <Text style={[s.toolText, composerMedia.length >= 3 && { color: colors.textSecondary }]}>Photo/Video</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={s.tool} onPress={takePhoto}>
-                  <Ionicons name="camera-outline" size={20} color={colors.brand} />
-                  <Text style={s.toolText}>Camera</Text>
+                <TouchableOpacity style={s.tool} onPress={takePhoto} disabled={composerMedia.length >= 3}>
+                  <Ionicons name="camera-outline" size={20} color={composerMedia.length >= 3 ? colors.textSecondary : colors.brand} />
+                  <Text style={[s.toolText, composerMedia.length >= 3 && { color: colors.textSecondary }]}>Camera</Text>
                 </TouchableOpacity>
               </View>
             </ScrollView>
@@ -1811,12 +1913,22 @@ const make_s = (colors: Palette) => StyleSheet.create({
   catComposeRow: { paddingHorizontal: 12, paddingVertical: 12, gap: 8 },
   composeInput: { flex: 1, padding: 16, fontSize: 16, color: colors.text, textAlignVertical: 'top' },
   previewWrap: { marginHorizontal: 16, marginBottom: 12 },
-  preview: { width: '100%', height: 220, borderRadius: 12, backgroundColor: '#f3f4f6' },
-  removeImg: {
-    position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center',
+  preview: { width: '100%', height: '100%', borderRadius: 12, backgroundColor: '#f3f4f6' },
+  mediaGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginHorizontal: 16, marginBottom: 12 },
+  mediaGridItem: { width: '31%', aspectRatio: 1, position: 'relative' },
+  videoPlaceholder: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#1f2937' },
+  mediaOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center',
   },
-  removeImgText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  mediaOverlayText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  mediaOverlayError: { backgroundColor: 'rgba(127,29,29,0.85)', padding: 4 },
+  mediaOverlayErrorText: { color: '#fff', fontSize: 10, fontWeight: '600', textAlign: 'center' },
+  removeImg: {
+    position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: 11,
+    backgroundColor: 'rgba(0,0,0,0.65)', alignItems: 'center', justifyContent: 'center',
+  },
+  removeImgText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   composeTools: {
     flexDirection: 'row', gap: 10, padding: 12,
     borderTopWidth: 1, borderTopColor: colors.border,
