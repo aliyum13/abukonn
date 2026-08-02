@@ -20,7 +20,7 @@ const { saveMessage } = require('./controllers/messageController');
 const { markConversationRead, getConversationById } = require('./models/Message');
 const { isMember: isGroupMember } = require('./models/Group');
 const { createUsersTable } = require('./models/User');
-const { createPostsTable, createPostLikesTable } = require('./models/Post');
+const { createPostsTable, createPostLikesTable, createPostMediaTable } = require('./models/Post');
 const { createCommentsTable } = require('./models/Comment');
 const { createNewsTable } = require('./models/News');
 const { createMessagesTables } = require('./models/Message');
@@ -333,6 +333,7 @@ createUsersTable()
   .then(() => createWhitelistTable())
   .then(() => createFollowsTable())
   .then(() => createPostLikesTable())
+  .then(() => createPostMediaTable())
   .then(() => createNotificationsTable())
   .then(() => createGroupTables())
   .then(() => createRepliesTable())

@@ -21,6 +21,26 @@ CREATE TABLE IF NOT EXISTS abukonn.post_likes (
 );
 `;
 
+// Multi-media (Pro feature): a post can carry up to 3 images/videos, in any
+// mix, in order. Deliberately a SEPARATE table rather than replacing
+// image_url on posts -- old posts keep working unchanged (they still read
+// image_url), and a post either uses the legacy single image_url OR this
+// table, never both. position orders items left-to-right in the composer/
+// carousel. thumbnail_url/duration_seconds are video-only (Cloudinary
+// generates both automatically on upload) and stay NULL for images.
+const CREATE_POST_MEDIA_TABLE = `
+CREATE TABLE IF NOT EXISTS abukonn.post_media (
+  id SERIAL PRIMARY KEY,
+  post_id INTEGER NOT NULL REFERENCES abukonn.posts(id) ON DELETE CASCADE,
+  media_url TEXT NOT NULL,
+  media_type VARCHAR(10) NOT NULL CHECK (media_type IN ('image', 'video')),
+  thumbnail_url TEXT,
+  duration_seconds INTEGER,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+`;
+
 async function createPostsTable() {
   await pool.query(CREATE_POSTS_TABLE);
   // Add new columns to existing tables (idempotent)
@@ -72,7 +92,13 @@ async function createPostLikesTable() {
   console.log('Post likes table ready');
 }
 
-async function createPost({ userId, content, imageUrl = null, category = 'GENERAL', isRepost = false, originalPostId = null, originalAuthorName = null, postSubtype = 'post', discussionTitle = null, pollOptions = null, pollDurationHours = null, eventTitle = null, eventDate = null, eventLocation = null }) {
+async function createPostMediaTable() {
+  await pool.query(CREATE_POST_MEDIA_TABLE);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_post_media_post ON abukonn.post_media(post_id, position)`);
+  console.log('Post media table ready');
+}
+
+async function createPost({ userId, content, imageUrl = null, category = 'GENERAL', isRepost = false, originalPostId = null, originalAuthorName = null, postSubtype = 'post', discussionTitle = null, pollOptions = null, pollDurationHours = null, eventTitle = null, eventDate = null, eventLocation = null, media = null }) {
   const pollEndsAt = (postSubtype === 'poll' && pollDurationHours)
     ? new Date(Date.now() + pollDurationHours * 3600000).toISOString()
     : null;
@@ -94,7 +120,50 @@ async function createPost({ userId, content, imageUrl = null, category = 'GENERA
     }
   }
 
+  // Multi-media (Pro): a post uses EITHER the legacy single image_url OR
+  // this table, never both -- if media[] was supplied, imageUrl is expected
+  // to be null (enforced by the controller's Pro-gate + validation, not
+  // here, so this model function stays a plain writer).
+  if (Array.isArray(media) && media.length > 0) {
+    let position = 0;
+    for (const item of media) {
+      await pool.query(
+        `INSERT INTO abukonn.post_media (post_id, media_url, media_type, thumbnail_url, duration_seconds, position)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [post.id, item.media_url, item.media_type, item.thumbnail_url || null, item.duration_seconds || null, position]
+      );
+      position += 1;
+    }
+  }
+
   return post;
+}
+
+// All media for one post, in composer/carousel order.
+async function getPostMedia(postId) {
+  const { rows } = await pool.query(
+    `SELECT id, media_url, media_type, thumbnail_url, duration_seconds, position
+     FROM abukonn.post_media WHERE post_id = $1 ORDER BY position ASC`,
+    [postId]
+  );
+  return rows;
+}
+
+// Media for MANY posts at once, grouped by post_id -- used when attaching
+// media to a page of feed posts so we don't run one query per post.
+async function getMediaForPosts(postIds) {
+  if (!postIds || postIds.length === 0) return {};
+  const { rows } = await pool.query(
+    `SELECT id, post_id, media_url, media_type, thumbnail_url, duration_seconds, position
+     FROM abukonn.post_media WHERE post_id = ANY($1::int[]) ORDER BY post_id, position ASC`,
+    [postIds]
+  );
+  const byPost = {};
+  for (const row of rows) {
+    if (!byPost[row.post_id]) byPost[row.post_id] = [];
+    byPost[row.post_id].push(row);
+  }
+  return byPost;
 }
 
 async function getFollowingPosts(currentUserId, limit = 50, offset = 0) {
@@ -486,7 +555,10 @@ module.exports = {
   CREATE_POSTS_TABLE,
   createPostsTable,
   createPostLikesTable,
+  createPostMediaTable,
   createPost,
+  getPostMedia,
+  getMediaForPosts,
   getAllPosts,
   getFollowingPosts,
   getPostsByUserId,
