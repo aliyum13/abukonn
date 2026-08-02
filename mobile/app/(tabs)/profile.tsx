@@ -1,8 +1,9 @@
 import { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Image, Alert, FlatList,
-  ActivityIndicator, RefreshControl, ScrollView, Share,
+  ActivityIndicator, RefreshControl, ScrollView, Share, Linking,
 } from 'react-native';
+import { MediaCarousel } from '../../src/components/MediaCarousel';
 import { useThemedStyles } from '../../src/theme/ThemeContext';
 import type { Palette } from '../../src/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,6 +20,7 @@ interface ProfilePost {
   id: number;
   content: string;
   image_url: string | null;
+  media?: Array<{ id: number; media_url: string; media_type: 'image' | 'video'; thumbnail_url: string | null; duration_seconds: number | null; position: number }>;
   likes_count: number;
   comments_count: number;
   created_at: string;
@@ -281,7 +283,9 @@ export default function Profile() {
                   <Text style={s.postTitle}>{(item as ProfilePost).discussion_title}</Text>
                 ) : null}
                 {item.content ? <Text style={s.postContent}>{item.content}</Text> : null}
-                {(item as ProfilePost).image_url ? (
+                {(item as ProfilePost).media && (item as ProfilePost).media!.length > 0 ? (
+                  <MediaCarousel items={(item as ProfilePost).media} onOpenImage={(url) => Linking.openURL(url)} />
+                ) : (item as ProfilePost).image_url ? (
                   <Image source={{ uri: (item as ProfilePost).image_url! }} style={s.postImage} resizeMode="contain" />
                 ) : null}
                 <View style={s.postMeta}>

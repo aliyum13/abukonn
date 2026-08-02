@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity, Image, FlatList,
-  ActivityIndicator, KeyboardAvoidingView, Platform, Alert,
+  ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Linking,
 } from 'react-native';
+import { MediaCarousel } from '../../src/components/MediaCarousel';
 import { useThemedStyles } from '../../src/theme/ThemeContext';
 import type { Palette } from '../../src/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,6 +27,7 @@ const CATEGORY_CHIP: Record<string, { bg: string; fg: string; label: string }> =
 interface PollOption { id: number; option_text: string; vote_count: number }
 interface Post {
   id: number; user_id: number; content: string; image_url: string | null;
+  media?: Array<{ id: number; media_url: string; media_type: 'image' | 'video'; thumbnail_url: string | null; duration_seconds: number | null; position: number }>;
   author_name: string; author_department: string | null; author_photo: string | null;
   author_is_verified?: boolean; author_is_content_creator?: boolean;
   likes_count: number; comments_count: number; reposts_count?: number;
@@ -340,7 +342,9 @@ export default function SinglePost() {
                 </View>
                 {post.discussion_title ? <Text style={s.postTitle}>{post.discussion_title}</Text> : null}
                 {post.content ? <PostContent content={post.content} style={s.content} /> : null}
-                {post.image_url ? <Image source={{ uri: post.image_url }} style={s.image} resizeMode="contain" /> : null}
+                {post.media && post.media.length > 0 ? (
+                  <MediaCarousel items={post.media} onOpenImage={(url) => Linking.openURL(url)} />
+                ) : post.image_url ? <Image source={{ uri: post.image_url }} style={s.image} resizeMode="contain" /> : null}
                 {renderPoll()}
                 {renderEvent()}
                 <View style={s.actions}>

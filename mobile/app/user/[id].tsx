@@ -3,8 +3,9 @@ import { useThemedStyles } from '../../src/theme/ThemeContext';
 import type { Palette } from '../../src/theme';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, Image,
-  TouchableOpacity, RefreshControl, Alert, Share,
+  TouchableOpacity, RefreshControl, Alert, Share, Linking,
 } from 'react-native';
+import { MediaCarousel } from '../../src/components/MediaCarousel';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -36,6 +37,7 @@ interface Post {
   id: number;
   content: string;
   image_url: string | null;
+  media?: Array<{ id: number; media_url: string; media_type: 'image' | 'video'; thumbnail_url: string | null; duration_seconds: number | null; position: number }>;
   likes_count: number;
   comments_count: number;
   created_at: string;
@@ -352,7 +354,9 @@ export default function UserProfile() {
                   <Text style={s.postTitle}>{(item as Post).discussion_title}</Text>
                 ) : null}
               {item.content ? <Text style={s.content}>{item.content}</Text> : null}
-              {(item as Post).image_url ? (
+              {(item as Post).media && (item as Post).media!.length > 0 ? (
+                <MediaCarousel items={(item as Post).media} onOpenImage={(url) => Linking.openURL(url)} />
+              ) : (item as Post).image_url ? (
                 <Image source={{ uri: (item as Post).image_url! }} style={s.image} resizeMode="contain" />
               ) : null}
               <Text style={s.meta}>

@@ -54,7 +54,8 @@
           "photosPermission": "ABUkonn uses your photos so you can share images in posts and stories.",
           "cameraPermission": "ABUkonn uses your camera so you can take photos for posts and stories."
         }
-      ]
+      ],
+      "expo-video"
     ],
     "extra": {
       "apiUrl": "https://abukonn-production.up.railway.app",

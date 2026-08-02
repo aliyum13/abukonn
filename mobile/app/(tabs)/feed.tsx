@@ -14,6 +14,7 @@ import { MenuSheet } from '../../src/components/MenuSheet';
 import { useTabScrollToTop } from '../../src/lib/useScrollToTop';
 import { apiFetch, API_URL } from '../../src/lib/api';
 import { optimizedImage, optimizedAvatar } from '../../src/lib/image';
+import { MediaCarousel } from '../../src/components/MediaCarousel';
 import { getToken } from '../../src/lib/storage';
 import { colors, radius, shadow } from '../../src/theme';
 import { StoryBar } from '../../src/components/Stories';
@@ -46,6 +47,7 @@ interface Post {
   content: string;
   category?: string;
   image_url: string | null;
+  media?: Array<{ id: number; media_url: string; media_type: 'image' | 'video'; thumbnail_url: string | null; duration_seconds: number | null; position: number }>;
   author_name: string;
   author_department: string | null;
   author_photo: string | null;
@@ -305,7 +307,9 @@ const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, on
         </View>
       ) : null}
 
-      {post.image_url ? (
+      {post.media && post.media.length > 0 ? (
+        <MediaCarousel items={post.media} onOpenImage={onOpenImage} />
+      ) : post.image_url ? (
         <TouchableOpacity activeOpacity={0.9} onPress={() => onOpenImage(post.image_url!)}>
           <Image source={{ uri: optimizedImage(post.image_url) }} style={s.image} resizeMode="contain" />
         </TouchableOpacity>
