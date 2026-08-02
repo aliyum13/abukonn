@@ -11,7 +11,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../lib/api';
 import { optimizedImage, optimizedAvatar } from '../lib/image';
-import { uploadImage } from '../lib/upload';
+import { uploadMedia } from '../lib/upload';
 import { colors } from '../theme';
 
 const { width: W, height: H } = Dimensions.get('window');
@@ -501,7 +501,13 @@ function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: (
   const [text, setText] = useState('');
   const [bg, setBg] = useState(BG_COLORS[0]);
   const [font, setFont] = useState('classic');
-  const [image, setImage] = useState<string | null>(null);
+  // Multi-item stories (WhatsApp-style): up to 3 items, any mix of image/
+  // video, each posted as its own story row in sequence (mirrors web). Each
+  // carries the local URI + type + the picker's fileSize/duration so
+  // uploadMedia can do its pre-flight size/duration checks.
+  const [mediaItems, setMediaItems] = useState<Array<{
+    uri: string; kind: 'image' | 'video'; fileSizeBytes: number | null; durationMs: number | null;
+  }>>([]);
   const [linkPreview, setLinkPreview] = useState<{ title: string | null; description: string | null; image: string | null; site_name: string | null } | null>(null);
   const [audience, setAudience] = useState<'all' | 'only' | 'except'>('all');
   const [picking, setPicking] = useState(false);
@@ -556,33 +562,47 @@ function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: (
   };
 
   const pick = async () => {
+    const room = 3 - mediaItems.length;
+    if (room <= 0) {
+      Alert.alert('Up to 3 items', 'A story can have up to 3 photos/videos at once.');
+      return;
+    }
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) { Alert.alert('Permission needed', 'Allow photo access to post an image story.'); return; }
+    if (!perm.granted) { Alert.alert('Permission needed', 'Allow photo access to post a story.'); return; }
     const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
+      mediaTypes: ['images', 'videos'],
+      allowsMultipleSelection: room > 1,
+      selectionLimit: room,
       quality: 0.8,
     });
-    if (!res.canceled && res.assets[0]) {
-      setImage(res.assets[0].uri);
-      setMode('image');
-    }
+    if (res.canceled || res.assets.length === 0) return;
+    const accepted = res.assets.slice(0, room).map(asset => ({
+      uri: asset.uri,
+      kind: (asset.type === 'video' ? 'video' : 'image') as 'image' | 'video',
+      fileSizeBytes: asset.fileSize ?? null,
+      durationMs: asset.duration ?? null,
+    }));
+    setMediaItems(prev => [...prev, ...accepted]);
+    setMode('image');
+  };
+
+  const removeMediaAt = (idx: number) => {
+    setMediaItems(prev => {
+      const next = prev.filter((_, i) => i !== idx);
+      if (next.length === 0) setMode('text');
+      return next;
+    });
   };
 
   const post = async () => {
     if (mode === 'text' && !text.trim()) return;
-    if (mode === 'image' && !image) return;
+    if (mode === 'image' && mediaItems.length === 0) return;
     setBusy(true);
     try {
-      // Audience: 'all' = every follower; 'only'/'except' name specific people,
-      // snapshotted server-side at post time. The values must match the backend
-      // whitelist exactly ('all' | 'only' | 'except') — anything else is silently
-      // ignored and the last saved preference is used instead.
       const audienceIds = audience === 'all' ? [] : Array.from(chosen);
 
       if (mode === 'text') {
         // Text stories carry no file, so send JSON — exactly like the web client.
-        // This matters: audience_user_ids reaches the backend as a real array,
-        // which a multipart form can't reliably produce.
         await apiFetch('/api/stories', {
           method: 'POST',
           body: JSON.stringify({
@@ -595,22 +615,29 @@ function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: (
           }),
         });
       } else {
-        // Upload the photo to Cloudinary first, then post the URL as JSON —
-        // exactly like text stories and like the web client. Sending the file
-        // through the backend hangs on Railway's timeout, which is why photo
-        // stories never completed.
-        const mediaUrl = await uploadImage(image as string, 'abukonn/stories');
-        await apiFetch('/api/stories', {
-          method: 'POST',
-          body: JSON.stringify({
-            story_type: 'image',
-            direct_upload: true,
-            media_url: mediaUrl,
-            caption: text.trim() || undefined,
-            audience,
-            audience_user_ids: audienceIds,
-          }),
-        });
+        // Multi-item: upload + post each item as its own story row, in order,
+        // sequentially (a flaky campus connection shouldn't carry several
+        // large uploads at once). Caption applies to the first item only,
+        // matching web. uploadMedia handles image-vs-video + the size/duration
+        // pre-flight caps.
+        for (let i = 0; i < mediaItems.length; i++) {
+          const item = mediaItems[i];
+          const uploaded = await uploadMedia(item.uri, 'abukonn/stories', item.kind, item.fileSizeBytes, item.durationMs);
+          await apiFetch('/api/stories', {
+            method: 'POST',
+            body: JSON.stringify({
+              story_type: uploaded.media_type,
+              media_type: uploaded.media_type,
+              direct_upload: true,
+              media_url: uploaded.secure_url,
+              thumbnail_url: uploaded.thumbnail_url,
+              duration_seconds: uploaded.duration_seconds,
+              caption: i === 0 ? (text.trim() || undefined) : undefined,
+              audience,
+              audience_user_ids: audienceIds,
+            }),
+          });
+        }
       }
       onPosted();
     } catch (err) {
@@ -631,8 +658,45 @@ function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: (
           </TouchableOpacity>
         </View>
 
-        {mode === 'image' && image ? (
-          <Image source={{ uri: image }} style={c.preview} resizeMode="contain" />
+        {mode === 'image' && mediaItems.length > 0 ? (
+          <View style={c.mediaPreviewWrap}>
+            <View style={c.mediaMain}>
+              {mediaItems[0].kind === 'video' ? (
+                <View style={[c.preview, c.mediaVideoMain]}>
+                  <Ionicons name="videocam" size={44} color="rgba(255,255,255,0.9)" />
+                </View>
+              ) : (
+                <Image source={{ uri: mediaItems[0].uri }} style={c.preview} resizeMode="contain" />
+              )}
+              <TouchableOpacity style={c.mediaRemove} onPress={() => removeMediaAt(0)}>
+                <Ionicons name="close" size={18} color="#fff" />
+              </TouchableOpacity>
+              {mediaItems.length > 1 ? (
+                <View style={c.mediaCount}><Text style={c.mediaCountText}>1 of {mediaItems.length}</Text></View>
+              ) : null}
+            </View>
+            <View style={c.mediaStrip}>
+              {mediaItems.slice(1).map((item, i) => (
+                <View key={i} style={c.mediaThumb}>
+                  {item.kind === 'video' ? (
+                    <View style={[c.mediaThumbImg, c.mediaVideoThumb]}>
+                      <Ionicons name="videocam" size={16} color="#fff" />
+                    </View>
+                  ) : (
+                    <Image source={{ uri: item.uri }} style={c.mediaThumbImg} />
+                  )}
+                  <TouchableOpacity style={c.mediaThumbRemove} onPress={() => removeMediaAt(i + 1)}>
+                    <Ionicons name="close" size={12} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+              {mediaItems.length < 3 ? (
+                <TouchableOpacity style={c.mediaAdd} onPress={pick}>
+                  <Ionicons name="add" size={22} color="rgba(255,255,255,0.8)" />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
         ) : (
           <TextInput
             style={[c.textInput, storyFontStyle(font)]}
@@ -718,11 +782,11 @@ function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: (
           ) : null}
 
           <TouchableOpacity onPress={pick} style={c.photoBtn}>
-            <Text style={c.photoText}>{mode === 'image' ? 'Change photo' : '📷 Photo'}</Text>
+            <Text style={c.photoText}>{mode === 'image' ? '＋ Add' : '📷 Photo/Video'}</Text>
           </TouchableOpacity>
 
           {mode === 'image' ? (
-            <TouchableOpacity onPress={() => { setImage(null); setMode('text'); }}>
+            <TouchableOpacity onPress={() => { setMediaItems([]); setMode('text'); }}>
               <Text style={c.photoText}>Text</Text>
             </TouchableOpacity>
           ) : null}
@@ -847,6 +911,30 @@ const make_c = (colors: Palette) => StyleSheet.create({
   title: { color: '#fff', fontWeight: '700', fontSize: 16 },
   textInput: { flex: 1, color: '#fff', fontSize: 24, fontWeight: '700', textAlign: 'center', padding: 24, textAlignVertical: 'center' },
   preview: { flex: 1, width: '100%' },
+  mediaPreviewWrap: { flex: 1, width: '100%' },
+  mediaMain: { flex: 1, width: '100%', position: 'relative' },
+  mediaVideoMain: { alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.35)' },
+  mediaRemove: {
+    position: 'absolute', top: 10, right: 10, width: 32, height: 32, borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center',
+  },
+  mediaCount: {
+    position: 'absolute', top: 10, left: 10, borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 10, paddingVertical: 3,
+  },
+  mediaCountText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  mediaStrip: { flexDirection: 'row', gap: 8, paddingVertical: 10, alignItems: 'center' },
+  mediaThumb: { position: 'relative' },
+  mediaThumbImg: { width: 52, height: 52, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.15)' },
+  mediaVideoThumb: { alignItems: 'center', justifyContent: 'center' },
+  mediaThumbRemove: {
+    position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.75)', alignItems: 'center', justifyContent: 'center',
+  },
+  mediaAdd: {
+    width: 52, height: 52, borderRadius: 8, borderWidth: 1, borderStyle: 'dashed',
+    borderColor: 'rgba(255,255,255,0.4)', alignItems: 'center', justifyContent: 'center',
+  },
   tools: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, paddingBottom: 34 },
   swatch: { width: 32, height: 32, borderRadius: 16, borderWidth: 2, borderColor: 'transparent' },
   swatchOn: { borderColor: '#fff' },
