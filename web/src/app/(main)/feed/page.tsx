@@ -2274,18 +2274,13 @@ export default function FeedPage() {
 
   // ── Stories ─────────────────────────────────────────────────────────────────
 
-  const MAX_STORY_BATCH = 10;
+  const MAX_STORY_BATCH = 3;
 
   const handleStoryFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const picked = Array.from(e.target.files ?? []);
     e.target.value = '';
     if (picked.length === 0) return;
     setStoryUploadError('');
-
-    if (picked.some(f => f.type.startsWith('video/'))) {
-      setStoryUploadError('Video stories are coming with the mobile app. Only photos for now.');
-      return;
-    }
 
     const room = MAX_STORY_BATCH - storyFiles.length;
     if (room <= 0) {
@@ -2314,47 +2309,30 @@ export default function FeedPage() {
 
   // Upload a single photo direct to Cloudinary (bypassing Railway's ~30s proxy
   // timeout), then save the story record. Returns the created story.
+  // Uploads one story item (image OR video) and saves it as a story row.
+  // Multi-item stories are just multiple of these in sequence (WhatsApp-style)
+  // -- the caller loops. Uses the shared uploadMedia helper (video-capable,
+  // enforces the 10MB/50MB/60s caps, reports progress), replacing what used
+  // to be an inline image-only Cloudinary upload here.
   const uploadOneStoryPhoto = async (file: File, caption?: string): Promise<Story> => {
-    const sigRes = await fetch(`${API_URL}/api/stories/upload-signature`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!sigRes.ok) throw new Error('Failed to get upload signature');
-    const { signature, timestamp, api_key, cloud_name, folder } = await sigRes.json() as {
-      signature: string; timestamp: number; api_key: string; cloud_name: string; folder: string;
-    };
-
-    const cloudinaryUrl = await new Promise<string>((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      const tid = setTimeout(() => xhr.abort(), 300000);
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) setStoryUploadProgress(Math.round((e.loaded / e.total) * 100));
-      };
-      xhr.onload = () => {
-        clearTimeout(tid);
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try { resolve((JSON.parse(xhr.responseText) as { secure_url: string }).secure_url); }
-          catch { reject(new Error('Invalid Cloudinary response')); }
-        } else {
-          try { reject(new Error((JSON.parse(xhr.responseText) as { error?: { message: string } }).error?.message || 'Cloudinary upload failed')); }
-          catch { reject(new Error('Cloudinary upload failed')); }
-        }
-      };
-      xhr.onerror = () => { clearTimeout(tid); reject(new Error('Network error — check your connection')); };
-      xhr.onabort = () => { clearTimeout(tid); reject(new Error('Upload timed out')); };
-      const fd = new FormData();
-      fd.append('file', file);
-      fd.append('api_key', api_key);
-      fd.append('timestamp', String(timestamp));
-      fd.append('signature', signature);
-      fd.append('folder', folder);
-      xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloud_name}/image/upload`);
-      xhr.send(fd);
+    const uploaded = await uploadMedia(file, 'abukonn/stories', token, (pct) => {
+      setStoryUploadProgress(pct);
     });
 
     const saveRes = await fetch(`${API_URL}/api/stories`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ story_type: 'image', media_url: cloudinaryUrl, direct_upload: true, caption, audience: storyAudience, audience_user_ids: storyAudienceIds }),
+      body: JSON.stringify({
+        story_type: uploaded.media_type,
+        media_type: uploaded.media_type,
+        media_url: uploaded.secure_url,
+        thumbnail_url: uploaded.thumbnail_url,
+        duration_seconds: uploaded.duration_seconds,
+        direct_upload: true,
+        caption,
+        audience: storyAudience,
+        audience_user_ids: storyAudienceIds,
+      }),
     });
     if (!saveRes.ok) {
       const d = await saveRes.json().catch(() => ({})) as { message?: string };
@@ -4121,7 +4099,7 @@ export default function FeedPage() {
         const audienceOk = storyAudience !== 'only' || storyAudienceIds.length > 0;
         const canShare = (storyTab === 'text' ? storyText.trim().length > 0 : storyFiles.length > 0) && audienceOk;
         const shareLabel = storyTab === 'media' && storyFiles.length > 1
-          ? `Share ${storyFiles.length} photos`
+          ? `Share ${storyFiles.length} items`
           : 'Share';
         const textLen = storyText.length;
         const textSize = textLen > 100 ? 'text-xl' : textLen > 50 ? 'text-2xl' : 'text-3xl';
@@ -4160,7 +4138,11 @@ export default function FeedPage() {
                         {/* Main preview = first photo; the rest show as a strip below.
                             They post in order, one after another. */}
                         <div className="relative mb-3">
-                          <img src={storyPreviews[0]} alt="Preview" className="max-h-64 w-full rounded-xl bg-black/20 object-contain" />
+                          {storyFiles[0]?.type.startsWith('video/') ? (
+                            <video src={storyPreviews[0]} className="max-h-64 w-full rounded-xl bg-black/20 object-contain" muted controls />
+                          ) : (
+                            <img src={storyPreviews[0]} alt="Preview" className="max-h-64 w-full rounded-xl bg-black/20 object-contain" />
+                          )}
                           <button type="button" onClick={() => removeStoryAt(0)}
                             className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80">
                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -4176,7 +4158,16 @@ export default function FeedPage() {
                           <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
                             {storyPreviews.slice(1).map((src, i) => (
                               <div key={i} className="relative shrink-0">
-                                <img src={src} alt={`Photo ${i + 2}`} className="h-14 w-14 rounded-lg object-cover" />
+                                {storyFiles[i + 1]?.type.startsWith('video/') ? (
+                                  <>
+                                    <video src={src} className="h-14 w-14 rounded-lg object-cover" muted />
+                                    <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                                      <svg className="h-4 w-4 text-white drop-shadow" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                                    </span>
+                                  </>
+                                ) : (
+                                  <img src={src} alt={`Item ${i + 2}`} className="h-14 w-14 rounded-lg object-cover" />
+                                )}
                                 <button type="button" onClick={() => removeStoryAt(i + 1)}
                                   className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white">
                                   <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -4186,12 +4177,12 @@ export default function FeedPage() {
                           </div>
                         )}
 
-                        {/* Add more photos to the batch */}
+                        {/* Add more to the batch */}
                         {storyFiles.length < MAX_STORY_BATCH && (
                           <label className="mb-3 flex cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-dashed border-border py-2 text-[13px] font-medium text-ink-muted hover:text-ink dark:border-[#333]">
                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-                            Add more photos
-                            <input type="file" accept="image/*" multiple className="hidden" onChange={handleStoryFileSelect} />
+                            Add more
+                            <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleStoryFileSelect} />
                           </label>
                         )}
                         <div className="mt-3">
@@ -4215,7 +4206,7 @@ export default function FeedPage() {
                         <p className="text-caption">Story disappears after 24 hours</p>
                       </button>
                     )}
-                    <input ref={storyInputRef} type="file" accept="image/*" multiple onChange={handleStoryFileSelect} className="hidden" />
+                    <input ref={storyInputRef} type="file" accept="image/*,video/*" multiple onChange={handleStoryFileSelect} className="hidden" />
                   </>
                 ) : (
                   <>
