@@ -44,10 +44,11 @@ function notifVerb(type: NotifType): string {
 }
 
 function notifHref(n: GroupedNotification): string {
-  if (n.type === 'connect_request') return '/connect/requests';
   // Stories aren't posts — they live on the feed's story bar.
   if (n.type === 'new_story') return '/feed';
-  if (n.type === 'follow' || n.type === 'connect_accepted') return `/profile/${n.actors[0]?.id ?? ''}`;
+  // connect_request/connect_accepted are legacy (connect feature removed) —
+  // any historical rows just link to the actor's profile.
+  if (n.type === 'follow' || n.type === 'connect_accepted' || n.type === 'connect_request') return `/profile/${n.actors[0]?.id ?? ''}`;
   if (n.post_id) return `/post/${n.post_id}`;
   return '/feed';
 }

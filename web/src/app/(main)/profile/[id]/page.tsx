@@ -9,7 +9,7 @@ import { optimizedImage } from '@/lib/image';
 import ReportModal from '@/components/ReportModal';
 import { cn } from '@/lib/utils';
 import { useFollow } from '@/hooks/useFollow';
-import { Avatar, Button, Skeleton, RoleBadge, usesFollowSystem, PostContent } from '@/components/ui';
+import { Avatar, Button, Skeleton, RoleBadge, PostContent } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -60,11 +60,6 @@ interface ProfileReply {
 }
 
 type TabType = 'posts' | 'replies';
-
-type ConnectStatus =
-  | { status: 'none' }
-  | { status: 'pending'; request_id: number; initiated_by_me: boolean }
-  | { status: 'connected' };
 
 // ── Skeletons ──────────────────────────────────────────────────────────────────
 
@@ -212,129 +207,6 @@ function FollowBtn({
   );
 }
 
-// ── Connect button (for regular user profiles) ─────────────────────────────────
-
-function ConnectBtn({ targetId, token }: { targetId: number; token: string | null }) {
-  const [status, setStatus] = useState<ConnectStatus>({ status: 'none' });
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    if (!token || !targetId) return;
-    fetch(`${API_URL}/api/connect/${targetId}/status`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(r => r.json())
-      .then(d => setStatus(d))
-      .catch(() => {});
-  }, [token, targetId]);
-
-  async function sendRequest() {
-    if (!token) return;
-    setBusy(true);
-    try {
-      const res = await fetch(`${API_URL}/api/connect/${targetId}`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setStatus({ status: 'pending', request_id: data.request.id, initiated_by_me: true });
-      }
-    } finally { setBusy(false); }
-  }
-
-  async function cancelRequest() {
-    if (!token) return;
-    setBusy(true);
-    try {
-      const res = await fetch(`${API_URL}/api/connect/${targetId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) setStatus({ status: 'none' });
-    } finally { setBusy(false); }
-  }
-
-  async function acceptRequest() {
-    if (!token || status.status !== 'pending') return;
-    setBusy(true);
-    try {
-      const res = await fetch(`${API_URL}/api/connect/${status.request_id}/accept`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) setStatus({ status: 'connected' });
-    } finally { setBusy(false); }
-  }
-
-  async function declineRequest() {
-    if (!token || status.status !== 'pending') return;
-    setBusy(true);
-    try {
-      const res = await fetch(`${API_URL}/api/connect/${status.request_id}/decline`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) setStatus({ status: 'none' });
-    } finally { setBusy(false); }
-  }
-
-  async function disconnect() {
-    if (!token) return;
-    setBusy(true);
-    try {
-      const res = await fetch(`${API_URL}/api/connect/${targetId}/remove`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) setStatus({ status: 'none' });
-    } finally { setBusy(false); }
-  }
-
-  if (status.status === 'connected') {
-    return (
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={disconnect}
-        loading={busy}
-        className="rounded-full px-5 border-brand-300 text-brand-700 hover:border-red-300 hover:text-red-600 dark:border-brand-700 dark:text-brand-400"
-      >
-        ✓ Connected
-      </Button>
-    );
-  }
-
-  if (status.status === 'pending' && status.initiated_by_me) {
-    return (
-      <Button variant="outline" size="sm" onClick={cancelRequest} loading={busy}
-        className="rounded-full px-5 text-ink-muted hover:border-red-300 hover:text-red-600">
-        Pending…
-      </Button>
-    );
-  }
-
-  if (status.status === 'pending' && !status.initiated_by_me) {
-    return (
-      <div className="flex items-center gap-2">
-        <Button size="sm" onClick={acceptRequest} loading={busy} className="rounded-full px-4">
-          Accept
-        </Button>
-        <Button variant="outline" size="sm" onClick={declineRequest} disabled={busy}
-          className="rounded-full px-4">
-          Decline
-        </Button>
-      </div>
-    );
-  }
-
-  return (
-    <Button size="sm" onClick={sendRequest} loading={busy} className="rounded-full px-5">
-      Connect
-    </Button>
-  );
-}
-
 // ── Main page ──────────────────────────────────────────────────────────────────
 
 export default function UserProfilePage() {
@@ -408,7 +280,6 @@ export default function UserProfilePage() {
 
   const displayUsername = profile.username || profile.email?.split('@')[0] || '';
   const profileRole = profile.role || (profile.is_admin ? 'admin' : 'user');
-  const showFollowBtn = usesFollowSystem(profileRole);
 
   return (
     <div className="mx-auto max-w-2xl bg-white dark:bg-[#0a0a0a] min-h-screen">
@@ -451,16 +322,12 @@ export default function UserProfilePage() {
               </Button>
             </Link>
 
-            {showFollowBtn ? (
-              <FollowBtn
-                userId={profile.id}
-                initialIsFollowing={profile.is_following}
-                initialFollowersCount={profile.followers_count}
-                token={token}
-              />
-            ) : (
-              <ConnectBtn targetId={profile.id} token={token} />
-            )}
+            <FollowBtn
+              userId={profile.id}
+              initialIsFollowing={profile.is_following}
+              initialFollowersCount={profile.followers_count}
+              token={token}
+            />
 
             {/* Report / Block three-dot */}
             <div className="relative">
