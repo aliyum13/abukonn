@@ -5,6 +5,7 @@ const Follow = require('../models/Follow');
 const { isBlocked } = require('../models/ReportBlock');
 const cloudinary = require('../config/cloudinary');
 const pool = require('../config/db');
+const { attachMedia } = require('./postController');
 
 function uploadBufferToCloudinary(buffer, mimetype) {
   const dataUri = `data:${mimetype};base64,${buffer.toString('base64')}`;
@@ -22,6 +23,7 @@ async function getProfile(req, res) {
     }
 
     const posts = await Post.getPostsByUserId(req.user.id, req.user.id);
+    await attachMedia(posts);
     const replies = await Comment.getCommentsByUser(req.user.id);
     const classRepFor = await require('../models/ClassRep').getClassRepsForUser(req.user.id);
 
@@ -64,6 +66,7 @@ async function getUserById(req, res) {
       Comment.getCommentsByUser(userId),
       require('../models/ClassRep').getClassRepsForUser(userId),
     ]);
+    await attachMedia(posts);
 
     const publicUser = User.toPublicUser(user);
 

@@ -8,6 +8,21 @@ const Hashtag = require('../models/Hashtag');
 const { isBlocked } = require('../models/ReportBlock');
 const { resolveMentions } = require('../utils/mentions');
 const cloudinary = require('../config/cloudinary');
+
+// Attaches each post's media[] (from post_media, Layer 1's d0bb8dc) onto the
+// array in place, in one batched query rather than one per post. A post with
+// no post_media rows (the common case today, and every legacy post) gets an
+// empty array rather than undefined, so clients can render `post.media` the
+// same way regardless of whether it's populated -- no `post.media ?? []`
+// scattered through every render site.
+async function attachMedia(posts) {
+  if (!posts || posts.length === 0) return posts;
+  const byPost = await Post.getMediaForPosts(posts.map(p => p.id));
+  for (const post of posts) {
+    post.media = byPost[post.id] || [];
+  }
+  return posts;
+}
 const pool = require('../config/db');
 
 async function uploadBufferToCloudinary(buffer, mimetype) {
@@ -228,6 +243,7 @@ async function getFeed(req, res) {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const offset = (page - 1) * limit;
     const posts = await Post.getAllPosts(req.user.id, limit, offset);
+    await attachMedia(posts);
     res.json({ posts, page, limit, hasMore: posts.length === limit });
   } catch (err) {
     console.error('Get feed error:', err.message);
@@ -241,6 +257,7 @@ async function getFollowingFeed(req, res) {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const offset = (page - 1) * limit;
     const posts = await Post.getFollowingPosts(req.user.id, limit, offset);
+    await attachMedia(posts);
     res.json({ posts, page, limit, hasMore: posts.length === limit });
   } catch (err) {
     console.error('Get following feed error:', err.message);
@@ -263,6 +280,7 @@ async function getSinglePost(req, res) {
       return res.status(404).json({ message: 'Post not found' });
     }
 
+    await attachMedia([post]);
     res.json({ post });
   } catch (err) {
     console.error('Get single post error:', err.message);
@@ -527,4 +545,4 @@ async function addReply(req, res) {
   }
 }
 
-module.exports = { createPost, getFeed, getFollowingFeed, getSinglePost, likePost, addComment, getComments, likeCommentHandler, deleteCommentHandler, deletePost, getReplies, addReply, repostPost, viewPost, voteOnPoll, getPollVotersHandler, toggleRSVP, setBestAnswer };
+module.exports = { createPost, getFeed, getFollowingFeed, getSinglePost, likePost, addComment, getComments, likeCommentHandler, deleteCommentHandler, deletePost, getReplies, addReply, repostPost, viewPost, voteOnPoll, getPollVotersHandler, toggleRSVP, setBestAnswer, attachMedia };
