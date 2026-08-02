@@ -49,6 +49,43 @@ async function createPost(req, res) {
       imageUrl = result.secure_url;
     }
 
+    // Multi-media (Pro feature): up to 3 images/video, any mix, uploaded
+    // direct-to-Cloudinary client-side (web/mobile's uploadMedia) -- this
+    // endpoint only ever receives the resulting URLs, never a file, so
+    // there's no Railway-timeout risk here regardless of how many/how large.
+    //
+    // media is JSON from FormData, same pattern as poll_options above. A
+    // post uses EITHER media[] OR the legacy single image_url, never both --
+    // if media[] is present it takes priority and imageUrl is dropped, so a
+    // client can't accidentally double up.
+    //
+    // PRO-GATE INSERTION POINT: once is_pro exists (Paystack work), the
+    // check goes right here --
+    //   if (media && media.length > 0 && !req.user.is_pro)
+    //     return res.status(403).json({ message: 'Multi-media posts are a Pro feature.' });
+    // Left unenforced for now (Option A per user's decision) -- the feature
+    // is fully built and functional, just not yet paywalled.
+    let media = null;
+    if (req.body.media) {
+      try { media = JSON.parse(req.body.media); } catch { media = null; }
+    }
+    if (Array.isArray(media) && media.length > 0) {
+      if (media.length > 3) {
+        return res.status(400).json({ message: 'A post can have up to 3 photos/videos.' });
+      }
+      for (const item of media) {
+        if (!item?.media_url || !['image', 'video'].includes(item?.media_type)) {
+          return res.status(400).json({ message: 'Each media item needs a media_url and a valid media_type.' });
+        }
+        if (item.media_type === 'video' && item.duration_seconds != null && item.duration_seconds > 60) {
+          return res.status(400).json({ message: 'Videos can be up to 60 seconds long.' });
+        }
+      }
+      imageUrl = null; // media[] supersedes the legacy single-image field
+    } else {
+      media = null;
+    }
+
     const category = (req.body.category || 'GENERAL').toUpperCase();
     let pollOptions = null;
     if (req.body.poll_options) {
@@ -67,6 +104,7 @@ async function createPost(req, res) {
       eventTitle: req.body.event_title?.trim() || null,
       eventDate: req.body.event_date || null,
       eventLocation: req.body.event_location?.trim() || null,
+      media,
     });
 
     const textToIndex = `${discussionTitle || ''} ${content.trim()}`.trim();

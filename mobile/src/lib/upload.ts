@@ -17,6 +17,15 @@ export async function uploadImage(uri: string, folder: string): Promise<string> 
 
 const VIDEO_EXTENSIONS = new Set(['mp4', 'mov', 'm4v', 'webm', '3gp']);
 
+// Pro multi-media limits (design decision, see ROADMAP): images up to 10MB
+// each, video up to 50MB AND 60 seconds. Checked here, client-side, before
+// the network request starts -- so a huge file is rejected instantly instead
+// of failing partway through (or worse, succeeding and wasting the person's
+// data on an upload the backend would reject anyway once size-cap
+// enforcement lands server-side too).
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+
 // Guess image vs video from a local file URI's extension. Good enough here:
 // both the image picker and camera give us a real extension on the URI, and
 // this only decides which Cloudinary endpoint/resource_type to use — the
@@ -32,12 +41,29 @@ function guessMediaType(uri: string): 'image' | 'video' {
 // Cloudinary computes for us on upload, so post_media never has to guess.
 // mediaType can be passed explicitly (e.g. the composer already knows which
 // picker produced this file) or left to be auto-detected from the URI.
+// fileSizeBytes, when the caller has it (expo-image-picker's asset.fileSize),
+// is checked against the per-type cap before any network call is made.
 export async function uploadMedia(
   uri: string,
   folder: string,
-  mediaType?: 'image' | 'video'
+  mediaType?: 'image' | 'video',
+  fileSizeBytes?: number | null,
+  durationMs?: number | null
 ): Promise<{ secure_url: string; media_type: 'image' | 'video'; duration_seconds: number | null; thumbnail_url: string | null }> {
   const type = mediaType ?? guessMediaType(uri);
+
+  if (fileSizeBytes != null) {
+    const cap = type === 'video' ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+    if (fileSizeBytes > cap) {
+      const capMb = Math.round(cap / (1024 * 1024));
+      throw new Error(`${type === 'video' ? 'Videos' : 'Images'} must be under ${capMb}MB.`);
+    }
+  }
+  // Expo's picker reports video duration in milliseconds.
+  if (type === 'video' && durationMs != null && durationMs > 60000) {
+    throw new Error('Videos can be up to 60 seconds long.');
+  }
+
   const token = await getToken();
 
   // 1. Ask our backend to sign the upload (keeps the Cloudinary secret server-side).

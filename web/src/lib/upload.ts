@@ -12,6 +12,11 @@
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
+// Pro multi-media limits (design decision, see ROADMAP): images up to 10MB
+// each, video up to 50MB AND 60 seconds.
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+
 export interface UploadResult {
   secure_url: string;
   media_type: 'image' | 'video';
@@ -19,16 +24,51 @@ export interface UploadResult {
   thumbnail_url: string | null;
 }
 
+// Reads a video file's duration client-side, without uploading anything --
+// loads it into an off-DOM <video> element just long enough to read
+// .duration from its metadata, then releases the object URL. Used to reject
+// an over-length video before spending any bandwidth on it.
+function readVideoDurationSeconds(file: File): Promise<number | null> {
+  return new Promise((resolve) => {
+    try {
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      const url = URL.createObjectURL(file);
+      video.onloadedmetadata = () => {
+        URL.revokeObjectURL(url);
+        resolve(Number.isFinite(video.duration) ? video.duration : null);
+      };
+      video.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+      video.src = url;
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
 // Uploads one file, reporting 0-100 progress via onProgress. Auto-detects
 // image vs video from the file's MIME type (what the browser itself reports
 // for the selected file — reliable, unlike guessing from a filename).
-export function uploadMedia(
+export async function uploadMedia(
   file: File,
   folder: string,
   token: string | null,
   onProgress?: (pct: number) => void,
 ): Promise<UploadResult> {
   const isVideo = file.type.startsWith('video/');
+
+  // Pre-flight checks, before any network call — file.size is always known
+  // synchronously; video duration needs a quick metadata read (no upload).
+  const cap = isVideo ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+  if (file.size > cap) {
+    throw new Error(`${isVideo ? 'Videos' : 'Images'} must be under ${Math.round(cap / (1024 * 1024))}MB.`);
+  }
+  if (isVideo) {
+    const duration = await readVideoDurationSeconds(file);
+    if (duration != null && duration > 60) {
+      throw new Error('Videos can be up to 60 seconds long.');
+    }
+  }
 
   return new Promise((resolve, reject) => {
     (async () => {
