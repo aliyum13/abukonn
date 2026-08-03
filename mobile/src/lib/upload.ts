@@ -17,14 +17,25 @@ export async function uploadImage(uri: string, folder: string): Promise<string> 
 
 const VIDEO_EXTENSIONS = new Set(['mp4', 'mov', 'm4v', 'webm', '3gp']);
 
-// Pro multi-media limits (design decision, see ROADMAP): images up to 10MB
-// each, video up to 50MB AND 60 seconds. Checked here, client-side, before
-// the network request starts -- so a huge file is rejected instantly instead
-// of failing partway through (or worse, succeeding and wasting the person's
-// data on an upload the backend would reject anyway once size-cap
-// enforcement lands server-side too).
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+// Multi-media upload limits, tiered for the "increased upload limits" Pro
+// perk. Free: 10MB image / 50MB video / 60s. Pro: 25MB / 150MB / 180s.
+// Checked client-side before the network request starts, so a huge file is
+// rejected instantly instead of failing partway through (or wasting the
+// person's data on an upload the backend would reject anyway). Kept as
+// explicit tiers so the Pro values read in one place and the free→pro
+// switch is a single flag.
+const LIMITS = {
+  free: { imageBytes: 10 * 1024 * 1024, videoBytes: 50 * 1024 * 1024, videoMs: 60000 },
+  pro:  { imageBytes: 25 * 1024 * 1024, videoBytes: 150 * 1024 * 1024, videoMs: 180000 },
+} as const;
+
+// Picks the active tier. is_pro doesn't exist yet, so callers pass nothing
+// and everyone gets free limits (Option A). PRO-GATE: once the app knows
+// the user's Pro status, callers pass isPro and Pro users get the higher
+// tier -- no other change needed.
+function limitsFor(isPro?: boolean) {
+  return isPro ? LIMITS.pro : LIMITS.free;
+}
 
 // Guess image vs video from a local file URI's extension. Good enough here:
 // both the image picker and camera give us a real extension on the URI, and
@@ -43,25 +54,28 @@ function guessMediaType(uri: string): 'image' | 'video' {
 // picker produced this file) or left to be auto-detected from the URI.
 // fileSizeBytes, when the caller has it (expo-image-picker's asset.fileSize),
 // is checked against the per-type cap before any network call is made.
+// isPro (optional) selects the higher Pro limit tier; omitted = free tier.
 export async function uploadMedia(
   uri: string,
   folder: string,
   mediaType?: 'image' | 'video',
   fileSizeBytes?: number | null,
-  durationMs?: number | null
+  durationMs?: number | null,
+  isPro?: boolean
 ): Promise<{ secure_url: string; media_type: 'image' | 'video'; duration_seconds: number | null; thumbnail_url: string | null }> {
   const type = mediaType ?? guessMediaType(uri);
+  const limits = limitsFor(isPro);
 
   if (fileSizeBytes != null) {
-    const cap = type === 'video' ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+    const cap = type === 'video' ? limits.videoBytes : limits.imageBytes;
     if (fileSizeBytes > cap) {
       const capMb = Math.round(cap / (1024 * 1024));
       throw new Error(`${type === 'video' ? 'Videos' : 'Images'} must be under ${capMb}MB.`);
     }
   }
   // Expo's picker reports video duration in milliseconds.
-  if (type === 'video' && durationMs != null && durationMs > 60000) {
-    throw new Error('Videos can be up to 60 seconds long.');
+  if (type === 'video' && durationMs != null && durationMs > limits.videoMs) {
+    throw new Error(`Videos can be up to ${limits.videoMs / 1000} seconds long.`);
   }
 
   const token = await getToken();

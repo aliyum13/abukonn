@@ -11,11 +11,22 @@
 // abukonn/messages, abukonn/files, abukonn/groups.
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+// Multi-media upload limits, tiered for the "increased upload limits" Pro
+// perk. Free: 10MB image / 50MB video / 60s. Pro: 25MB / 150MB / 180s.
+// Kept as explicit tiers rather than magic numbers so the Pro values are
+// one obvious place to read and the free→pro switch is a single flag.
+const LIMITS = {
+  free: { imageBytes: 10 * 1024 * 1024, videoBytes: 50 * 1024 * 1024, videoSeconds: 60 },
+  pro:  { imageBytes: 25 * 1024 * 1024, videoBytes: 150 * 1024 * 1024, videoSeconds: 180 },
+} as const;
 
-// Pro multi-media limits (design decision, see ROADMAP): images up to 10MB
-// each, video up to 50MB AND 60 seconds.
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+// Picks the active tier. is_pro doesn't exist yet, so callers pass nothing
+// and everyone gets free limits (Option A, matching every other Pro
+// candidate). PRO-GATE: once the app knows the user's Pro status, callers
+// pass isPro and Pro users get the higher tier -- no other change needed.
+function limitsFor(isPro?: boolean) {
+  return isPro ? LIMITS.pro : LIMITS.free;
+}
 
 export interface UploadResult {
   secure_url: string;
@@ -49,24 +60,27 @@ function readVideoDurationSeconds(file: File): Promise<number | null> {
 // Uploads one file, reporting 0-100 progress via onProgress. Auto-detects
 // image vs video from the file's MIME type (what the browser itself reports
 // for the selected file — reliable, unlike guessing from a filename).
+// isPro (optional) selects the higher Pro limit tier; omitted = free tier.
 export async function uploadMedia(
   file: File,
   folder: string,
   token: string | null,
   onProgress?: (pct: number) => void,
+  isPro?: boolean,
 ): Promise<UploadResult> {
   const isVideo = file.type.startsWith('video/');
+  const limits = limitsFor(isPro);
 
   // Pre-flight checks, before any network call — file.size is always known
   // synchronously; video duration needs a quick metadata read (no upload).
-  const cap = isVideo ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+  const cap = isVideo ? limits.videoBytes : limits.imageBytes;
   if (file.size > cap) {
     throw new Error(`${isVideo ? 'Videos' : 'Images'} must be under ${Math.round(cap / (1024 * 1024))}MB.`);
   }
   if (isVideo) {
     const duration = await readVideoDurationSeconds(file);
-    if (duration != null && duration > 60) {
-      throw new Error('Videos can be up to 60 seconds long.');
+    if (duration != null && duration > limits.videoSeconds) {
+      throw new Error(`Videos can be up to ${limits.videoSeconds} seconds long.`);
     }
   }
 

@@ -89,12 +89,20 @@ async function createPost(req, res) {
       if (media.length > 3) {
         return res.status(400).json({ message: 'A post can have up to 3 photos/videos.' });
       }
+      // Server-side duration backstop for the "increased upload limits" perk.
+      // Free = 60s, Pro = 180s. This is the authoritative check (a client
+      // could bypass the pre-flight one in uploadMedia). PRO-GATE: once
+      // is_pro exists, `const maxVideoSeconds = req.user.is_pro ? 180 : 60;`.
+      // Size (MB) isn't re-checked here -- the file's already on Cloudinary
+      // by the time this runs; duration is the one thing worth re-validating
+      // server-side since it's cheap and client-reported.
+      const maxVideoSeconds = 60;
       for (const item of media) {
         if (!item?.media_url || !['image', 'video'].includes(item?.media_type)) {
           return res.status(400).json({ message: 'Each media item needs a media_url and a valid media_type.' });
         }
-        if (item.media_type === 'video' && item.duration_seconds != null && item.duration_seconds > 60) {
-          return res.status(400).json({ message: 'Videos can be up to 60 seconds long.' });
+        if (item.media_type === 'video' && item.duration_seconds != null && item.duration_seconds > maxVideoSeconds) {
+          return res.status(400).json({ message: `Videos can be up to ${maxVideoSeconds} seconds long.` });
         }
       }
       imageUrl = null; // media[] supersedes the legacy single-image field
