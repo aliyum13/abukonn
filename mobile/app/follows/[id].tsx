@@ -24,23 +24,26 @@ export default function FollowsList() {
   const router = useRouter();
   const { id, type, name } = useLocalSearchParams<{ id: string; type: string; name?: string }>();
   const isFollowers = type === 'followers';
+  const isViewers = type === 'viewers';
 
   const [people, setPeople] = useState<Person[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     try {
-      const endpoint = isFollowers
+      const endpoint = isViewers
+        ? `/api/users/me/profile-viewers`
+        : isFollowers
         ? `/api/follows/${id}/followers`
         : `/api/follows/${id}/following`;
-      const data = await apiFetch<{ followers?: Person[]; following?: Person[] }>(endpoint);
-      setPeople(data.followers || data.following || []);
+      const data = await apiFetch<{ followers?: Person[]; following?: Person[]; viewers?: Person[] }>(endpoint);
+      setPeople(data.followers || data.following || data.viewers || []);
     } catch {
       setPeople([]);
     } finally {
       setLoading(false);
     }
-  }, [id, isFollowers]);
+  }, [id, isFollowers, isViewers]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -59,7 +62,7 @@ export default function FollowsList() {
         <TouchableOpacity onPress={() => router.back()} hitSlop={12} style={s.back}>
           <Text style={s.backText}>‹ Back</Text>
         </TouchableOpacity>
-        <Text style={s.title}>{isFollowers ? 'Followers' : 'Following'}</Text>
+        <Text style={s.title}>{isViewers ? 'Profile views' : isFollowers ? 'Followers' : 'Following'}</Text>
         <View style={{ width: 60 }} />
       </View>
 
@@ -72,7 +75,7 @@ export default function FollowsList() {
           ListEmptyComponent={
             <View style={s.center}>
               <Text style={s.muted}>
-                {isFollowers ? 'No followers yet' : 'Not following anyone yet'}
+                {isViewers ? 'No profile views in the last 30 days' : isFollowers ? 'No followers yet' : 'Not following anyone yet'}
               </Text>
             </View>
           }

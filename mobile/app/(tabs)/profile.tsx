@@ -65,10 +65,13 @@ export default function Profile() {
   const [myStories, setMyStories] = useState<MyStatusStory[]>([]);
   const [deletingStoryId, setDeletingStoryId] = useState<number | null>(null);
   const [classRepFor, setClassRepFor] = useState<Array<{ id: number; department: string; level: string }>>([]);
+  // Profile views (Pro perk): count on the stats row, same "list length IS
+  // the count" approach as web (no separate count endpoint).
+  const [viewersCount, setViewersCount] = useState(0);
 
   const load = useCallback(async () => {
     try {
-      const [data, storiesData] = await Promise.all([
+      const [data, storiesData, viewersData] = await Promise.all([
         apiFetch<{
           user: { followers_count: number; following_count: number };
           posts: ProfilePost[];
@@ -76,12 +79,14 @@ export default function Profile() {
           class_rep_for?: Array<{ id: number; department: string; level: string }>;
         }>('/api/users/me'),
         apiFetch<{ stories: MyStatusStory[] }>('/api/stories/mine').catch(() => ({ stories: [] })),
+        apiFetch<{ viewers: unknown[] }>('/api/users/me/profile-viewers').catch(() => ({ viewers: [] })),
       ]);
       setPosts(data.posts || []);
       setReplies(data.replies || []);
       setClassRepFor(data.class_rep_for || []);
       setFollowers(data.user?.followers_count || 0);
       setFollowing(data.user?.following_count || 0);
+      setViewersCount(viewersData.viewers?.length || 0);
       setMyStories(storiesData.stories || []);
     } catch {
       // keep whatever we have
@@ -162,6 +167,13 @@ export default function Profile() {
           >
             <Text style={s.statNum}>{following}</Text>
             <Text style={s.statLabel}>Following</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={s.stat}
+            onPress={() => user && router.push({ pathname: '/follows/[id]', params: { id: String(user.id), type: 'viewers', name: user.full_name } })}
+          >
+            <Text style={s.statNum}>{viewersCount}</Text>
+            <Text style={s.statLabel}>Profile views</Text>
           </TouchableOpacity>
         </View>
 
