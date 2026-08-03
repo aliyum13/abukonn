@@ -13,6 +13,7 @@ const {
   likeCommentHandler,
   deleteCommentHandler,
   deletePost,
+  updatePost,
   getReplies,
   addReply,
   repostPost,
@@ -35,6 +36,7 @@ router.post('/:id/like', likePost);
 router.get('/:id/comments', getComments);
 router.post('/:id/comments', addComment);
 router.delete('/:id', deletePost);
+router.put('/:id', updatePost);
 router.post('/:id/repost', repostPost);
 router.post('/:id/view', viewPost);
 router.post('/:id/vote', voteOnPoll);

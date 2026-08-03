@@ -474,6 +474,49 @@ async function deletePost(req, res) {
   }
 }
 
+// Edit the text/caption of an already-published post. Ownership-checked the
+// same way deletePost is. Only the text changes -- media, category, subtype,
+// poll/event fields are all left as-is (this is a caption edit, not a
+// re-compose). Currently free; PRO-GATE INSERTION POINT: once is_pro exists,
+// gate here with `if (!req.user.is_pro) return res.status(403)...`.
+async function updatePost(req, res) {
+  try {
+    const postId = parseInt(req.params.id, 10);
+    const content = (req.body.content || '').trim();
+
+    if (!content) {
+      return res.status(400).json({ message: 'Post text cannot be empty.' });
+    }
+
+    const existing = await Post.getPostById(postId);
+    if (!existing) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+    if (existing.user_id !== req.user.id) {
+      return res.status(403).json({ message: 'You can only edit your own posts' });
+    }
+
+    const updated = await Post.updatePostContent(postId, content);
+
+    // Re-sync hashtags to the new text: clear the old set (decrementing their
+    // counts) then index the new set. Handles both added and removed tags.
+    const textToIndex = `${existing.discussion_title || ''} ${content}`.trim();
+    Hashtag.removePostHashtags(postId)
+      .then(() => { if (textToIndex) return Hashtag.indexPostHashtags(postId, textToIndex); })
+      .catch(err => console.error('Hashtag re-index error on edit:', err.message));
+
+    // Deliberately NOT re-firing mention notifications on edit -- editing a
+    // post to @mention someone shouldn't ping them like a fresh mention would
+    // (matches how most platforms treat edits; avoids a notification-spam
+    // vector via repeated edits).
+
+    res.json({ post: updated });
+  } catch (err) {
+    console.error('Edit post error:', err.message);
+    res.status(500).json({ message: 'Server error editing post' });
+  }
+}
+
 async function repostPost(req, res) {
   try {
     const originalPostId = parseInt(req.params.id, 10);
@@ -545,4 +588,4 @@ async function addReply(req, res) {
   }
 }
 
-module.exports = { createPost, getFeed, getFollowingFeed, getSinglePost, likePost, addComment, getComments, likeCommentHandler, deleteCommentHandler, deletePost, getReplies, addReply, repostPost, viewPost, voteOnPoll, getPollVotersHandler, toggleRSVP, setBestAnswer, attachMedia };
+module.exports = { createPost, getFeed, getFollowingFeed, getSinglePost, likePost, addComment, getComments, likeCommentHandler, deleteCommentHandler, deletePost, updatePost, getReplies, addReply, repostPost, viewPost, voteOnPoll, getPollVotersHandler, toggleRSVP, setBestAnswer, attachMedia };

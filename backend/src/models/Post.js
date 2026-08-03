@@ -58,6 +58,10 @@ async function createPostsTable() {
   await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS event_date TIMESTAMP WITH TIME ZONE`);
   await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS event_location VARCHAR(200)`);
   await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS event_rsvp_count INTEGER DEFAULT 0`);
+  // Edit-after-publish: NULL means never edited; a timestamp means the post's
+  // text was changed after posting, which the clients surface as an "edited"
+  // marker. Only the text/caption is editable (not media) -- see updatePost.
+  await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS edited_at TIMESTAMP WITH TIME ZONE`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS abukonn.poll_options (
       id SERIAL PRIMARY KEY,
@@ -198,7 +202,7 @@ async function getFollowingPosts(currentUserId, limit = 50, offset = 0) {
             ((p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) > 50) AS is_hot,
             (SELECT COUNT(*)::int FROM abukonn.comments c WHERE c.post_id = p.id AND c.created_at > NOW() - INTERVAL '1 hour') AS comment_velocity,
             p.poll_duration_hours, p.poll_ends_at,
-            p.event_title, p.event_date, p.event_location, COALESCE(p.event_rsvp_count, 0) AS event_rsvp_count,
+            p.event_title, p.event_date, p.event_location, COALESCE(p.event_rsvp_count, 0) AS event_rsvp_count, p.edited_at,
             (SELECT json_agg(json_build_object('id', po.id, 'option_text', po.option_text, 'vote_count', po.vote_count) ORDER BY po.id) FROM abukonn.poll_options po WHERE po.post_id = p.id) AS poll_options,
             (SELECT pv.option_id FROM abukonn.poll_votes pv WHERE pv.post_id = p.id AND pv.user_id = $1) AS voted_option_id,
             EXISTS(SELECT 1 FROM abukonn.event_rsvps er WHERE er.post_id = p.id AND er.user_id = $1) AS is_attending
@@ -254,7 +258,7 @@ async function getAllPosts(currentUserId, limit = 50, offset = 0) {
             ((p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) > 50) AS is_hot,
             (SELECT COUNT(*)::int FROM abukonn.comments c WHERE c.post_id = p.id AND c.created_at > NOW() - INTERVAL '1 hour') AS comment_velocity,
             p.poll_duration_hours, p.poll_ends_at,
-            p.event_title, p.event_date, p.event_location, COALESCE(p.event_rsvp_count, 0) AS event_rsvp_count,
+            p.event_title, p.event_date, p.event_location, COALESCE(p.event_rsvp_count, 0) AS event_rsvp_count, p.edited_at,
             (SELECT json_agg(json_build_object('id', po.id, 'option_text', po.option_text, 'vote_count', po.vote_count) ORDER BY po.id) FROM abukonn.poll_options po WHERE po.post_id = p.id) AS poll_options,
             (SELECT pv.option_id FROM abukonn.poll_votes pv WHERE pv.post_id = p.id AND pv.user_id = $1) AS voted_option_id,
             EXISTS(SELECT 1 FROM abukonn.event_rsvps er WHERE er.post_id = p.id AND er.user_id = $1) AS is_attending
@@ -340,7 +344,7 @@ async function getPostByIdForUser(id, currentUserId) {
             ((p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) > 50) AS is_hot,
             (SELECT COUNT(*)::int FROM abukonn.comments c WHERE c.post_id = p.id AND c.created_at > NOW() - INTERVAL '1 hour') AS comment_velocity,
             p.poll_duration_hours, p.poll_ends_at,
-            p.event_title, p.event_date, p.event_location, COALESCE(p.event_rsvp_count, 0) AS event_rsvp_count,
+            p.event_title, p.event_date, p.event_location, COALESCE(p.event_rsvp_count, 0) AS event_rsvp_count, p.edited_at,
             (SELECT json_agg(json_build_object('id', po.id, 'option_text', po.option_text, 'vote_count', po.vote_count) ORDER BY po.id) FROM abukonn.poll_options po WHERE po.post_id = p.id) AS poll_options,
             (SELECT pv.option_id FROM abukonn.poll_votes pv WHERE pv.post_id = p.id AND pv.user_id = $2) AS voted_option_id,
             EXISTS(SELECT 1 FROM abukonn.event_rsvps er WHERE er.post_id = p.id AND er.user_id = $2) AS is_attending
@@ -441,7 +445,7 @@ async function getPostsByUserId(userId, currentUserId = null) {
             ((p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) > 50) AS is_hot,
             (SELECT COUNT(*)::int FROM abukonn.comments c WHERE c.post_id = p.id AND c.created_at > NOW() - INTERVAL '1 hour') AS comment_velocity,
             p.poll_duration_hours, p.poll_ends_at,
-            p.event_title, p.event_date, p.event_location, COALESCE(p.event_rsvp_count, 0) AS event_rsvp_count,
+            p.event_title, p.event_date, p.event_location, COALESCE(p.event_rsvp_count, 0) AS event_rsvp_count, p.edited_at,
             (SELECT json_agg(json_build_object('id', po.id, 'option_text', po.option_text, 'vote_count', po.vote_count) ORDER BY po.id) FROM abukonn.poll_options po WHERE po.post_id = p.id) AS poll_options,
             (SELECT pv.option_id FROM abukonn.poll_votes pv WHERE pv.post_id = p.id AND pv.user_id = $2) AS voted_option_id,
             EXISTS(SELECT 1 FROM abukonn.event_rsvps er WHERE er.post_id = p.id AND er.user_id = $2) AS is_attending
@@ -494,6 +498,19 @@ async function deletePost(id) {
   const result = await pool.query(
     'DELETE FROM abukonn.posts WHERE id = $1 RETURNING *',
     [id]
+  );
+  return result.rows[0] || null;
+}
+
+// Edit-after-publish: updates only the text/caption and stamps edited_at.
+// Ownership is enforced in the controller before this runs. Media, category,
+// subtype, poll options etc. are intentionally not touched -- this is a
+// caption edit, not a full re-compose.
+async function updatePostContent(id, content) {
+  const result = await pool.query(
+    `UPDATE abukonn.posts SET content = $1, edited_at = CURRENT_TIMESTAMP
+     WHERE id = $2 RETURNING *`,
+    [content, id]
   );
   return result.rows[0] || null;
 }
@@ -571,6 +588,7 @@ module.exports = {
   repostPost,
   incrementViewCount,
   deletePost,
+  updatePostContent,
   votePoll,
   getPollVoters,
   toggleEventRSVP,
