@@ -35,6 +35,7 @@ const { createHashtagTables } = require('./models/Hashtag');
 const { createUserSettingsTable } = require('./models/UserSettings');
 const { createHighlightsTable } = require('./models/Highlight');
 const { createProfileViewsTable } = require('./models/ProfileView');
+const { createPostViewsTable } = require('./models/PostView');
 const { createChannelTables } = require('./models/Channel');
 const { createPasswordResetsTable } = require('./models/PasswordReset');
 const { createTimetableTable } = require('./models/Timetable');
@@ -350,6 +351,7 @@ createUsersTable()
   .then(() => createUserSettingsTable())
   .then(() => createHighlightsTable())
   .then(() => createProfileViewsTable())
+  .then(() => createPostViewsTable())
   .then(() => createChannelTables())
   .then(() => createPasswordResetsTable())
   .then(() => createTimetableTable())

@@ -22,6 +22,7 @@ const {
   getPollVotersHandler,
   toggleRSVP,
   setBestAnswer,
+  getPostAnalytics,
 } = require('../controllers/postController');
 
 const router = express.Router();
@@ -30,6 +31,7 @@ router.use(auth);
 
 router.get('/', getFeed);
 router.get('/following', getFollowingFeed);
+router.get('/analytics', getPostAnalytics);
 router.post('/', upload.single('image'), verifyFileSignature, createPost);
 router.get('/:id', getSinglePost);
 router.post('/:id/like', likePost);

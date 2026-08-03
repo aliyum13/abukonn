@@ -5,6 +5,7 @@ const Notification = require('../models/Notification');
 const Follow = require('../models/Follow');
 const { emitNotification, emitNotificationToMany } = require('../lib/notify');
 const Hashtag = require('../models/Hashtag');
+const PostView = require('../models/PostView');
 const { isBlocked } = require('../models/ReportBlock');
 const { resolveMentions } = require('../utils/mentions');
 const cloudinary = require('../config/cloudinary');
@@ -543,10 +544,58 @@ async function viewPost(req, res) {
     }
     const canonical = await Post.resolveCanonicalPost(existing);
     await Post.incrementViewCount(canonical.id);
+    // Real unique-viewer tracking for post analytics (Pro perk) -- separate
+    // from the raw view_count increment above, which stays untouched since
+    // it feeds engagement_score/trending. Same canonical-post resolution so
+    // a repost's views count toward the original, consistent with likes/
+    // comments/view_count. Fire-and-forget: never let this slow down or
+    // fail the view-tracking response itself.
+    PostView.recordView(req.user.id, canonical.id).catch(err =>
+      console.error('Post view recording error:', err.message)
+    );
     res.json({ message: 'Viewed' });
   } catch (err) {
     console.error('View post error:', err.message);
     res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// Post analytics — Pro perk. Aggregate numbers only (view_count, unique
+// viewers, likes/comments/reposts), deliberately NOT a per-viewer identity
+// list -- confirmed with Ali: unlike profile views, a post can rack up
+// hundreds of views, so "who viewed this" is both a heavier privacy ask and
+// not what "post analytics" as a paid perk usually means on other
+// platforms (Instagram/X analytics are aggregate too, not a viewer list).
+//
+// Reuses the existing getPostsByUserId (same rich shape the profile page
+// already renders: polls, events, media, etc.) rather than a new query, then
+// attaches unique_viewers in one batched call -- everything else
+// (view_count, likes_count, comments_count, repost_count) is already on
+// each post from that query, so this endpoint's only real addition is the
+// unique-viewer number PostView tracks separately from the raw counter.
+//
+// PRO-GATE INSERTION POINT: once is_pro exists, add
+//   if (!req.user.is_pro) return res.status(403).json({ message: 'Post analytics is a Pro feature.' });
+// Left unenforced for now (Option A, matching every other Pro candidate).
+async function getPostAnalytics(req, res) {
+  try {
+    const posts = await Post.getPostsByUserId(req.user.id, req.user.id);
+    const uniqueCounts = await PostView.getUniqueViewerCounts(posts.map(p => p.id));
+    const analytics = posts.map(p => ({
+      id: p.id,
+      content: p.content,
+      image_url: p.image_url,
+      created_at: p.created_at,
+      view_count: p.view_count || 0,
+      unique_viewers: uniqueCounts[p.id] || 0,
+      likes_count: p.likes_count || 0,
+      comments_count: p.comments_count || 0,
+      repost_count: p.repost_count || 0,
+    }));
+    res.json({ analytics });
+  } catch (err) {
+    console.error('Get post analytics error:', err.message);
+    res.status(500).json({ message: 'Server error fetching post analytics' });
   }
 }
 
@@ -588,4 +637,4 @@ async function addReply(req, res) {
   }
 }
 
-module.exports = { createPost, getFeed, getFollowingFeed, getSinglePost, likePost, addComment, getComments, likeCommentHandler, deleteCommentHandler, deletePost, updatePost, getReplies, addReply, repostPost, viewPost, voteOnPoll, getPollVotersHandler, toggleRSVP, setBestAnswer, attachMedia };
+module.exports = { createPost, getFeed, getFollowingFeed, getSinglePost, likePost, addComment, getComments, likeCommentHandler, deleteCommentHandler, deletePost, updatePost, getReplies, addReply, repostPost, viewPost, voteOnPoll, getPollVotersHandler, toggleRSVP, setBestAnswer, attachMedia, getPostAnalytics };
