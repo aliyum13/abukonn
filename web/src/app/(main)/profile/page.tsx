@@ -54,7 +54,7 @@ interface FollowUser {
   is_following?: boolean;
 }
 
-type ModalType = 'none' | 'followers' | 'following';
+type ModalType = 'none' | 'followers' | 'following' | 'viewers';
 type TabType = 'posts' | 'replies';
 
 interface ProfileStory {
@@ -166,6 +166,11 @@ export default function ProfilePage() {
 
   const [followersCount, setFollowersCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
+  // Profile views (Pro perk): count shown on the profile's own stats row,
+  // fetched separately from the followers/following stats since it comes
+  // from a different endpoint (/api/users/me/profile-viewers) that also
+  // doubles as the modal's data source.
+  const [viewersCount, setViewersCount] = useState(0);
 
   const [modalType, setModalType] = useState<ModalType>('none');
   const [modalList, setModalList] = useState<FollowUser[]>([]);
@@ -222,6 +227,12 @@ export default function ProfilePage() {
     fetch(`${API_URL}/api/follows/${user.id}/stats`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(d => { setFollowersCount(d.followers_count ?? 0); setFollowingCount(d.following_count ?? 0); })
+      .catch(() => {});
+    // No separate count endpoint -- the viewers list IS the count (30-day
+    // window is already small enough that fetching it in full is cheap).
+    fetch(`${API_URL}/api/users/me/profile-viewers`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => setViewersCount((d.viewers ?? []).length))
       .catch(() => {});
   }, [token, user?.id]);
 
@@ -369,7 +380,7 @@ export default function ProfilePage() {
     }
   };
 
-  const openModal = async (type: 'followers' | 'following') => {
+  const openModal = async (type: 'followers' | 'following' | 'viewers') => {
     if (!token || !user) return;
     setModalType(type);
     setModalLoading(true);
@@ -378,11 +389,13 @@ export default function ProfilePage() {
     try {
       const endpoint = type === 'followers'
         ? `/api/follows/${user.id}/followers`
-        : `/api/follows/${user.id}/following`;
+        : type === 'following'
+        ? `/api/follows/${user.id}/following`
+        : `/api/users/me/profile-viewers`;
       const res = await fetch(`${API_URL}${endpoint}`, { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
       if (!res.ok) { setModalError(data.message || 'Failed to load list'); return; }
-      setModalList(data[type] ?? []);
+      setModalList(type === 'viewers' ? (data.viewers ?? []) : (data[type] ?? []));
     } catch { setModalError('Network error'); }
     finally { setModalLoading(false); }
   };
@@ -528,6 +541,10 @@ export default function ProfilePage() {
             <button type="button" onClick={() => openModal('following')} className="text-center transition hover:opacity-70">
               <p className="text-[17px] font-bold text-ink">{followingCount}</p>
               <p className="text-[12px] text-ink-muted">Following</p>
+            </button>
+            <button type="button" onClick={() => openModal('viewers')} className="text-center transition hover:opacity-70">
+              <p className="text-[17px] font-bold text-ink">{viewersCount}</p>
+              <p className="text-[12px] text-ink-muted">Profile views</p>
             </button>
           </div>
 
@@ -957,7 +974,8 @@ export default function ProfilePage() {
           >
             <div className="flex items-center justify-between border-b border-border px-4 py-3.5">
               <h2 className="font-semibold capitalize text-ink">
-                {modalType} ({modalType === 'followers' ? followersCount : followingCount})
+                {modalType === 'viewers' ? 'Profile views' : modalType}
+                {' '}({modalType === 'followers' ? followersCount : modalType === 'following' ? followingCount : viewersCount})
               </h2>
               <button type="button" onClick={() => { setModalType('none'); setModalError(''); }}
                 className="flex h-8 w-8 items-center justify-center rounded-full text-ink-muted transition hover:bg-surface-muted">
@@ -978,7 +996,7 @@ export default function ProfilePage() {
                 <div className="px-4 py-8 text-center text-sm text-red-600">{modalError}</div>
               ) : modalList.length === 0 ? (
                 <div className="px-4 py-10 text-center text-[14px] text-ink-muted">
-                  {modalType === 'followers' ? 'No followers yet' : "You're not following anyone yet"}
+                  {modalType === 'followers' ? 'No followers yet' : modalType === 'following' ? "You're not following anyone yet" : 'No profile views in the last 30 days'}
                 </div>
               ) : (
                 modalList.map(u => (
