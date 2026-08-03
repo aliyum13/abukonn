@@ -164,6 +164,19 @@ export default function Library() {
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.muted} />
         </TouchableOpacity>
+        {/* Mock Exams — placeholder, not yet built. Non-tappable, badged
+            "Coming soon" to set expectations / gauge interest. Folds into
+            the Pro tier when built. */}
+        <View style={[s.quickCard, s.quickCardDisabled]}>
+          <View style={s.quickIcon}><Ionicons name="document-text-outline" size={22} color={colors.muted} /></View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.quickTitle}>Mock Exams</Text>
+            <Text style={s.quickSub} numberOfLines={1}>Practice past questions & test yourself</Text>
+          </View>
+          <View style={s.comingSoonBadge}>
+            <Text style={s.comingSoonText}>Coming soon</Text>
+          </View>
+        </View>
       </View>
 
       <TextInput
@@ -313,6 +326,9 @@ const make_s = (colors: Palette) => StyleSheet.create({
     backgroundColor: colors.surface, borderRadius: radius.md, padding: 14,
     borderWidth: 1, borderColor: colors.border,
   },
+  quickCardDisabled: { opacity: 0.7 },
+  comingSoonBadge: { backgroundColor: colors.brand100, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  comingSoonText: { fontSize: 11, fontWeight: '700', color: colors.brand },
   quickIcon: { width: 44, height: 44, borderRadius: radius.md, backgroundColor: colors.brand100, alignItems: 'center', justifyContent: 'center' },
   quickTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
   quickSub: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
