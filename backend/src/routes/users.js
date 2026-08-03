@@ -2,7 +2,7 @@ const express = require('express');
 const auth = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const { verifyFileSignature } = require('../middleware/verifyFileSignature');
-const { getProfile, getUserById, updateProfile, uploadPhoto, removePhoto, getBirthdaysToday, searchForMention, resolveUsername } = require('../controllers/userController');
+const { getProfile, getUserById, updateProfile, uploadPhoto, removePhoto, getBirthdaysToday, searchForMention, resolveUsername, getProfileViewers } = require('../controllers/userController');
 
 const router = express.Router();
 
@@ -19,6 +19,7 @@ router.post('/me/photo', upload.single('photo'), verifyFileSignature, uploadPhot
 router.delete('/me/photo', removePhoto);
 router.get('/birthdays/today', getBirthdaysToday);
 router.get('/mention-search', searchForMention);
+router.get('/me/profile-viewers', getProfileViewers);
 router.get('/:id', getUserById);
 
 module.exports = router;

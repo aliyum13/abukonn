@@ -6,6 +6,7 @@ const { isBlocked } = require('../models/ReportBlock');
 const cloudinary = require('../config/cloudinary');
 const pool = require('../config/db');
 const { attachMedia } = require('./postController');
+const ProfileView = require('../models/ProfileView');
 
 function uploadBufferToCloudinary(buffer, mimetype) {
   const dataUri = `data:${mimetype};base64,${buffer.toString('base64')}`;
@@ -59,6 +60,14 @@ async function getUserById(req, res) {
       return res.status(404).json({ message: 'User not found' });
     }
 
+    // Fire-and-forget: never let view-recording slow down or fail the
+    // profile fetch itself. Recording happens for every visit regardless of
+    // Pro status on either side (see ProfileView.recordView) -- only
+    // reading the list back is gated.
+    ProfileView.recordView(req.user.id, userId).catch(err =>
+      console.error('Profile view recording error:', err.message)
+    );
+
     const [posts, stats, following, replies, classRepFor] = await Promise.all([
       Post.getPostsByUserId(userId, req.user.id),
       Follow.getStats(userId),
@@ -84,6 +93,23 @@ async function getUserById(req, res) {
   } catch (err) {
     console.error('Get user error:', err.message);
     res.status(500).json({ message: 'Server error fetching user' });
+  }
+}
+
+// "Who viewed my profile" — Pro perk. Recording (ProfileView.recordView,
+// called from getUserById above) happens for every visit regardless of
+// Pro status; this endpoint, which READS the list back, is what's gated.
+// PRO-GATE INSERTION POINT: once is_pro exists, add
+//   if (!req.user.is_pro) return res.status(403).json({ message: 'Profile views is a Pro feature.' });
+// right here. Left unenforced for now (Option A, matching every other Pro
+// candidate) -- fully functional, not yet paywalled.
+async function getProfileViewers(req, res) {
+  try {
+    const viewers = await ProfileView.getViewers(req.user.id);
+    res.json({ viewers });
+  } catch (err) {
+    console.error('Get profile viewers error:', err.message);
+    res.status(500).json({ message: 'Server error fetching profile viewers' });
   }
 }
 
@@ -225,4 +251,4 @@ async function removePhoto(req, res) {
   }
 }
 
-module.exports = { getProfile, getUserById, updateProfile, uploadPhoto, removePhoto, getBirthdaysToday, searchForMention, resolveUsername };
+module.exports = { getProfile, getUserById, updateProfile, uploadPhoto, removePhoto, getBirthdaysToday, searchForMention, resolveUsername, getProfileViewers };
