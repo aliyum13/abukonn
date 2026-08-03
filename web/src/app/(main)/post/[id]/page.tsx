@@ -48,6 +48,7 @@ interface Post {
   content: string;
   image_url: string | null;
   media: Array<{ id: number; media_url: string; media_type: 'image' | 'video'; thumbnail_url: string | null; duration_seconds: number | null; position: number }>;
+  edited_at?: string | null;
   likes_count: number;
   comments_count: number;
   repost_count: number;
@@ -132,6 +133,9 @@ export default function PostDetailPage() {
 
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [postMenuOpen, setPostMenuOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
   const postMenuRef = useRef<HTMLDivElement>(null);
 
   const [shareModalOpen, setShareModalOpen] = useState(false);
@@ -285,6 +289,33 @@ export default function PostDetailPage() {
       });
       if (res.ok) router.replace('/feed');
     } catch {}
+  };
+
+  const startEdit = () => {
+    if (!post) return;
+    setEditDraft(post.content);
+    setEditing(true);
+    setPostMenuOpen(false);
+  };
+  const cancelEdit = () => { setEditing(false); setEditDraft(''); };
+  const saveEdit = async () => {
+    if (!token || !post) return;
+    const content = editDraft.trim();
+    if (!content) return;
+    setEditSaving(true);
+    try {
+      const res = await fetch(`${API_URL}/api/posts/${post.id}`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      });
+      if (res.ok) {
+        setPost(p => p ? { ...p, content, edited_at: new Date().toISOString() } : p);
+        cancelEdit();
+      }
+    } catch {} finally {
+      setEditSaving(false);
+    }
   };
 
   const fetchReplies = async (commentId: number) => {
@@ -580,6 +611,14 @@ export default function PostDetailPage() {
                   <div className="absolute right-0 top-8 z-30 w-40 overflow-hidden rounded-xl border border-border bg-white shadow-lg dark:bg-[#111] dark:border-[#222]">
                     {post.user_id === user.id && (
                       <button type="button"
+                        onClick={startEdit}
+                        className="flex w-full items-center gap-2 px-4 py-2.5 text-[13px] text-ink-secondary hover:bg-surface-muted transition">
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" /></svg>
+                        Edit post
+                      </button>
+                    )}
+                    {post.user_id === user.id && (
+                      <button type="button"
                         onClick={() => { handleDelete(); setPostMenuOpen(false); }}
                         className="flex w-full items-center gap-2 px-4 py-2.5 text-[13px] text-red-600 hover:bg-red-50 transition">
                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -605,9 +644,32 @@ export default function PostDetailPage() {
               {(post.post_subtype === 'discussion' || post.post_subtype === 'question') && post.discussion_title && (
                 <p className="mb-1.5 text-[18px] font-bold text-ink leading-snug">{post.discussion_title}</p>
               )}
-              {post.content && (
+              {editing ? (
+                <div className="mt-1">
+                  <textarea
+                    value={editDraft}
+                    onChange={e => setEditDraft(e.target.value)}
+                    rows={4}
+                    autoFocus
+                    className="w-full resize-y rounded-xl border border-border bg-surface px-3 py-2 text-[15px] text-ink outline-none focus:border-brand-400 dark:bg-[#111] dark:border-[#222]"
+                  />
+                  <div className="mt-2 flex items-center justify-end gap-2">
+                    <button type="button" onClick={cancelEdit} disabled={editSaving}
+                      className="rounded-full px-3 py-1.5 text-[13px] font-medium text-ink-secondary hover:bg-surface-muted transition disabled:opacity-50">
+                      Cancel
+                    </button>
+                    <button type="button" onClick={saveEdit} disabled={editSaving || !editDraft.trim()}
+                      className="rounded-full bg-brand-600 px-4 py-1.5 text-[13px] font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50">
+                      {editSaving ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+              ) : post.content && (
                 <p className="text-[15px] text-ink leading-[1.6]">
                   <PostContent content={post.content} />
+                  {post.edited_at && (
+                    <span className="ml-1 text-[12px] text-ink-muted" title={`Edited ${new Date(post.edited_at).toLocaleString()}`}>· edited</span>
+                  )}
                 </p>
               )}
             </div>
