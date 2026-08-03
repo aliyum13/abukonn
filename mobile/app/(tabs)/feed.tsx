@@ -48,6 +48,7 @@ interface Post {
   category?: string;
   image_url: string | null;
   media?: Array<{ id: number; media_url: string; media_type: 'image' | 'video'; thumbnail_url: string | null; duration_seconds: number | null; position: number }>;
+  edited_at?: string | null;
   author_name: string;
   author_department: string | null;
   author_photo: string | null;
@@ -239,6 +240,7 @@ const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, on
               {expanded ? 'Show less' : 'Show more'}
             </Text>
           ) : null}
+          {post.edited_at ? <Text style={s.editedTag}>edited</Text> : null}
         </>
       ) : null}
 
@@ -487,6 +489,12 @@ export default function Feed() {
   const [sharePost, setSharePost] = useState<Post | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [reportTarget, setReportTarget] = useState<{ type: 'post' | 'user'; id: number; name: string } | null>(null);
+  // Edit-after-publish: the post being edited (null = modal closed), its draft
+  // text, and a saving flag. A modal is used rather than inline editing —
+  // better keyboard/focus handling on a phone than editing inside the feed.
+  const [editPost, setEditPost] = useState<Post | null>(null);
+  const [editDraft, setEditDraft] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentText, setCommentText] = useState('');
   const [commentsLoading, setCommentsLoading] = useState(false);
@@ -726,6 +734,31 @@ export default function Feed() {
     }
   }, [mutateBoth]);
 
+  const openEdit = useCallback((post: Post) => {
+    setEditPost(post);
+    setEditDraft(post.content || '');
+  }, []);
+
+  const saveEdit = useCallback(async () => {
+    if (!editPost) return;
+    const content = editDraft.trim();
+    if (!content) { Alert.alert('Empty post', 'Post text cannot be empty.'); return; }
+    setEditSaving(true);
+    try {
+      await apiFetch(`/api/posts/${editPost.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ content }),
+      });
+      mutateBoth(editPost.id, p => ({ ...p, content, edited_at: new Date().toISOString() }));
+      setEditPost(null);
+      setEditDraft('');
+    } catch (err) {
+      Alert.alert('Could not edit', err instanceof Error ? err.message : '');
+    } finally {
+      setEditSaving(false);
+    }
+  }, [editPost, editDraft, mutateBoth]);
+
   const deletePost = useCallback((post: Post) => {
     Alert.alert('Delete post', 'This cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
@@ -776,6 +809,7 @@ export default function Feed() {
     const isOwn = user?.id === post.user_id;
     if (isOwn) {
       Alert.alert('Post options', undefined, [
+        { text: 'Edit post', onPress: () => openEdit(post) },
         { text: 'Delete post', style: 'destructive', onPress: () => deletePost(post) },
         { text: 'Cancel', style: 'cancel' },
       ]);
@@ -787,7 +821,7 @@ export default function Feed() {
         { text: 'Cancel', style: 'cancel' },
       ]);
     }
-  }, [user, deletePost, reportPost, blockUser]);
+  }, [user, deletePost, reportPost, blockUser, openEdit]);
 
 
   const openComments = useCallback(async (post: Post) => {
@@ -1218,6 +1252,33 @@ export default function Feed() {
       <ShareSheet post={sharePost} onClose={() => setSharePost(null)} />
       <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
       <ReportModal target={reportTarget} onClose={() => setReportTarget(null)} />
+
+      <Modal visible={!!editPost} transparent animationType="slide" onRequestClose={() => setEditPost(null)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={s.editBackdrop}>
+          <View style={s.editSheet}>
+            <View style={s.editHeader}>
+              <TouchableOpacity onPress={() => { setEditPost(null); setEditDraft(''); }} disabled={editSaving}>
+                <Text style={s.editCancel}>Cancel</Text>
+              </TouchableOpacity>
+              <Text style={s.editTitle}>Edit post</Text>
+              <TouchableOpacity onPress={saveEdit} disabled={editSaving || !editDraft.trim()}>
+                <Text style={[s.editSave, (editSaving || !editDraft.trim()) && s.editSaveDisabled]}>
+                  {editSaving ? 'Saving…' : 'Save'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              style={s.editInput}
+              value={editDraft}
+              onChangeText={setEditDraft}
+              multiline
+              autoFocus
+              placeholder="What's on your mind?"
+              placeholderTextColor={colors.textSecondary}
+            />
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {/* For You / Following / Messages — matches web */}
       <View style={s.tabBar}>
@@ -1653,6 +1714,15 @@ export default function Feed() {
 
 const make_s = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
+  editedTag: { fontSize: 12, color: colors.textSecondary, marginTop: 2, fontStyle: 'italic' },
+  editBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
+  editSheet: { backgroundColor: colors.bg, borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingBottom: 24, minHeight: 240 },
+  editHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border },
+  editTitle: { fontSize: 16, fontWeight: '700', color: colors.text },
+  editCancel: { fontSize: 15, color: colors.textSecondary },
+  editSave: { fontSize: 15, fontWeight: '700', color: colors.brand },
+  editSaveDisabled: { opacity: 0.4 },
+  editInput: { paddingHorizontal: 16, paddingTop: 14, fontSize: 16, color: colors.text, minHeight: 140, textAlignVertical: 'top' },
   // Your Classes Today widget
   tcWrap: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
   tcHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, marginBottom: 10 },

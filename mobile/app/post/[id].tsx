@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity, Image, FlatList,
-  ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Linking,
+  ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Linking, Modal,
 } from 'react-native';
 import { MediaCarousel } from '../../src/components/MediaCarousel';
 import { useThemedStyles } from '../../src/theme/ThemeContext';
@@ -27,6 +27,7 @@ const CATEGORY_CHIP: Record<string, { bg: string; fg: string; label: string }> =
 interface PollOption { id: number; option_text: string; vote_count: number }
 interface Post {
   id: number; user_id: number; content: string; image_url: string | null;
+  edited_at?: string | null;
   media?: Array<{ id: number; media_url: string; media_type: 'image' | 'video'; thumbnail_url: string | null; duration_seconds: number | null; position: number }>;
   author_name: string; author_department: string | null; author_photo: string | null;
   author_is_verified?: boolean; author_is_content_creator?: boolean;
@@ -59,6 +60,10 @@ export default function SinglePost() {
   const currentUserId = user?.id;
 
   const [post, setPost] = useState<Post | null>(null);
+  // Edit-after-publish (modal, matching the feed).
+  const [editing, setEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
@@ -147,6 +152,24 @@ export default function SinglePost() {
       });
     } catch {
       setPost(p => p ? { ...bump(p, was ? 1 : -1), is_liked: was } : p);
+    }
+  };
+
+  const startEdit = () => { if (post) { setEditDraft(post.content || ''); setEditing(true); } };
+  const saveEdit = async () => {
+    if (!post) return;
+    const content = editDraft.trim();
+    if (!content) { Alert.alert('Empty post', 'Post text cannot be empty.'); return; }
+    setEditSaving(true);
+    try {
+      await apiFetch(`/api/posts/${post.id}`, { method: 'PUT', body: JSON.stringify({ content }) });
+      setPost(p => p ? { ...p, content, edited_at: new Date().toISOString() } : p);
+      setEditing(false);
+      setEditDraft('');
+    } catch (err) {
+      Alert.alert('Could not edit', err instanceof Error ? err.message : '');
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -342,6 +365,12 @@ export default function SinglePost() {
                 </View>
                 {post.discussion_title ? <Text style={s.postTitle}>{post.discussion_title}</Text> : null}
                 {post.content ? <PostContent content={post.content} style={s.content} /> : null}
+                {post.edited_at ? <Text style={s.editedTag}>edited</Text> : null}
+                {post.user_id === currentUserId ? (
+                  <TouchableOpacity onPress={startEdit} style={s.editLink}>
+                    <Text style={s.editLinkText}>Edit post</Text>
+                  </TouchableOpacity>
+                ) : null}
                 {post.media && post.media.length > 0 ? (
                   <MediaCarousel items={post.media} onOpenImage={(url) => Linking.openURL(url)} />
                 ) : post.image_url ? <Image source={{ uri: post.image_url }} style={s.image} resizeMode="contain" /> : null}
@@ -452,12 +481,49 @@ export default function SinglePost() {
           onClose={() => setShareOpen(false)}
         />
       ) : null}
+      <Modal visible={editing} transparent animationType="slide" onRequestClose={() => setEditing(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={s.editBackdrop}>
+          <View style={s.editSheet}>
+            <View style={s.editHeader}>
+              <TouchableOpacity onPress={() => { setEditing(false); setEditDraft(''); }} disabled={editSaving}>
+                <Text style={s.editCancel}>Cancel</Text>
+              </TouchableOpacity>
+              <Text style={s.editTitle}>Edit post</Text>
+              <TouchableOpacity onPress={saveEdit} disabled={editSaving || !editDraft.trim()}>
+                <Text style={[s.editSave, (editSaving || !editDraft.trim()) && s.editSaveDisabled]}>
+                  {editSaving ? 'Saving…' : 'Save'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              style={s.editInput}
+              value={editDraft}
+              onChangeText={setEditDraft}
+              multiline
+              autoFocus
+              placeholder="What's on your mind?"
+              placeholderTextColor={colors.muted}
+            />
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const make_s = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
+  editedTag: { fontSize: 12, color: colors.textSecondary, marginTop: 2, fontStyle: 'italic' },
+  editLink: { marginTop: 6, alignSelf: 'flex-start' },
+  editLinkText: { fontSize: 13, fontWeight: '600', color: colors.brand },
+  editBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
+  editSheet: { backgroundColor: colors.bg, borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingBottom: 24, minHeight: 240 },
+  editHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border },
+  editTitle: { fontSize: 16, fontWeight: '700', color: colors.text },
+  editCancel: { fontSize: 15, color: colors.textSecondary },
+  editSave: { fontSize: 15, fontWeight: '700', color: colors.brand },
+  editSaveDisabled: { opacity: 0.4 },
+  editInput: { paddingHorizontal: 16, paddingTop: 14, fontSize: 16, color: colors.text, minHeight: 140, textAlignVertical: 'top' },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, paddingVertical: 12,
