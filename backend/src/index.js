@@ -291,6 +291,11 @@ const loginLimiter = rateLimit({
 app.use('/api', apiLimiter);
 app.use('/api/auth', authLimiter);
 app.use('/api/auth/login', loginLimiter);
+// Paystack webhook must see the RAW body to verify its HMAC signature, so it
+// is mounted with express.raw BEFORE the global express.json below (which
+// would otherwise consume and discard the raw bytes). No auth: Paystack calls
+// it directly and the signature check is what authenticates it.
+app.post('/api/pro/webhook', express.raw({ type: 'application/json' }), require('./controllers/proController').handleWebhook);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -316,6 +321,7 @@ app.use('/api/support', require('./routes/support'));
 app.use('/api/library', require('./routes/library'));
 app.use('/api/moderation', require('./routes/moderation'));
 app.use('/api/academic-calendar', require('./routes/academicCalendar'));
+app.use('/api/pro', require('./routes/pro'));
 
 // Test route
 app.get('/', (req, res) => {
