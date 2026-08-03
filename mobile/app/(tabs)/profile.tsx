@@ -191,6 +191,9 @@ export default function Profile() {
               <Ionicons name="share-social-outline" size={20} color={colors.text} />
             </TouchableOpacity>
           ) : null}
+          <TouchableOpacity style={s.iconBtn} onPress={() => router.push('/analytics')}>
+            <Ionicons name="bar-chart-outline" size={20} color={colors.text} />
+          </TouchableOpacity>
           <TouchableOpacity style={s.iconBtn} onPress={() => router.push('/settings')}>
             <Ionicons name="settings-outline" size={20} color={colors.text} />
           </TouchableOpacity>
