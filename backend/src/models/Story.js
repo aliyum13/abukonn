@@ -257,6 +257,22 @@ async function getMyActiveStories(userId) {
   return result.rows;
 }
 
+// How many stories this user has POSTED today (calendar-day count, not
+// currently-active). Used for the free-tier daily cap (5/day; Pro
+// unlimited) -- a different axis from getMyActiveStories, which counts
+// what's currently LIVE (the universal 3-active UX cap). Counts every story
+// created since local midnight regardless of whether it's since expired, so
+// deleting/expiring a story doesn't free up daily quota (the cap is on
+// posting volume per day, not on live count).
+async function countStoriesToday(userId) {
+  const result = await pool.query(
+    `SELECT COUNT(*)::int AS count FROM abukonn.stories
+     WHERE user_id = $1 AND created_at >= date_trunc('day', NOW())`,
+    [userId]
+  );
+  return result.rows[0].count;
+}
+
 async function getStoryById(storyId) {
   const result = await pool.query(`SELECT * FROM abukonn.stories WHERE id = $1`, [storyId]);
   return result.rows[0] || null;
@@ -449,6 +465,7 @@ module.exports = {
   createStory,
   getActiveStoriesForUser,
   getMyActiveStories,
+  countStoriesToday,
   deleteStory,
   getStoryById,
   createStoryViewsTable,

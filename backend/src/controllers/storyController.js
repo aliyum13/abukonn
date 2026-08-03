@@ -6,6 +6,26 @@ const Follow = require('../models/Follow');
 // Allowed text-story fonts. Whitelisted rather than free-text so nothing
 // arbitrary from the client ends up driving CSS on the viewer.
 const STORY_FONTS = ['classic', 'bold', 'serif', 'mono', 'script'];
+
+// Free-tier daily story cap. Pro users post unlimited (the is_pro bypass is
+// the marked insertion point in checkDailyStoryCap). The 3-active cap (how
+// many are LIVE at once) is separate and stays universal -- that's a UX
+// guardrail against flooding the story bar, deliberately NOT a Pro lever.
+const FREE_DAILY_STORY_CAP = 5;
+
+// Returns an error string if this user is over the daily cap, else null.
+// PRO-GATE INSERTION POINT: once is_pro exists, add at the top of this
+// function:
+//   if (req.user.is_pro) return null;   // Pro = unlimited stories/day
+// Until then everyone is treated as free-tier (Option A, matching every
+// other Pro candidate) -- the cap is fully built, just not yet Pro-aware.
+async function checkDailyStoryCap(req) {
+  const postedToday = await Story.countStoriesToday(req.user.id);
+  if (postedToday >= FREE_DAILY_STORY_CAP) {
+    return `You've reached your ${FREE_DAILY_STORY_CAP} stories for today. Come back tomorrow, or go Pro for unlimited stories.`;
+  }
+  return null;
+}
 const { getLinkPreview, firstUrlIn } = require('../lib/linkPreview');
 
 // Preview a URL for the composer. Auth'd (router-level) so this isn't an open
@@ -196,6 +216,9 @@ async function createStory(req, res) {
       const fontStyle = STORY_FONTS.includes(requestedFont) ? requestedFont : 'classic';
       if (!textContent) return res.status(400).json({ message: 'Text content is required' });
 
+      const dailyErrText = await checkDailyStoryCap(req);
+      if (dailyErrText) return res.status(429).json({ message: dailyErrText });
+
       const activeText = await Story.getMyActiveStories(req.user.id);
       if (activeText.length >= 3) {
         return res.status(400).json({ message: 'You can have up to 3 active stories at a time. Wait for one to expire or delete one first.' });
@@ -232,6 +255,9 @@ async function createStory(req, res) {
       // defined as your currently-active (non-expired) stories, so the count
       // naturally resets as old stories age out at 24h, with no separate
       // session concept to track.
+      const dailyErrDirect = await checkDailyStoryCap(req);
+      if (dailyErrDirect) return res.status(429).json({ message: dailyErrDirect });
+
       const active = await Story.getMyActiveStories(req.user.id);
       if (active.length >= 3) {
         return res.status(400).json({ message: 'You can have up to 3 active stories at a time. Wait for one to expire or delete one first.' });
@@ -271,6 +297,9 @@ async function createStory(req, res) {
       console.error('[Cloudinary] upload error:', uploadErr);
       return res.status(500).json({ message: 'Failed to upload image' });
     }
+
+    const dailyErrLegacy = await checkDailyStoryCap(req);
+    if (dailyErrLegacy) return res.status(429).json({ message: dailyErrLegacy });
 
     const activeLegacy = await Story.getMyActiveStories(req.user.id);
     if (activeLegacy.length >= 3) {
