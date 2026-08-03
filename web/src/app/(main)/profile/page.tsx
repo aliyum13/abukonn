@@ -550,11 +550,18 @@ export default function ProfilePage() {
 
           {/* Edit profile -- moved here (below stats), matching mobile's
               order, rather than sitting beside the avatar. */}
-          <Link href="/settings#account" className="mt-4">
-            <Button variant="secondary" size="sm" className="rounded-full px-5">
-              Edit profile
-            </Button>
-          </Link>
+          <div className="mt-4 flex items-center gap-2">
+            <Link href="/settings#account">
+              <Button variant="secondary" size="sm" className="rounded-full px-5">
+                Edit profile
+              </Button>
+            </Link>
+            <Link href="/analytics">
+              <Button variant="secondary" size="sm" className="rounded-full px-5">
+                Post analytics
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
 
