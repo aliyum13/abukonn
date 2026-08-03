@@ -244,6 +244,7 @@ interface Post {
   content: string;
   image_url: string | null;
   media: Array<{ id: number; media_url: string; media_type: 'image' | 'video'; thumbnail_url: string | null; duration_seconds: number | null; position: number }>;
+  edited_at?: string | null;
   likes_count: number;
   comments_count: number;
   repost_count: number;
@@ -1428,6 +1429,11 @@ export default function FeedPage() {
 
   // ⋮ post context menu
   const [postMenuId, setPostMenuId] = useState<number | null>(null);
+  // Edit-after-publish: the post currently being edited inline, and its draft
+  // text. Null editingPostId = nothing being edited.
+  const [editingPostId, setEditingPostId] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
   const [reportTarget, setReportTarget] = useState<{ type: 'post' | 'user'; id: number; name: string } | null>(null);
   const [blockTarget, setBlockTarget] = useState<{ id: number; name: string } | null>(null);
   const [reportToast, setReportToast] = useState<string | null>(null);
@@ -2272,6 +2278,44 @@ export default function FeedPage() {
     }
   };
 
+  const startEditPost = (post: Post) => {
+    setEditingPostId(post.id);
+    setEditDraft(post.content);
+    setPostMenuId(null);
+  };
+
+  const cancelEditPost = () => {
+    setEditingPostId(null);
+    setEditDraft('');
+  };
+
+  const saveEditPost = async (postId: number) => {
+    if (!token) return;
+    const content = editDraft.trim();
+    if (!content) { setError('Post text cannot be empty.'); return; }
+    setEditSaving(true);
+    try {
+      const res = await fetch(`${API_URL}/api/posts/${postId}`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { message?: string };
+        throw new Error(d.message || 'Failed to edit post');
+      }
+      // Reflect the new text + edited marker locally without a refetch.
+      mutatePosts((prev) => prev.map((p) => p.id === postId
+        ? { ...p, content, edited_at: new Date().toISOString() }
+        : p));
+      cancelEditPost();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to edit post');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   // ── Stories ─────────────────────────────────────────────────────────────────
 
   const MAX_STORY_BATCH = 3;
@@ -2852,6 +2896,14 @@ export default function FeedPage() {
                           <div className="absolute right-0 top-8 z-30 w-44 overflow-hidden rounded-xl border border-border bg-white shadow-lg dark:bg-[#111] dark:border-[#222]">
                             {post.user_id === user.id && (
                               <button type="button"
+                                onClick={() => startEditPost(post)}
+                                className="flex w-full items-center gap-2 px-4 py-2.5 text-[13px] text-ink-secondary hover:bg-surface-muted transition">
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" /></svg>
+                                Edit post
+                              </button>
+                            )}
+                            {post.user_id === user.id && (
+                              <button type="button"
                                 onClick={() => { handleDelete(post.id); setPostMenuId(null); }}
                                 className="flex w-full items-center gap-2 px-4 py-2.5 text-[13px] text-red-600 hover:bg-red-50 transition">
                                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
@@ -2894,9 +2946,34 @@ export default function FeedPage() {
                       {(post.post_subtype === 'discussion' || post.post_subtype === 'question') && post.discussion_title && (
                         <p className="mb-1 text-[16px] font-bold text-ink leading-snug">{post.discussion_title}</p>
                       )}
-                      <p className={cn('text-[15px] text-ink leading-[1.6]', !isExpanded && longContent && 'line-clamp-3', (post.post_subtype === 'discussion' || post.post_subtype === 'question') && !post.content && 'hidden')}>
-                        <PostContent content={post.content} />
-                      </p>
+                      {editingPostId === post.id ? (
+                        <div className="mt-1" onClick={e => e.stopPropagation()}>
+                          <textarea
+                            value={editDraft}
+                            onChange={e => setEditDraft(e.target.value)}
+                            rows={4}
+                            autoFocus
+                            className="w-full resize-y rounded-xl border border-border bg-surface px-3 py-2 text-[15px] text-ink outline-none focus:border-brand-400 dark:bg-[#111] dark:border-[#222]"
+                          />
+                          <div className="mt-2 flex items-center justify-end gap-2">
+                            <button type="button" onClick={cancelEditPost} disabled={editSaving}
+                              className="rounded-full px-3 py-1.5 text-[13px] font-medium text-ink-secondary hover:bg-surface-muted transition disabled:opacity-50">
+                              Cancel
+                            </button>
+                            <button type="button" onClick={() => saveEditPost(post.id)} disabled={editSaving || !editDraft.trim()}
+                              className="rounded-full bg-brand-600 px-4 py-1.5 text-[13px] font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50">
+                              {editSaving ? 'Saving…' : 'Save'}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className={cn('text-[15px] text-ink leading-[1.6]', !isExpanded && longContent && 'line-clamp-3', (post.post_subtype === 'discussion' || post.post_subtype === 'question') && !post.content && 'hidden')}>
+                          <PostContent content={post.content} />
+                          {post.edited_at && (
+                            <span className="ml-1 text-[12px] text-ink-muted" title={`Edited ${new Date(post.edited_at).toLocaleString()}`}>· edited</span>
+                          )}
+                        </p>
+                      )}
                       {longContent && (
                         <button type="button"
                           onClick={(e) => { e.stopPropagation(); setExpandedPosts(prev => { const n = new Set(prev); if (isExpanded) n.delete(post.id); else n.add(post.id); return n; }); }}
