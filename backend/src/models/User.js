@@ -29,6 +29,16 @@ ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS is_content_creator BOOLEAN NO
 ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS last_active TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_users_last_active ON abukonn.users(last_active);
 
+-- Pro subscription. is_pro is the fast flag; pro_expires_at is when it lapses.
+-- A user is "Pro right now" iff is_pro = TRUE AND pro_expires_at > NOW().
+-- is_pro is set TRUE on a verified Paystack payment (webhook) and swept back
+-- to FALSE once pro_expires_at passes; keeping both lets reads use the cheap
+-- boolean while a scheduled sweep (or an inline expiry check) enforces the
+-- date. Monthly-only at launch: each successful charge extends pro_expires_at
+-- by one month.
+ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS is_pro BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS pro_expires_at TIMESTAMPTZ;
+
 -- Backfill: pre-existing admin accounts may have is_admin=true but role='user'
 -- (the two were managed separately historically). Sync them so role-based admin
 -- scoping works. Only touches accounts that are admin but not already a scoped
@@ -105,7 +115,7 @@ async function findByUsername(username) {
   return result.rows[0] || null;
 }
 
-const COLS = 'id, username, full_name, email, department, level, profile_photo_url, bio, is_admin, role, is_verified, is_content_creator, date_of_birth, created_at';
+const COLS = 'id, username, full_name, email, department, level, profile_photo_url, bio, is_admin, role, is_verified, is_content_creator, date_of_birth, created_at, is_pro, pro_expires_at';
 
 async function findById(id) {
   const result = await pool.query(
@@ -113,6 +123,20 @@ async function findById(id) {
     [id]
   );
   return result.rows[0] || null;
+}
+
+// Authoritative "is this user Pro right now" check, read fresh from the DB.
+// Gates call this rather than trusting a JWT-baked flag, because the token
+// was signed at login -- possibly before the user upgraded (or after they
+// lapsed). Enforces BOTH the fast flag and the expiry date, so it's correct
+// even if the periodic expireLapsed sweep hasn't run yet.
+async function isUserPro(id) {
+  const result = await pool.query(
+    `SELECT (is_pro = TRUE AND pro_expires_at IS NOT NULL AND pro_expires_at > NOW()) AS active
+     FROM abukonn.users WHERE id = $1`,
+    [id]
+  );
+  return result.rows[0]?.active === true;
 }
 
 async function findByIdWithPassword(id) {
@@ -250,6 +274,7 @@ module.exports = {
   findByEmail,
   findByUsername,
   findById,
+  isUserPro,
   findByIdWithPassword,
   updateProfile,
   updateRole,
