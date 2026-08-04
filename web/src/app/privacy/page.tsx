@@ -4,7 +4,7 @@ export const metadata = {
   title: 'Privacy Policy — ABUkonn',
 };
 
-const LAST_UPDATED = 'July 16, 2026';
+const LAST_UPDATED = 'August 4, 2026';
 
 export default function PrivacyPage() {
   return (
@@ -56,7 +56,7 @@ export default function PrivacyPage() {
             <p>
               ABUkonn (&quot;we&quot;, &quot;us&quot;, &quot;the app&quot;) is operated by Abukonnect. If you have
               questions about this policy or your data, contact us at{' '}
-              <a href="mailto:abukonndev@gmail.com" className="text-[#16a34a] underline">abukonndev@gmail.com</a>.
+              <a href="mailto:abukonn.ng@gmail.com" className="text-[#16a34a] underline">abukonn.ng@gmail.com</a>.
             </p>
           </section>
 
@@ -135,7 +135,7 @@ export default function PrivacyPage() {
               <li><strong className="text-gray-900 dark:text-[#f5f5f5]">Notifications:</strong> turn any type on or off in Settings or your device settings.</li>
               <li><strong className="text-gray-900 dark:text-[#f5f5f5]">Block users</strong> and manage your blocked list in Settings.</li>
               <li><strong className="text-gray-900 dark:text-[#f5f5f5]">Delete your account</strong> and associated data by contacting{' '}
-                <a href="mailto:abukonndev@gmail.com" className="text-[#16a34a] underline">abukonndev@gmail.com</a>.
+                <a href="mailto:abukonn.ng@gmail.com" className="text-[#16a34a] underline">abukonn.ng@gmail.com</a>.
                 We remove your personal data, except anything we&apos;re required to keep by law.
               </li>
             </ul>
@@ -180,7 +180,7 @@ export default function PrivacyPage() {
             <h2 className="mb-3 text-lg font-semibold text-[#16a34a]">Contact</h2>
             <p>
               Questions or requests about your privacy? Email{' '}
-              <a href="mailto:abukonndev@gmail.com" className="text-[#16a34a] underline">abukonndev@gmail.com</a>{' '}
+              <a href="mailto:abukonn.ng@gmail.com" className="text-[#16a34a] underline">abukonn.ng@gmail.com</a>{' '}
               and we&apos;ll respond.
             </p>
           </section>
