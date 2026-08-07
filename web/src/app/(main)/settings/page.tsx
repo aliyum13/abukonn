@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
+import { ProUpsellBanner } from '@/components/ProUpsellBanner';
 import { DepartmentOptions } from '@/lib/departments';
 import {
   Avatar,
@@ -452,6 +453,8 @@ export default function SettingsPage() {
           <p className="text-[13px] text-ink-muted">Manage your account and preferences</p>
         </div>
       </div>
+
+      <ProUpsellBanner className="mb-6" />
 
       <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
         {/* Sidebar — desktop */}

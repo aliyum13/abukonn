@@ -11,6 +11,7 @@ import { optimizedImage } from '@/lib/image';
 import { useFollow } from '@/hooks/useFollow';
 import { useMentionAutocomplete, MentionDropdown } from '@/hooks/useMentionAutocomplete';
 import ReportModal from '@/components/ReportModal';
+import { ProUpsellBanner } from '@/components/ProUpsellBanner';
 import { usePageRefresh } from '@/lib/refresh';
 import { uploadMedia, type UploadResult } from '@/lib/upload';
 import {
@@ -3461,6 +3462,10 @@ export default function FeedPage() {
               }}
               viewedStoryIds={viewedStoryIds}
             />
+          </div>
+
+          <div className="border-b border-border px-4 py-3 dark:border-[#222] empty:hidden">
+            <ProUpsellBanner />
           </div>
 
           {/* Your Classes Today */}

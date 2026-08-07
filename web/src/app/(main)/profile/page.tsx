@@ -9,6 +9,7 @@ import { optimizedImage } from '@/lib/image';
 import { cn } from '@/lib/utils';
 import { useFollow } from '@/hooks/useFollow';
 import { Avatar, Button, Skeleton, RoleBadge, PostContent, MediaCarousel } from '@/components/ui';
+import { ProUpsellBanner } from '@/components/ProUpsellBanner';
 import { usePageRefresh } from '@/lib/refresh';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
@@ -563,6 +564,10 @@ export default function ProfilePage() {
             </Link>
           </div>
         </div>
+      </div>
+
+      <div className="px-4 pt-4">
+        <ProUpsellBanner />
       </div>
 
       {/* ── My Status ── */}

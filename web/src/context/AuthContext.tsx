@@ -13,6 +13,8 @@ export interface User {
   bio: string | null;
   is_admin: boolean;
   role?: string;
+  is_pro?: boolean;
+  pro_expires_at?: string | null;
   created_at: string;
 }
 
