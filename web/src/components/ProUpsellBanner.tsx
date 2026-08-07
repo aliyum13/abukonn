@@ -3,12 +3,21 @@
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 
+// Master switch for whether ABUkonn Pro is public yet. Kept FALSE until the
+// whole tier is live end-to-end (Paystack keys set in Railway, webhook
+// registered, and the is_pro gates flipped on). While false, every Pro
+// entry point (feed/profile/settings banners) stays hidden so users don't
+// see a "Go Pro" prompt for something that isn't gated or purchasable yet.
+// Flip to true in one place to reveal Pro everywhere.
+export const PRO_LAUNCHED = false;
+
 // A compact "Go Pro" banner linking to the Pro screen. Used in the feed,
-// profile, and settings. Hidden for users who are already Pro (no point
-// upselling them). Reads is_pro off the auth user, which the backend now
-// returns in the user payload.
+// profile, and settings. Hidden entirely until PRO_LAUNCHED, and hidden for
+// users who are already Pro (no point upselling them). Reads is_pro off the
+// auth user, which the backend now returns in the user payload.
 export function ProUpsellBanner({ className = '' }: { className?: string }) {
   const { user } = useAuth();
+  if (!PRO_LAUNCHED) return null;
   if (user?.is_pro) return null;
 
   return (

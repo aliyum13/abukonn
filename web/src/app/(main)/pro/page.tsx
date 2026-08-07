@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui';
+import { PRO_LAUNCHED } from '@/components/ProUpsellBanner';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -32,6 +33,9 @@ export default function ProPage() {
 
   useEffect(() => {
     if (!authLoading && !token) router.push('/login');
+    // Pro isn't public yet -- bounce anyone who reaches /pro directly by URL
+    // back to the feed until PRO_LAUNCHED is flipped on.
+    if (!PRO_LAUNCHED) router.replace('/feed');
   }, [authLoading, token, router]);
 
   // Read current Pro status from the server (authoritative — enforces expiry).
