@@ -1,4 +1,5 @@
 const Post = require('../models/Post');
+const User = require('../models/User');
 const Comment = require('../models/Comment');
 const Reply = require('../models/Reply');
 const Notification = require('../models/Notification');
@@ -81,22 +82,29 @@ async function createPost(req, res) {
     //     return res.status(403).json({ message: 'Multi-media posts are a Pro feature.' });
     // Left unenforced for now (Option A per user's decision) -- the feature
     // is fully built and functional, just not yet paywalled.
+    // Multi-media posts are Pro-only (all-or-nothing, per launch decision):
+    // a free user can't attach any media[] items. Uses the authoritative
+    // fresh-from-DB isUserPro check (NOT req.user.is_pro, which comes from the
+    // JWT signed at login and would be stale after an upgrade/lapse).
     let media = null;
     if (req.body.media) {
       try { media = JSON.parse(req.body.media); } catch { media = null; }
+    }
+    let isPro = false;
+    if (Array.isArray(media) && media.length > 0) {
+      isPro = await User.isUserPro(req.user.id);
+      if (!isPro) {
+        return res.status(403).json({ message: 'Multi-photo and video posts are a Pro feature.' });
+      }
     }
     if (Array.isArray(media) && media.length > 0) {
       if (media.length > 3) {
         return res.status(400).json({ message: 'A post can have up to 3 photos/videos.' });
       }
       // Server-side duration backstop for the "increased upload limits" perk.
-      // Free = 60s, Pro = 180s. This is the authoritative check (a client
-      // could bypass the pre-flight one in uploadMedia). PRO-GATE: once
-      // is_pro exists, `const maxVideoSeconds = req.user.is_pro ? 180 : 60;`.
-      // Size (MB) isn't re-checked here -- the file's already on Cloudinary
-      // by the time this runs; duration is the one thing worth re-validating
-      // server-side since it's cheap and client-reported.
-      const maxVideoSeconds = 60;
+      // Free = 60s, Pro = 180s. Authoritative check (a client could bypass the
+      // pre-flight one in uploadMedia). isPro already resolved above.
+      const maxVideoSeconds = isPro ? 180 : 60;
       for (const item of media) {
         if (!item?.media_url || !['image', 'video'].includes(item?.media_type)) {
           return res.status(400).json({ message: 'Each media item needs a media_url and a valid media_type.' });
@@ -497,6 +505,11 @@ async function updatePost(req, res) {
       return res.status(400).json({ message: 'Post text cannot be empty.' });
     }
 
+    // Editing a post after publishing is a Pro feature (fresh-from-DB check).
+    if (!(await User.isUserPro(req.user.id))) {
+      return res.status(403).json({ message: 'Editing posts after publishing is a Pro feature.' });
+    }
+
     const existing = await Post.getPostById(postId);
     if (!existing) {
       return res.status(404).json({ message: 'Post not found' });
@@ -587,6 +600,10 @@ async function viewPost(req, res) {
 // Left unenforced for now (Option A, matching every other Pro candidate).
 async function getPostAnalytics(req, res) {
   try {
+    // Post analytics is a Pro feature (fresh-from-DB check).
+    if (!(await User.isUserPro(req.user.id))) {
+      return res.status(403).json({ message: 'Post analytics is a Pro feature.' });
+    }
     const posts = await Post.getPostsByUserId(req.user.id, req.user.id);
     const uniqueCounts = await PostView.getUniqueViewerCounts(posts.map(p => p.id));
     const analytics = posts.map(p => ({

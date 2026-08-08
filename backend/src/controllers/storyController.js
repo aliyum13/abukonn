@@ -1,4 +1,5 @@
 const Story = require('../models/Story');
+const User = require('../models/User');
 const { findOrCreateConversation, sendMessage } = require('../models/Message');
 const cloudinary = require('../config/cloudinary');
 const Follow = require('../models/Follow');
@@ -20,6 +21,9 @@ const FREE_DAILY_STORY_CAP = 5;
 // Until then everyone is treated as free-tier (Option A, matching every
 // other Pro candidate) -- the cap is fully built, just not yet Pro-aware.
 async function checkDailyStoryCap(req) {
+  // Pro users post unlimited stories/day (fresh-from-DB check). The separate
+  // 3-active cap stays universal regardless of Pro.
+  if (await User.isUserPro(req.user.id)) return null;
   const postedToday = await Story.countStoriesToday(req.user.id);
   if (postedToday >= FREE_DAILY_STORY_CAP) {
     return `You've reached your ${FREE_DAILY_STORY_CAP} stories for today. Come back tomorrow, or go Pro for unlimited stories.`;
@@ -251,6 +255,11 @@ async function createStory(req, res) {
       if (!mediaUrl) return res.status(400).json({ message: 'media_url is required for direct upload' });
       const requestedType = req.body?.media_type === 'video' ? 'video' : 'image';
 
+      // Video stories are a Pro feature (fresh-from-DB check). Image stories
+      // stay free. Images fall through unchanged.
+      if (requestedType === 'video' && !(await User.isUserPro(req.user.id))) {
+        return res.status(403).json({ message: 'Video stories are a Pro feature.' });
+      }
       // WhatsApp-style cap: up to 3 items in your current story "session" --
       // defined as your currently-active (non-expired) stories, so the count
       // naturally resets as old stories age out at 24h, with no separate
