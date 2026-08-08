@@ -12,6 +12,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { apiFetch } from '../src/lib/api';
 import { uploadImage } from '../src/lib/upload';
 import { useAuth } from '../src/context/AuthContext';
+import { ProUpsellBanner } from '../src/components/ProUpsellBanner';
 import { colors, radius, shadow } from '../src/theme';
 
 interface Settings {
@@ -330,6 +331,7 @@ export default function SettingsScreen() {
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
+          <ProUpsellBanner style={{ marginBottom: 16 }} />
           {/* Appearance */}
           <Text style={s.sectionTitle}>Appearance</Text>
           <View style={s.card}>

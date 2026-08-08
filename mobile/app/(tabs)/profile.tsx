@@ -11,6 +11,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/context/AuthContext';
 import { RoleBadge } from '../../src/components/RoleBadge';
+import { ProUpsellBanner } from '../../src/components/ProUpsellBanner';
 import { apiFetch } from '../../src/lib/api';
 import { optimizedAvatar, optimizedImage } from '../../src/lib/image';
 import { useTabScrollToTop } from '../../src/lib/useScrollToTop';
@@ -199,6 +200,8 @@ export default function Profile() {
           </TouchableOpacity>
         </View>
       </View>
+
+      <ProUpsellBanner style={{ marginHorizontal: 16, marginBottom: 4 }} />
 
       {/* My Status — mirrors web's profile page section: a compact story
           strip (Add + thumbnails with inline delete) plus a link to the

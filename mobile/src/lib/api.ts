@@ -21,6 +21,8 @@ export interface ApiUser {
   is_verified?: boolean;
   is_content_creator?: boolean;
   is_admin?: boolean;
+  is_pro?: boolean;
+  pro_expires_at?: string | null;
 }
 
 // Attaches the token, parses JSON, and surfaces real errors rather than

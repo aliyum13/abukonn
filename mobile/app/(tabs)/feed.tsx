@@ -15,6 +15,7 @@ import { useTabScrollToTop } from '../../src/lib/useScrollToTop';
 import { apiFetch, API_URL } from '../../src/lib/api';
 import { optimizedImage, optimizedAvatar } from '../../src/lib/image';
 import { MediaCarousel } from '../../src/components/MediaCarousel';
+import { ProUpsellBanner } from '../../src/components/ProUpsellBanner';
 import { getToken } from '../../src/lib/storage';
 import { colors, radius, shadow } from '../../src/theme';
 import { StoryBar } from '../../src/components/Stories';
@@ -1030,6 +1031,8 @@ export default function Feed() {
   const forYouHeader = (
     <View>
       <StoryBar />
+
+      <ProUpsellBanner style={{ marginHorizontal: 16, marginTop: 12 }} />
 
       {/* Your Classes Today — mirrors web's feed widget, uses /api/timetable/today */}
       {(todayClasses.length > 0 || noTimetableProfile) ? (
