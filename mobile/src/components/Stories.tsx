@@ -199,6 +199,11 @@ function StoryViewer({
   const firstUnseen = group.stories.findIndex(st => !seen.has(st.id));
   const [idx, setIdx] = useState(firstUnseen >= 0 ? firstUnseen : 0);
   const [paused, setPaused] = useState(false);
+  // Distinguishes a quick tap (navigate) from a hold (pause only). Without
+  // this, holding to pause still fired onPress on release and advanced the
+  // story. We record when the press started and only navigate if it was short.
+  const pressStartRef = useRef(0);
+  const HOLD_MS = 250; // press longer than this = a hold, not a tap
   const [progress, setProgress] = useState(0);
   const [reply, setReply] = useState('');
   const [reaction, setReaction] = useState<{ count: number; is_liked: boolean }>({ count: 0, is_liked: false });
@@ -367,18 +372,19 @@ function StoryViewer({
           ) : null}
         </View>
 
-        {/* Gesture zones: tap left = back, tap right = forward, hold = pause. */}
+        {/* Gesture zones: quick tap left = back, quick tap right = forward,
+            hold = pause (and does NOT navigate on release). onPressIn pauses
+            and records the time; onPressOut resumes and only navigates if the
+            press was short enough to count as a tap. */}
         <Pressable
           style={v.zoneLeft}
-          onPress={prev}
-          onPressIn={() => setPaused(true)}
-          onPressOut={() => setPaused(false)}
+          onPressIn={() => { pressStartRef.current = Date.now(); setPaused(true); }}
+          onPressOut={() => { setPaused(false); if (Date.now() - pressStartRef.current < HOLD_MS) prev(); }}
         />
         <Pressable
           style={v.zoneRight}
-          onPress={next}
-          onPressIn={() => setPaused(true)}
-          onPressOut={() => setPaused(false)}
+          onPressIn={() => { pressStartRef.current = Date.now(); setPaused(true); }}
+          onPressOut={() => { setPaused(false); if (Date.now() - pressStartRef.current < HOLD_MS) next(); }}
         />
 
         {/* Progress bars */}
