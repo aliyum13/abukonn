@@ -276,6 +276,113 @@ async function getAllPosts(currentUserId, limit = 50, offset = 0) {
   return result.rows;
 }
 
+// ── "For You" ranked feed (Option B: following + injected discovery) ──────────
+// Tuning knobs — all in one place so the feed can be retuned without touching
+// the query. Adjust these based on real usage, not guesswork.
+const FORYOU = {
+  HALF_LIFE_HOURS: 15,     // recency decay half-life. A post's freshness weight
+                           //   halves every 15h. Higher = older content lingers.
+  BASE_QUALITY: 5,         // added to engagement so a brand-new zero-engagement
+                           //   post still has a baseline score (ranks by recency).
+  FOLLOW_BOOST: 1.0,       // multiplier for posts by people you follow.
+  DISCOVERY_PENALTY: 0.5,  // multiplier for discovery (non-followed) posts, so
+                           //   your people dominate and discovery is seasoning.
+  DEPT_BOOST: 1.4,         // author shares your department.
+  LEVEL_BOOST: 1.2,        // author shares your level.
+  SEEN_DEMOTE: 0.35,       // multiplier for posts you've already viewed — strong
+                           //   demote (not hide) so refresh surfaces fresh content
+                           //   but nothing empties the feed.
+  DISCOVERY_MAX_AGE_HOURS: 72,  // discovery only considers posts newer than this
+                                //   (keeps the candidate pool small + relevant).
+  DISCOVERY_MIN_ENGAGEMENT: 3,  // discovery posts must clear this engagement bar
+                                //   (avoids injecting random low-quality strangers).
+};
+
+// The ranked "For You" feed. Same column shape as getAllPosts (so the client
+// needs no changes) but the candidate set is (followed authors) UNION
+// (recent, decent discovery posts from non-followed authors), and ordering is
+// by a computed ranking_score instead of created_at. Blocked authors excluded.
+// Pagination via LIMIT/OFFSET over the score order.
+async function getForYouFeed(currentUserId, limit = 50, offset = 0) {
+  const result = await pool.query(
+    `WITH scored AS (
+      SELECT p.id, p.user_id, p.content, p.image_url, p.likes_count, p.comments_count,
+            COALESCE(p.repost_count, 0) AS repost_count,
+            COALESCE(p.view_count, 0) AS view_count,
+            COALESCE(p.category, 'GENERAL') AS category,
+            COALESCE(p.is_repost, FALSE) AS is_repost,
+            p.original_post_id, p.original_author_name,
+            orig_u.full_name AS original_author_full_name,
+            orig_u.profile_photo_url AS original_author_photo,
+            orig_u.id AS original_author_id,
+            COALESCE(orig.likes_count, 0) AS original_likes_count,
+            COALESCE(orig.comments_count, 0) AS original_comments_count,
+            COALESCE(orig.repost_count, 0) AS original_repost_count,
+            COALESCE(p.post_subtype, 'post') AS post_subtype,
+            p.discussion_title,
+            p.created_at,
+            u.full_name AS author_name, u.department AS author_department,
+            u.profile_photo_url AS author_photo,
+            COALESCE(u.role, 'user') AS author_role,
+            COALESCE(u.is_verified, FALSE) AS author_is_verified,
+            COALESCE(u.is_content_creator, FALSE) AS author_is_content_creator,
+            EXISTS(
+              SELECT 1 FROM abukonn.post_likes pl
+              WHERE pl.post_id = p.id AND pl.user_id = $1
+            ) AS is_liked,
+            EXISTS(
+              SELECT 1 FROM abukonn.follows f
+              WHERE f.follower_id = $1 AND f.following_id = p.user_id
+            ) AS is_following_author,
+            (p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) AS engagement_score,
+            (p.created_at > NOW() - INTERVAL '24 hours' AND (p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) > 20) AS is_trending,
+            ((p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) > 50) AS is_hot,
+            (SELECT COUNT(*)::int FROM abukonn.comments c WHERE c.post_id = p.id AND c.created_at > NOW() - INTERVAL '1 hour') AS comment_velocity,
+            p.poll_duration_hours, p.poll_ends_at,
+            p.event_title, p.event_date, p.event_location, COALESCE(p.event_rsvp_count, 0) AS event_rsvp_count, p.edited_at,
+            (SELECT json_agg(json_build_object('id', po.id, 'option_text', po.option_text, 'vote_count', po.vote_count) ORDER BY po.id) FROM abukonn.poll_options po WHERE po.post_id = p.id) AS poll_options,
+            (SELECT pv.option_id FROM abukonn.poll_votes pv WHERE pv.post_id = p.id AND pv.user_id = $1) AS voted_option_id,
+            EXISTS(SELECT 1 FROM abukonn.event_rsvps er WHERE er.post_id = p.id AND er.user_id = $1) AS is_attending,
+            -- ranking_score = (quality) * recency_decay * follow/discovery * dept * level * seen
+            (
+              ($4::float + (p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1))
+              * EXP( -(EXTRACT(EPOCH FROM (NOW() - p.created_at)) / 3600.0) / $5::float * LN(2) )
+              * (CASE WHEN EXISTS(SELECT 1 FROM abukonn.follows f WHERE f.follower_id = $1 AND f.following_id = p.user_id) THEN $6::float ELSE $7::float END)
+              * (CASE WHEN u.department IS NOT NULL AND u.department = (SELECT department FROM abukonn.users WHERE id = $1) THEN $8::float ELSE 1 END)
+              * (CASE WHEN u.level IS NOT NULL AND u.level = (SELECT level FROM abukonn.users WHERE id = $1) THEN $9::float ELSE 1 END)
+              * (CASE WHEN EXISTS(SELECT 1 FROM abukonn.post_views pvw WHERE pvw.post_id = p.id AND pvw.viewer_id = $1) THEN $10::float ELSE 1 END)
+            ) AS ranking_score
+      FROM abukonn.posts p
+      JOIN abukonn.users u ON p.user_id = u.id
+      LEFT JOIN abukonn.posts orig ON p.is_repost = TRUE AND orig.id = p.original_post_id
+      LEFT JOIN abukonn.users orig_u ON orig.user_id = orig_u.id
+      WHERE p.user_id NOT IN (SELECT blocked_id FROM abukonn.blocks WHERE blocker_id = $1)
+        AND p.user_id <> $1
+        AND (
+          -- following pool: anything from people you follow
+          EXISTS(SELECT 1 FROM abukonn.follows f WHERE f.follower_id = $1 AND f.following_id = p.user_id)
+          OR
+          -- discovery pool: recent, decent posts from non-followed authors
+          (
+            p.created_at > NOW() - ($11 || ' hours')::interval
+            AND (p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) >= $12::float
+          )
+        )
+    )
+    SELECT * FROM scored
+    ORDER BY ranking_score DESC, created_at DESC
+    LIMIT $2 OFFSET $3`,
+    [
+      currentUserId, limit, offset,
+      FORYOU.BASE_QUALITY, FORYOU.HALF_LIFE_HOURS,
+      FORYOU.FOLLOW_BOOST, FORYOU.DISCOVERY_PENALTY,
+      FORYOU.DEPT_BOOST, FORYOU.LEVEL_BOOST, FORYOU.SEEN_DEMOTE,
+      String(FORYOU.DISCOVERY_MAX_AGE_HOURS), FORYOU.DISCOVERY_MIN_ENGAGEMENT,
+    ]
+  );
+  return result.rows;
+}
+
 async function getPostById(id) {
   const result = await pool.query(
     `SELECT p.*, u.full_name AS author_name, u.department AS author_department
@@ -286,7 +393,6 @@ async function getPostById(id) {
   );
   return result.rows[0] || null;
 }
-
 // Reposts should always act on the ONE true original post -- not fork their
 // own engagement, not chain through an intermediate repost. Given this ran
 // for a while before that was true (repostPost previously copied whatever
@@ -577,6 +683,7 @@ module.exports = {
   getPostMedia,
   getMediaForPosts,
   getAllPosts,
+  getForYouFeed,
   getFollowingPosts,
   getPostsByUserId,
   getPostById,
