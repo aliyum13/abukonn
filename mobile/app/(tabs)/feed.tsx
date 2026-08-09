@@ -3,7 +3,7 @@ import { useThemedStyles } from '../../src/theme/ThemeContext';
 import type { Palette } from '../../src/theme';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl, Image,
-  TouchableOpacity, TextInput, Modal, KeyboardAvoidingView, Platform, Alert, ScrollView } from 'react-native';
+  TouchableOpacity, TextInput, Modal, KeyboardAvoidingView, Platform, Alert, ScrollView, AppState } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -549,6 +549,14 @@ export default function Feed() {
 
   useEffect(() => { load(); setRefresh(load); }, [load, setRefresh]);
 
+  // When the app returns to the foreground (user left and came back), if the
+  // feed is sitting in an error state, auto-retry. Previously a brief network
+  // drop while backgrounded left the feed showing an error with no in-place
+  // recovery. Now it self-heals on resume. (Effect is placed after the
+  // loadFollowing/loadConversations definitions below.)
+  const errorRef = useRef(error);
+  errorRef.current = error;
+
   const loadFollowing = useCallback(async () => {
     setFollowingLoading(true);
     try {
@@ -581,6 +589,18 @@ export default function Feed() {
   }, []);
 
   useEffect(() => { if (feedTab === 'messages') loadConversations(); }, [feedTab, loadConversations]);
+
+  // Auto-retry on app resume if the feed is in an error state (see errorRef above).
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && errorRef.current) {
+        load();
+        if (feedTab === 'following') loadFollowing();
+        if (feedTab === 'messages') loadConversations();
+      }
+    });
+    return () => sub.remove();
+  }, [load, loadFollowing, loadConversations, feedTab]);
 
   // Merge DMs + groups into one list sorted by last activity, matching web.
   type MsgListItem =
@@ -1387,7 +1407,9 @@ export default function Feed() {
       ) : error ? (
         <View style={s.center}>
           <Text style={s.error}>{error}</Text>
-          <Text style={s.muted}>Pull down to retry</Text>
+          <TouchableOpacity style={s.retryBtn} onPress={() => load()}>
+            <Text style={s.retryBtnText}>Tap to retry</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <FlatList
@@ -1887,6 +1909,8 @@ const make_s = (colors: Palette) => StyleSheet.create({
   loadMoreFooter: { paddingVertical: 20, alignItems: 'center', justifyContent: 'center' },
   loadMoreRetryText: { fontSize: 13, fontWeight: '600', color: colors.brand },
   error: { color: colors.danger, fontSize: 15, textAlign: 'center', marginBottom: 6 },
+  retryBtn: { marginTop: 12, backgroundColor: colors.brand, borderRadius: 999, paddingHorizontal: 24, paddingVertical: 10 },
+  retryBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   muted: { color: colors.muted, fontSize: 12 },
   card: {
     backgroundColor: colors.surface,
