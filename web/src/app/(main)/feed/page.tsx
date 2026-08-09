@@ -2146,12 +2146,20 @@ export default function FeedPage() {
 
   const handleLike = async (postId: number) => {
     if (!token) return;
-    // Optimistic toggle -- reposts display original_likes_count, not their
-    // own likes_count (see displayLikes below), so that's the field that
-    // needs to move here too, or liking a repost visually does nothing.
+    // Like/unlike acts on the CANONICAL post (the original). The feed can hold
+    // several cards for it -- the original plus reposts of it -- and liking any
+    // one must update them all, or the others show stale state until refresh.
+    // Resolve the canonical id of the tapped card, then match every card that
+    // shares it. canonicalId(p) = original_post_id for a repost, else its own id.
+    const canonicalId = (p: Post) => (p.is_repost && p.original_post_id ? p.original_post_id : p.id);
+    const tapped = posts.find((p) => p.id === postId);
+    const targetCanonical = tapped ? canonicalId(tapped) : postId;
+    const matches = (p: Post) => canonicalId(p) === targetCanonical;
+    // Optimistic toggle -- each matching card writes the field it displays
+    // (reposts: original_likes_count, original: likes_count).
     mutatePosts((prev) =>
       prev.map((p) => {
-        if (p.id !== postId) return p;
+        if (!matches(p)) return p;
         const wasLiked = p.is_liked;
         if (p.is_repost && p.original_likes_count !== undefined) {
           return { ...p, is_liked: !wasLiked, original_likes_count: wasLiked ? p.original_likes_count - 1 : p.original_likes_count + 1 };
@@ -2169,10 +2177,10 @@ export default function FeedPage() {
         // The server response's `post` is now always the CANONICAL post
         // (the original, if this was a repost) -- its likes_count is the
         // real, authoritative count post-write. Apply it to whichever field
-        // this card actually displays.
+        // each matching card actually displays.
         mutatePosts((prev) =>
           prev.map((p) => {
-            if (p.id !== postId) return p;
+            if (!matches(p)) return p;
             if (p.is_repost && p.original_likes_count !== undefined) {
               return { ...p, original_likes_count: data.post.likes_count, is_liked: data.is_liked };
             }
@@ -2183,7 +2191,7 @@ export default function FeedPage() {
         // Revert on server error
         mutatePosts((prev) =>
           prev.map((p) => {
-            if (p.id !== postId) return p;
+            if (!matches(p)) return p;
             const wasLiked = p.is_liked;
             if (p.is_repost && p.original_likes_count !== undefined) {
               return { ...p, is_liked: !wasLiked, original_likes_count: wasLiked ? p.original_likes_count - 1 : p.original_likes_count + 1 };
@@ -2196,7 +2204,7 @@ export default function FeedPage() {
       // Revert on network error
       mutatePosts((prev) =>
         prev.map((p) =>
-          p.id === postId
+          matches(p)
             ? { ...p, is_liked: !p.is_liked, likes_count: p.is_liked ? p.likes_count - 1 : p.likes_count + 1 }
             : p
         )
