@@ -13,6 +13,7 @@ import { apiFetch } from '../../src/lib/api';
 import { useAuth } from '../../src/context/AuthContext';
 import { RoleBadge } from '../../src/components/RoleBadge';
 import { ReportModal } from '../../src/components/ReportModal';
+import { ImageLightbox } from '../../src/components/ImageLightbox';
 import { colors } from '../../src/theme';
 
 interface ProfileUser {
@@ -73,6 +74,7 @@ export default function UserProfile() {
   const [tab, setTab] = useState<'posts' | 'replies'>('posts');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -234,7 +236,9 @@ export default function UserProfile() {
         ListHeaderComponent={
           <View style={s.top}>
             {user.profile_photo_url ? (
-              <Image source={{ uri: user.profile_photo_url }} style={s.avatar} />
+              <TouchableOpacity activeOpacity={0.85} onPress={() => setLightboxUrl(user.profile_photo_url)}>
+                <Image source={{ uri: user.profile_photo_url }} style={s.avatar} />
+              </TouchableOpacity>
             ) : (
               <View style={[s.avatar, s.fallback]}>
                 <Text style={s.letter}>{user.full_name.charAt(0).toUpperCase()}</Text>
@@ -367,6 +371,7 @@ export default function UserProfile() {
         )}
       />
       <ReportModal target={reportTarget} onClose={() => setReportTarget(null)} />
+      <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
     </SafeAreaView>
   );
 }

@@ -14,6 +14,7 @@ import { RoleBadge } from '../../src/components/RoleBadge';
 import { ProUpsellBanner } from '../../src/components/ProUpsellBanner';
 import { apiFetch } from '../../src/lib/api';
 import { optimizedAvatar, optimizedImage } from '../../src/lib/image';
+import { ImageLightbox } from '../../src/components/ImageLightbox';
 import { useTabScrollToTop } from '../../src/lib/useScrollToTop';
 import { colors, radius, shadow } from '../../src/theme';
 
@@ -69,6 +70,7 @@ export default function Profile() {
   // Profile views (Pro perk): count on the stats row, same "list length IS
   // the count" approach as web (no separate count endpoint).
   const [viewersCount, setViewersCount] = useState(0);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -126,7 +128,9 @@ export default function Profile() {
     <View>
       <View style={s.top}>
         {user?.profile_photo_url ? (
-          <Image source={{ uri: optimizedAvatar(user.profile_photo_url, 96) }} style={s.avatar} />
+          <TouchableOpacity activeOpacity={0.85} onPress={() => setLightboxUrl(user.profile_photo_url)}>
+            <Image source={{ uri: optimizedAvatar(user.profile_photo_url, 96) }} style={s.avatar} />
+          </TouchableOpacity>
         ) : (
           <View style={[s.avatar, s.fallback]}>
             <Text style={s.letter}>{user?.full_name?.charAt(0).toUpperCase()}</Text>
@@ -296,7 +300,11 @@ export default function Profile() {
           }
           renderItem={({ item }) => (
             tab === 'posts' ? (
-              <View style={s.post}>
+              <TouchableOpacity
+                style={s.post}
+                activeOpacity={0.7}
+                onPress={() => router.push({ pathname: '/post/[id]', params: { id: String(item.id) } })}
+              >
                 {(item as ProfilePost).discussion_title ? (
                   <Text style={s.postTitle}>{(item as ProfilePost).discussion_title}</Text>
                 ) : null}
@@ -310,7 +318,7 @@ export default function Profile() {
                   <Text style={s.muted}>{'\u2665'} {(item as ProfilePost).likes_count}   {'\uD83D\uDCAC'} {(item as ProfilePost).comments_count}</Text>
                   <Text style={s.muted}>{timeAgo(item.created_at)}</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             ) : (
               <TouchableOpacity
                 style={s.post}
@@ -324,6 +332,7 @@ export default function Profile() {
           )}
         />
       )}
+      <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
     </SafeAreaView>
   );
 }
