@@ -60,6 +60,7 @@ interface Post {
   is_liked: boolean;
   is_reposted?: boolean;
   is_repost?: boolean;
+  original_post_id?: number | null;
   original_author_name?: string | null;
   original_author_full_name?: string | null;
   original_author_photo?: string | null;
@@ -630,6 +631,19 @@ export default function Feed() {
     setFollowingPosts(prev => prev.map(p => (p.id === id ? fn(p) : p)));
   }, []);
 
+  // Like/unlike is really an action on the CANONICAL post (the original). A
+  // feed can hold several cards for the same canonical post -- the original
+  // itself plus one or more reposts of it. Liking any one of them must update
+  // ALL of them at once, or the others show stale like state until refresh.
+  // canonicalId(p) = the original's id for a repost, else the post's own id.
+  const canonicalId = (p: Post) => (p.is_repost && p.original_post_id ? p.original_post_id : p.id);
+  const mutateCanonical = useCallback((tappedPost: Post, fn: (p: Post) => Post) => {
+    const target = canonicalId(tappedPost);
+    const applyIfMatch = (p: Post) => (canonicalId(p) === target ? fn(p) : p);
+    setPosts(prev => prev.map(applyIfMatch));
+    setFollowingPosts(prev => prev.map(applyIfMatch));
+  }, []);
+
   // View-count tracking, mirrors web's IntersectionObserver-based approach
   // (60% visible, once per post per session) using FlatList's own
   // viewability API since RN has no DOM/IntersectionObserver.
@@ -650,32 +664,31 @@ export default function Feed() {
   // write (now correctly redirected to the original) succeeds.
   const toggleLike = useCallback(async (post: Post) => {
     const was = post.is_liked;
-    mutateBoth(post.id, p => {
+    // Optimistic: update every card for this canonical post. Each card writes
+    // to the field it actually displays -- reposts show original_likes_count,
+    // the original shows likes_count.
+    const bump = (delta: number, liked: boolean) => (p: Post): Post => {
       if (p.is_repost && p.original_likes_count !== undefined) {
-        return { ...p, is_liked: !was, original_likes_count: p.original_likes_count + (was ? -1 : 1) };
+        return { ...p, is_liked: liked, original_likes_count: p.original_likes_count + delta };
       }
-      return { ...p, is_liked: !was, likes_count: p.likes_count + (was ? -1 : 1) };
-    });
+      return { ...p, is_liked: liked, likes_count: p.likes_count + delta };
+    };
+    mutateCanonical(post, bump(was ? -1 : 1, !was));
     try {
       const res = await apiFetch<{ is_liked: boolean; post: Post }>(
         `/api/posts/${post.id}/like`, { method: 'POST' });
-      // res.post is now always the CANONICAL post (the original, if this was
-      // a repost) -- its likes_count is the real, authoritative count.
-      mutateBoth(post.id, p => {
+      // res.post is always the CANONICAL post; its likes_count is authoritative.
+      const authoritative = (p: Post): Post => {
         if (p.is_repost && p.original_likes_count !== undefined) {
           return { ...p, is_liked: res.is_liked, original_likes_count: res.post.likes_count };
         }
         return { ...p, is_liked: res.is_liked, likes_count: res.post.likes_count };
-      });
+      };
+      mutateCanonical(post, authoritative);
     } catch {
-      mutateBoth(post.id, p => {
-        if (p.is_repost && p.original_likes_count !== undefined) {
-          return { ...p, is_liked: was, original_likes_count: p.original_likes_count + (was ? 1 : -1) };
-        }
-        return { ...p, is_liked: was, likes_count: p.likes_count + (was ? 1 : -1) };
-      });
+      mutateCanonical(post, bump(was ? 1 : -1, was)); // revert
     }
-  }, [mutateBoth]);
+  }, [mutateCanonical]);
 
   const repost = useCallback(async (post: Post) => {
     const was = post.is_reposted;

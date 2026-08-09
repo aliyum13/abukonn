@@ -19,9 +19,24 @@ const cloudinary = require('../config/cloudinary');
 // scattered through every render site.
 async function attachMedia(posts) {
   if (!posts || posts.length === 0) return posts;
-  const byPost = await Post.getMediaForPosts(posts.map(p => p.id));
+  // A repost carries no post_media rows of its own -- the media lives on the
+  // ORIGINAL post. So for reposts we look up media by original_post_id and
+  // attach the original's media to the repost card. (Legacy single image_url
+  // is already copied onto the repost row by repostPost, so this only matters
+  // for the newer multi-image/video posts.)
+  const idsToFetch = new Set();
+  for (const p of posts) {
+    idsToFetch.add(p.id);
+    if (p.is_repost && p.original_post_id) idsToFetch.add(p.original_post_id);
+  }
+  const byPost = await Post.getMediaForPosts([...idsToFetch]);
   for (const post of posts) {
-    post.media = byPost[post.id] || [];
+    const ownMedia = byPost[post.id] || [];
+    if (ownMedia.length === 0 && post.is_repost && post.original_post_id) {
+      post.media = byPost[post.original_post_id] || [];
+    } else {
+      post.media = ownMedia;
+    }
   }
   return posts;
 }
