@@ -105,11 +105,20 @@ async function createPost(req, res) {
     if (req.body.media) {
       try { media = JSON.parse(req.body.media); } catch { media = null; }
     }
+    // Pro gate (Option 1): a SINGLE IMAGE is free (the baseline everyone has
+    // always had -- the composers send even single photos through media[],
+    // so gating all of media[] blocked ordinary photo posts entirely). What's
+    // Pro is genuine multi-media: more than one item, OR any video. Uses the
+    // authoritative fresh-from-DB isUserPro check (NOT req.user.is_pro, which
+    // comes from the JWT signed at login and would be stale).
     let isPro = false;
     if (Array.isArray(media) && media.length > 0) {
-      isPro = await User.isUserPro(req.user.id);
-      if (!isPro) {
-        return res.status(403).json({ message: 'Multi-photo and video posts are a Pro feature.' });
+      const isMultiOrVideo = media.length > 1 || media.some(m => m?.media_type === 'video');
+      if (isMultiOrVideo) {
+        isPro = await User.isUserPro(req.user.id);
+        if (!isPro) {
+          return res.status(403).json({ message: 'Posting multiple photos or a video is a Pro feature.' });
+        }
       }
     }
     if (Array.isArray(media) && media.length > 0) {
