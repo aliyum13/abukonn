@@ -283,12 +283,13 @@ async function getFeed(req, res) {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const offset = (page - 1) * limit;
-    // "For You" now uses the ranked algorithm (following + injected discovery,
-    // recency-decayed, seen-demoted). The pure-chronological escape hatch lives
-    // on the separate "Following" tab (getFollowingFeed), left untouched.
-    const posts = await Post.getForYouFeed(req.user.id, limit, offset);
+    // "For You" v2: freshness-first ranking (every new post gets a chance),
+    // following + capped trending, own recent posts on top, seen-demoted so
+    // refresh brings newer content. Returns an "exhausted" flag when there are
+    // no more unseen posts -- the client shows "you're all caught up".
+    const { posts, exhausted } = await Post.getForYouFeed(req.user.id, limit, offset);
     await attachMedia(posts);
-    res.json({ posts, page, limit, hasMore: posts.length === limit });
+    res.json({ posts, page, limit, hasMore: posts.length === limit && !exhausted, caughtUp: exhausted });
   } catch (err) {
     console.error('Get feed error:', err.message);
     res.status(500).json({ message: 'Server error fetching feed' });

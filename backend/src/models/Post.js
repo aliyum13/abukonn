@@ -279,30 +279,45 @@ async function getAllPosts(currentUserId, limit = 50, offset = 0) {
 // ── "For You" ranked feed (Option B: following + injected discovery) ──────────
 // Tuning knobs — all in one place so the feed can be retuned without touching
 // the query. Adjust these based on real usage, not guesswork.
+// ── "For You" feed tuning (v2: freshness-first with fairness guarantee) ───────
+// Design goal: every new post gets a real chance to be seen regardless of
+// engagement. Freshness is an ADDITIVE floor (not a multiplier engagement can
+// erase), so a brand-new 0-like post ranks high for its first hours, then
+// fades to engagement-based ranking. Trending mixes in but can't bury fresh.
+// All knobs here; retune against real usage. Faculty/dept/level relevance is
+// deferred to a later version (kept simple: freshness + following + trending).
 const FORYOU = {
-  HALF_LIFE_HOURS: 15,     // recency decay half-life. A post's freshness weight
-                           //   halves every 15h. Higher = older content lingers.
-  BASE_QUALITY: 5,         // added to engagement so a brand-new zero-engagement
-                           //   post still has a baseline score (ranks by recency).
-  FOLLOW_BOOST: 1.0,       // multiplier for posts by people you follow.
-  DISCOVERY_PENALTY: 0.5,  // multiplier for discovery (non-followed) posts, so
-                           //   your people dominate and discovery is seasoning.
-  DEPT_BOOST: 1.4,         // author shares your department.
-  LEVEL_BOOST: 1.2,        // author shares your level.
-  SEEN_DEMOTE: 0.35,       // multiplier for posts you've already viewed — strong
-                           //   demote (not hide) so refresh surfaces fresh content
-                           //   but nothing empties the feed.
-  DISCOVERY_MAX_AGE_HOURS: 72,  // discovery only considers posts newer than this
-                                //   (keeps the candidate pool small + relevant).
-  DISCOVERY_MIN_ENGAGEMENT: 3,  // discovery posts must clear this engagement bar
-                                //   (avoids injecting random low-quality strangers).
+  FRESH_WINDOW_HOURS: 6,    // a post gets the freshness boost for its first 6h,
+                            //   linearly decaying to 0 across the window.
+  FRESH_BOOST: 120,         // size of the freshness floor at age 0. Large vs
+                            //   typical engagement so new posts surface, but
+                            //   finite so a viral old post can still mix in.
+  FOLLOW_BOOST: 40,         // added for posts by people you follow (extra pull
+                            //   toward your circle, stacks with freshness).
+  FOLLOW_FRESH_BONUS: 40,   // extra added when a followed author's post is ALSO
+                            //   inside the fresh window (new-from-followed = top).
+  ENGAGEMENT_WEIGHT: 1.0,   // multiplier on raw engagement_score. Trending posts
+                            //   ride this; capped below so they don't dominate.
+  ENGAGEMENT_CAP: 200,      // engagement contribution is capped here so one viral
+                            //   post can't tower infinitely over fresh content.
+  OWN_POST_BOOST: 100000,   // your own very recent post floats to the very top so
+                            //   you always immediately see what you just posted.
+  OWN_POST_WINDOW_HOURS: 2, //   ...but only for its first 2h (then it ranks normally).
+  SEEN_DEMOTE: 0.25,        // multiplier for posts you've already viewed — strong
+                            //   demote (not hide) so refresh surfaces fresh content
+                            //   without ever emptying the feed.
+  CANDIDATE_MAX_AGE_HOURS: 168, // only consider posts from the last 7 days, so the
+                                //   feed is a bounded, relevant campus window.
 };
 
-// The ranked "For You" feed. Same column shape as getAllPosts (so the client
-// needs no changes) but the candidate set is (followed authors) UNION
-// (recent, decent discovery posts from non-followed authors), and ordering is
-// by a computed ranking_score instead of created_at. Blocked authors excluded.
-// Pagination via LIMIT/OFFSET over the score order.
+// The ranked "For You" feed (v2). Freshness-first: a post gets a large additive
+// freshness floor for its first FRESH_WINDOW_HOURS, so new posts surface even
+// with zero engagement, then fade to engagement-based ranking. Followed authors
+// and (capped) trending are added on top. Your own very recent posts float to
+// the top. Already-seen posts are demoted (not hidden) so refresh brings newer
+// content. Candidate pool is campus-wide but bounded to the last 7 days.
+// Returns { posts, exhausted } -- exhausted=true when there are no more UNSEEN
+// posts left (client shows "you're all caught up").
 async function getForYouFeed(currentUserId, limit = 50, offset = 0) {
   const result = await pool.query(
     `WITH scored AS (
@@ -343,44 +358,50 @@ async function getForYouFeed(currentUserId, limit = 50, offset = 0) {
             (SELECT json_agg(json_build_object('id', po.id, 'option_text', po.option_text, 'vote_count', po.vote_count) ORDER BY po.id) FROM abukonn.poll_options po WHERE po.post_id = p.id) AS poll_options,
             (SELECT pv.option_id FROM abukonn.poll_votes pv WHERE pv.post_id = p.id AND pv.user_id = $1) AS voted_option_id,
             EXISTS(SELECT 1 FROM abukonn.event_rsvps er WHERE er.post_id = p.id AND er.user_id = $1) AS is_attending,
-            -- ranking_score = (quality) * recency_decay * follow/discovery * dept * level * seen
+            EXISTS(SELECT 1 FROM abukonn.post_views pvw WHERE pvw.post_id = p.id AND pvw.viewer_id = $1) AS already_seen,
+            -- v2 ranking: additive freshness floor + follow + capped engagement,
+            -- times the seen-demote. hours_old drives a linear freshness ramp.
             (
-              ($4::float + (p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1))
-              * EXP( -(EXTRACT(EPOCH FROM (NOW() - p.created_at)) / 3600.0) / $5::float * LN(2) )
-              * (CASE WHEN EXISTS(SELECT 1 FROM abukonn.follows f WHERE f.follower_id = $1 AND f.following_id = p.user_id) THEN $6::float ELSE $7::float END)
-              * (CASE WHEN u.department IS NOT NULL AND u.department = (SELECT department FROM abukonn.users WHERE id = $1) THEN $8::float ELSE 1 END)
-              * (CASE WHEN u.level IS NOT NULL AND u.level = (SELECT level FROM abukonn.users WHERE id = $1) THEN $9::float ELSE 1 END)
-              * (CASE WHEN EXISTS(SELECT 1 FROM abukonn.post_views pvw WHERE pvw.post_id = p.id AND pvw.viewer_id = $1) THEN $10::float ELSE 1 END)
+              (
+                -- freshness floor: FRESH_BOOST at age 0, linearly to 0 at FRESH_WINDOW_HOURS
+                GREATEST(0, $4::float * (1 - (EXTRACT(EPOCH FROM (NOW() - p.created_at)) / 3600.0) / $5::float))
+                -- following boost (+ extra if the followed post is also fresh)
+                + (CASE WHEN EXISTS(SELECT 1 FROM abukonn.follows f WHERE f.follower_id = $1 AND f.following_id = p.user_id)
+                        THEN $6::float + (CASE WHEN p.created_at > NOW() - ($5 || ' hours')::interval THEN $7::float ELSE 0 END)
+                        ELSE 0 END)
+                -- capped engagement so trending mixes in but can't bury fresh
+                + LEAST($9::float, $8::float * (p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1))
+                -- your own very recent post floats to the very top
+                + (CASE WHEN p.user_id = $1 AND p.created_at > NOW() - ($10 || ' hours')::interval THEN $11::float ELSE 0 END)
+              )
+              * (CASE WHEN EXISTS(SELECT 1 FROM abukonn.post_views pvw2 WHERE pvw2.post_id = p.id AND pvw2.viewer_id = $1) THEN $12::float ELSE 1 END)
             ) AS ranking_score
       FROM abukonn.posts p
       JOIN abukonn.users u ON p.user_id = u.id
       LEFT JOIN abukonn.posts orig ON p.is_repost = TRUE AND orig.id = p.original_post_id
       LEFT JOIN abukonn.users orig_u ON orig.user_id = orig_u.id
       WHERE p.user_id NOT IN (SELECT blocked_id FROM abukonn.blocks WHERE blocker_id = $1)
-        AND p.user_id <> $1
-        AND (
-          -- following pool: anything from people you follow
-          EXISTS(SELECT 1 FROM abukonn.follows f WHERE f.follower_id = $1 AND f.following_id = p.user_id)
-          OR
-          -- discovery pool: recent, decent posts from non-followed authors
-          (
-            p.created_at > NOW() - ($11 || ' hours')::interval
-            AND (p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) >= $12::float
-          )
-        )
+        AND p.created_at > NOW() - ($13 || ' hours')::interval
     )
     SELECT * FROM scored
     ORDER BY ranking_score DESC, created_at DESC
     LIMIT $2 OFFSET $3`,
     [
       currentUserId, limit, offset,
-      FORYOU.BASE_QUALITY, FORYOU.HALF_LIFE_HOURS,
-      FORYOU.FOLLOW_BOOST, FORYOU.DISCOVERY_PENALTY,
-      FORYOU.DEPT_BOOST, FORYOU.LEVEL_BOOST, FORYOU.SEEN_DEMOTE,
-      String(FORYOU.DISCOVERY_MAX_AGE_HOURS), FORYOU.DISCOVERY_MIN_ENGAGEMENT,
+      FORYOU.FRESH_BOOST, FORYOU.FRESH_WINDOW_HOURS,
+      FORYOU.FOLLOW_BOOST, FORYOU.FOLLOW_FRESH_BONUS,
+      FORYOU.ENGAGEMENT_WEIGHT, FORYOU.ENGAGEMENT_CAP,
+      String(FORYOU.OWN_POST_WINDOW_HOURS), FORYOU.OWN_POST_BOOST,
+      FORYOU.SEEN_DEMOTE, String(FORYOU.CANDIDATE_MAX_AGE_HOURS),
     ]
   );
-  return result.rows;
+  const posts = result.rows;
+  // "All caught up" signal: if every post on this page is already seen (and we
+  // got a full-or-partial page), the user has exhausted the unseen pool.
+  // exhausted=true when there are no UNSEEN posts in what we returned.
+  const anyUnseen = posts.some(p => !p.already_seen);
+  const exhausted = posts.length === 0 || !anyUnseen;
+  return { posts, exhausted };
 }
 
 async function getPostById(id) {
