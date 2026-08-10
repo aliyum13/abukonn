@@ -428,6 +428,7 @@ export default function Feed() {
   // still in flight, the stale response must not append onto the fresh one.
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const [caughtUp, setCaughtUp] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState(false);
   const loadGenRef = useRef(0);
@@ -504,11 +505,12 @@ export default function Feed() {
   const load = useCallback(async () => {
     const gen = ++loadGenRef.current;
     try {
-      const data = await apiFetch<{ posts: Post[]; hasMore?: boolean }>('/api/posts?page=1');
+      const data = await apiFetch<{ posts: Post[]; hasMore?: boolean; caughtUp?: boolean }>('/api/posts?page=1');
       if (gen !== loadGenRef.current) return; // superseded by a newer load()
       setPosts(data.posts || []);
       setPage(1);
       setHasMore(data.hasMore ?? (data.posts?.length ?? 0) > 0);
+      setCaughtUp(!!data.caughtUp);
       setLoadMoreError(false);
       setError('');
     } catch (err) {
@@ -529,7 +531,7 @@ export default function Feed() {
     setLoadMoreError(false);
     const nextPage = page + 1;
     try {
-      const data = await apiFetch<{ posts: Post[]; hasMore?: boolean }>(`/api/posts?page=${nextPage}`);
+      const data = await apiFetch<{ posts: Post[]; hasMore?: boolean; caughtUp?: boolean }>(`/api/posts?page=${nextPage}`);
       if (gen !== loadGenRef.current) return; // a refresh landed while this was in flight
       const incoming = data.posts || [];
       setPosts(prev => {
@@ -539,6 +541,7 @@ export default function Feed() {
       });
       setPage(nextPage);
       setHasMore(data.hasMore ?? incoming.length > 0);
+      setCaughtUp(!!data.caughtUp);
     } catch {
       if (gen === loadGenRef.current) setLoadMoreError(true);
       // existing posts are untouched — nothing removed on a failed page load
@@ -1464,6 +1467,11 @@ export default function Feed() {
                 <TouchableOpacity style={s.loadMoreFooter} onPress={loadMore}>
                   <Text style={s.loadMoreRetryText}>Couldn&apos;t load more — tap to retry</Text>
                 </TouchableOpacity>
+              ) : caughtUp && posts.length > 0 ? (
+                <View style={s.caughtUpFooter}>
+                  <Text style={s.caughtUpTitle}>You&apos;re all caught up! 🎉</Text>
+                  <Text style={s.caughtUpSub}>Follow more people on ABUkonn to see more relevant posts.</Text>
+                </View>
               ) : null
             ) : null
           }
@@ -1907,6 +1915,9 @@ const make_s = (colors: Palette) => StyleSheet.create({
   hlDesc: { fontSize: 14, color: '#374151', lineHeight: 20 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   loadMoreFooter: { paddingVertical: 20, alignItems: 'center', justifyContent: 'center' },
+  caughtUpFooter: { paddingVertical: 28, paddingHorizontal: 24, alignItems: 'center' },
+  caughtUpTitle: { fontSize: 15, fontWeight: '700', color: colors.text, textAlign: 'center' },
+  caughtUpSub: { fontSize: 13, color: colors.muted, textAlign: 'center', marginTop: 4, lineHeight: 18 },
   loadMoreRetryText: { fontSize: 13, fontWeight: '600', color: colors.brand },
   error: { color: colors.danger, fontSize: 15, textAlign: 'center', marginBottom: 6 },
   retryBtn: { marginTop: 12, backgroundColor: colors.brand, borderRadius: 999, paddingHorizontal: 24, paddingVertical: 10 },

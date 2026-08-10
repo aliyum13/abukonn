@@ -1260,6 +1260,7 @@ export default function FeedPage() {
   // append onto the fresh one.
   const [feedPage, setFeedPage] = useState(1);
   const [feedHasMore, setFeedHasMore] = useState(true);
+  const [feedCaughtUp, setFeedCaughtUp] = useState(false);
   const [loadingMorePosts, setLoadingMorePosts] = useState(false);
   const [loadMorePostsError, setLoadMorePostsError] = useState(false);
   const loadGenRef = useRef(0);
@@ -1849,6 +1850,7 @@ export default function FeedPage() {
         setPosts(data.posts);
         setFeedPage(1);
         setFeedHasMore(data.hasMore ?? (data.posts?.length ?? 0) > 0);
+        setFeedCaughtUp(!!data.caughtUp);
         setLoadMorePostsError(false);
         lastFetchRef.current = Date.now();
         // Clear any stale error banner (e.g. a transient network error from a
@@ -1885,6 +1887,7 @@ export default function FeedPage() {
       });
       setFeedPage(nextPage);
       setFeedHasMore(data.hasMore ?? incoming.length > 0);
+      setFeedCaughtUp(!!data.caughtUp);
     } catch {
       if (gen === loadGenRef.current) setLoadMorePostsError(true);
       // existing posts are untouched — nothing removed on a failed page load
@@ -4049,6 +4052,11 @@ export default function FeedPage() {
                 <button type="button" onClick={loadMorePosts} className="text-body-sm font-semibold text-brand-600 hover:text-brand-700">
                   Couldn&apos;t load more — tap to retry
                 </button>
+              ) : feedCaughtUp && feedTab === 'for_you' ? (
+                <div className="px-4 text-center">
+                  <p className="text-body-sm font-semibold text-ink">You&apos;re all caught up! 🎉</p>
+                  <p className="mt-1 text-caption text-ink-muted">Follow more people on ABUkonn to see more relevant posts.</p>
+                </div>
               ) : null}
             </div>
           )}
