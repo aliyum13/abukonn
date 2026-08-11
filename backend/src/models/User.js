@@ -22,6 +22,11 @@ ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS username VARCHAR(100);
 ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'user';
 ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS date_of_birth DATE;
 ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN NOT NULL DEFAULT FALSE;
+-- Why a user is verified: 'admin' (manually granted to a notable/official
+-- account) or 'pro' (auto-granted by an active Pro subscription). Lets Pro
+-- lapse safely revoke ONLY pro-sourced badges without ever stripping an
+-- admin-verified account. NULL when not verified.
+ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS verified_source VARCHAR(10);
 ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS is_content_creator BOOLEAN NOT NULL DEFAULT FALSE;
 -- Real activity tracking: stamped from the auth middleware on authenticated
 -- requests (throttled). Powers true DAU/MAU on the admin dashboard, replacing the
@@ -115,7 +120,7 @@ async function findByUsername(username) {
   return result.rows[0] || null;
 }
 
-const COLS = 'id, username, full_name, email, department, level, profile_photo_url, bio, is_admin, role, is_verified, is_content_creator, date_of_birth, created_at, is_pro, pro_expires_at';
+const COLS = 'id, username, full_name, email, department, level, profile_photo_url, bio, is_admin, role, is_verified, verified_source, is_content_creator, date_of_birth, created_at, is_pro, pro_expires_at';
 
 async function findById(id) {
   const result = await pool.query(
@@ -175,8 +180,12 @@ async function updateRole(id, role) {
 }
 
 async function setVerified(id, verified) {
+  // Admin-granted verification. Stamp source='admin' so a later Pro lapse can
+  // never revoke it. Un-verifying clears both flag and source.
   const result = await pool.query(
-    `UPDATE abukonn.users SET is_verified = $2 WHERE id = $1 RETURNING ${COLS}`,
+    `UPDATE abukonn.users
+     SET is_verified = $2, verified_source = CASE WHEN $2 THEN 'admin' ELSE NULL END
+     WHERE id = $1 RETURNING ${COLS}`,
     [id, !!verified]
   );
   return result.rows[0] || null;

@@ -79,7 +79,12 @@ async function grantProMonth(userId) {
   const result = await pool.query(
     `UPDATE abukonn.users
      SET is_pro = TRUE,
-         pro_expires_at = GREATEST(COALESCE(pro_expires_at, NOW()), NOW()) + INTERVAL '1 month'
+         pro_expires_at = GREATEST(COALESCE(pro_expires_at, NOW()), NOW()) + INTERVAL '1 month',
+         -- Pro auto-grants the verified badge (Option 3). Only stamp source
+         -- 'pro' if NOT already admin-verified, so an admin-verified account
+         -- that also subscribes keeps its protected 'admin' source.
+         is_verified = TRUE,
+         verified_source = CASE WHEN verified_source = 'admin' THEN 'admin' ELSE 'pro' END
      WHERE id = $1
      RETURNING id, is_pro, pro_expires_at`,
     [userId]
@@ -92,11 +97,33 @@ async function grantProMonth(userId) {
 // honest without every read having to compare timestamps.
 async function expireLapsed() {
   const result = await pool.query(
-    `UPDATE abukonn.users SET is_pro = FALSE
+    `UPDATE abukonn.users
+     SET is_pro = FALSE,
+         -- Revoke the badge ONLY if it came from Pro. Admin-verified accounts
+         -- (verified_source='admin') keep their badge regardless of Pro status.
+         is_verified = CASE WHEN verified_source = 'pro' THEN FALSE ELSE is_verified END,
+         verified_source = CASE WHEN verified_source = 'pro' THEN NULL ELSE verified_source END
      WHERE is_pro = TRUE AND pro_expires_at IS NOT NULL AND pro_expires_at <= NOW()
      RETURNING id`
   );
   return result.rowCount;
+}
+
+// Per-user version of expireLapsed: if THIS user's Pro has lapsed, flip is_pro
+// off and revoke a pro-sourced badge (never an admin one). Cheap to call on a
+// status read so a lapsed user self-corrects without waiting for a global
+// sweep. Returns true if it changed anything.
+async function expireLapsedForUser(userId) {
+  const result = await pool.query(
+    `UPDATE abukonn.users
+     SET is_pro = FALSE,
+         is_verified = CASE WHEN verified_source = 'pro' THEN FALSE ELSE is_verified END,
+         verified_source = CASE WHEN verified_source = 'pro' THEN NULL ELSE verified_source END
+     WHERE id = $1 AND is_pro = TRUE AND pro_expires_at IS NOT NULL AND pro_expires_at <= NOW()
+     RETURNING id`,
+    [userId]
+  );
+  return result.rowCount > 0;
 }
 
 module.exports = {
@@ -107,4 +134,5 @@ module.exports = {
   markFailed,
   grantProMonth,
   expireLapsed,
+  expireLapsedForUser,
 };
