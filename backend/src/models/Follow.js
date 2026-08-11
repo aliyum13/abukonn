@@ -156,7 +156,15 @@ const PERSON_SELECT = `
 // One prioritised "section" of people for the Discover page. Excludes the
 // viewer, anyone they already follow, and blocked users. `extraWhere` is an
 // SQL fragment scoping the section; params start at $2.
-async function discoverSection(currentUserId, extraWhere, extraParams = [], limit = 20) {
+async function discoverSection(currentUserId, extraWhere, extraParams = [], limit = 20, opts = {}) {
+  // opts.randomize = true  -> shuffle results (so refresh shows different people
+  //                           and the highest-follower accounts don't dominate
+  //                           every load). Used for the open "more people" pool.
+  // opts.offset            -> for load-more pagination.
+  const { randomize = false, offset = 0 } = opts;
+  const order = randomize
+    ? 'ORDER BY RANDOM()'
+    : 'ORDER BY followers_count DESC, u.created_at DESC';
   const result = await pool.query(
     `SELECT ${PERSON_SELECT}
      FROM abukonn.users u
@@ -165,8 +173,8 @@ async function discoverSection(currentUserId, extraWhere, extraParams = [], limi
        AND u.id NOT IN (SELECT blocked_id FROM abukonn.blocks WHERE blocker_id = $1)
        AND u.id NOT IN (SELECT blocker_id FROM abukonn.blocks WHERE blocked_id = $1)
        AND (${extraWhere})
-     ORDER BY followers_count DESC, u.created_at DESC
-     LIMIT ${limit}`,
+     ${order}
+     LIMIT ${limit} OFFSET ${offset}`,
     [currentUserId, ...extraParams]
   );
   return result.rows;

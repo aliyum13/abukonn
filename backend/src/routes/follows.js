@@ -11,6 +11,7 @@ const {
   getMyFollowing,
   getSuggestions,
   discover,
+  loadMoreDiscover,
   search,
   setNotifications,
   getNotifications,
@@ -22,6 +23,7 @@ router.use(auth);
 // Static routes must come before /:userId to avoid conflicts
 router.get('/suggestions', getSuggestions);
 router.get('/discover', discover);
+router.get('/discover/more', loadMoreDiscover);
 router.get('/search', search);
 router.get('/followers', getMyFollowers);
 router.get('/following', getMyFollowing);
