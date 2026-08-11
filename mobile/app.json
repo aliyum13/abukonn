@@ -11,7 +11,9 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.abukonn.app",
-      "associatedDomains": ["applinks:abukonn.com"],
+      "associatedDomains": [
+        "applinks:abukonn.com"
+      ],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -31,10 +33,21 @@
           "action": "VIEW",
           "autoVerify": true,
           "data": [
-            { "scheme": "https", "host": "abukonn.com", "pathPrefix": "/u/" },
-            { "scheme": "https", "host": "abukonn.com", "pathPrefix": "/join/" }
+            {
+              "scheme": "https",
+              "host": "abukonn.com",
+              "pathPrefix": "/u/"
+            },
+            {
+              "scheme": "https",
+              "host": "abukonn.com",
+              "pathPrefix": "/join/"
+            }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
@@ -55,7 +68,8 @@
           "cameraPermission": "ABUkonn uses your camera so you can take photos for posts and stories."
         }
       ],
-      "expo-video"
+      "expo-video",
+      "expo-web-browser"
     ],
     "extra": {
       "apiUrl": "https://abukonn-production.up.railway.app",
