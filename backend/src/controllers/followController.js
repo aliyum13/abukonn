@@ -181,8 +181,11 @@ async function discover(req, res) {
     // 5. Verified users
     const verified = take(await Follow.discoverSection(req.user.id, 'u.is_verified = TRUE', [], 20));
 
-    // 6. Everyone else
-    const others = take(await Follow.discoverSection(req.user.id, 'TRUE', [], 30));
+    // 6. Everyone else -- RANDOMIZED so each refresh surfaces different people
+    // (previously ORDER BY followers_count meant the same ~30 high-follower
+    // accounts, often one faculty, showed every time). See loadMoreDiscover for
+    // pagination.
+    const others = take(await Follow.discoverSection(req.user.id, 'TRUE', [], 30, { randomize: true }));
 
     res.json({
       faculty_name: facultyName,
@@ -208,6 +211,21 @@ async function discover(req, res) {
 }
 
 // Search people by name/username.
+// Load-more for the "More people across ABU" section. Returns another random
+// batch of not-yet-followed users, so tapping "show more" (or refreshing)
+// keeps surfacing different people instead of the same list. Randomized, so we
+// over-fetch a bit and let the client de-dupe against who it already shows.
+async function loadMoreDiscover(req, res) {
+  try {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 30, 50);
+    const people = await Follow.discoverSection(req.user.id, 'TRUE', [], limit, { randomize: true });
+    res.json({ people });
+  } catch (err) {
+    console.error('Discover load-more error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
 async function search(req, res) {
   try {
     const q = (req.query.q || '').toString().trim();
@@ -260,6 +278,7 @@ module.exports = {
   getMyFollowing,
   getSuggestions,
   discover,
+  loadMoreDiscover,
   search,
   setNotifications,
   getNotifications,

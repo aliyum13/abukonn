@@ -133,6 +133,9 @@ async function verifyPayment(req, res) {
 // GET /api/pro/status -- current Pro status for the authenticated user.
 async function getProStatus(req, res) {
   try {
+    // Self-correct if this user's Pro has lapsed (flips is_pro off + revokes a
+    // pro-sourced badge) so status reads stay honest without a global sweep.
+    await Payment.expireLapsedForUser(req.user.id);
     const isPro = await User.isUserPro(req.user.id);
     const user = await User.findById(req.user.id);
     res.json({ is_pro: isPro, pro_expires_at: user?.pro_expires_at || null });
