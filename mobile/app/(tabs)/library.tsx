@@ -3,10 +3,11 @@ import { useThemedStyles } from '../../src/theme/ThemeContext';
 import type { Palette } from '../../src/theme';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl,
-  TouchableOpacity, TextInput, Linking, Alert, Modal, ScrollView,
+  TouchableOpacity, TextInput, Alert, Modal, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../../src/lib/api';
 import { colors, radius, shadow } from '../../src/theme';
@@ -119,19 +120,30 @@ export default function Library() {
   }, [loadingMore, loading, materials.length, total, type, search, faculty, department, level, page, load]);
 
   const openFile = async (m: Material) => {
-    // Office files (Word/PPT/Excel) don't render natively — route them through
-    // Microsoft's web viewer, matching web. PDFs/images open directly.
+    // View files in-app rather than handing the URL to the OS. Linking.openURL
+    // let the OS treat document URLs as downloads (esp. on Android, where they
+    // went to the download manager instead of opening). WebBrowser renders the
+    // page in-app: Office files (Word/PPT/Excel) go through Microsoft's web
+    // viewer (which displays them), PDFs/images open inline in the browser.
     const OFFICE = new Set(['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx']);
     const ext = ((m.file_name || m.title).split('.').pop() || '').toLowerCase();
     const url = OFFICE.has(ext)
       ? `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(m.file_url)}`
       : m.file_url;
     try {
-      const ok = await Linking.canOpenURL(url);
-      if (ok) await Linking.openURL(url);
-      else Alert.alert('Cannot open', 'This file could not be opened.');
+      await WebBrowser.openBrowserAsync(url, { presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN });
     } catch {
       Alert.alert('Cannot open', 'This file could not be opened.');
+    }
+  };
+
+  // Download: open the raw file URL so the OS/browser saves it (matches web's
+  // Download button). This is the intentional download path; openFile is view.
+  const downloadFile = async (m: Material) => {
+    try {
+      await WebBrowser.openBrowserAsync(m.file_url);
+    } catch {
+      Alert.alert('Cannot download', 'This file could not be downloaded.');
     }
   };
 
@@ -236,23 +248,32 @@ export default function Library() {
             </View>
           }
           renderItem={({ item }) => (
-            <TouchableOpacity style={s.card} onPress={() => openFile(item)} activeOpacity={0.7}>
-              <Text style={s.icon}>{TYPE_ICON[item.type] ?? '📁'}</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={s.cardTitle} numberOfLines={2}>{item.title}</Text>
-                {item.course_code ? (
-                  <Text style={s.course}>
-                    {item.course_code}{item.course_title ? ` · ${item.course_title}` : ''}
+            <View style={s.card}>
+              <TouchableOpacity style={s.cardMain} onPress={() => openFile(item)} activeOpacity={0.7}>
+                <Text style={s.icon}>{TYPE_ICON[item.type] ?? '📁'}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.cardTitle} numberOfLines={2}>{item.title}</Text>
+                  {item.course_code ? (
+                    <Text style={s.course}>
+                      {item.course_code}{item.course_title ? ` · ${item.course_title}` : ''}
+                    </Text>
+                  ) : null}
+                  <Text style={s.meta}>
+                    {item.department ?? 'General'}
+                    {item.level ? ` · ${item.level}` : ''}
+                    {item.download_count ? ` · ${item.download_count} downloads` : ''}
                   </Text>
-                ) : null}
-                <Text style={s.meta}>
-                  {item.department ?? 'General'}
-                  {item.level ? ` · ${item.level}` : ''}
-                  {item.download_count ? ` · ${item.download_count} downloads` : ''}
-                </Text>
+                </View>
+              </TouchableOpacity>
+              <View style={s.cardActions}>
+                <TouchableOpacity onPress={() => openFile(item)} hitSlop={8}>
+                  <Text style={s.actionView}>View</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => downloadFile(item)} hitSlop={8}>
+                  <Text style={s.actionDownload}>Download</Text>
+                </TouchableOpacity>
               </View>
-              <Text style={s.open}>Open</Text>
-            </TouchableOpacity>
+            </View>
           )}
         />
       )}
@@ -366,10 +387,19 @@ const make_s = (colors: Palette) => StyleSheet.create({
   muted: { color: colors.muted, fontSize: 15, fontWeight: '600' },
   mutedSmall: { color: colors.muted, fontSize: 13 },
   card: {
-    flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
     backgroundColor: colors.surface, marginHorizontal: 12, marginTop: 10,
     borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, ...shadow.card,
   },
+  cardMain: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
+  },
+  cardActions: {
+    flexDirection: 'row', justifyContent: 'flex-end', gap: 20,
+    paddingHorizontal: 14, paddingBottom: 12, paddingTop: 2,
+    borderTopWidth: 1, borderTopColor: colors.border,
+  },
+  actionView: { color: colors.brand, fontWeight: '700', fontSize: 13, paddingVertical: 6 },
+  actionDownload: { color: colors.brand, fontWeight: '700', fontSize: 13, paddingVertical: 6 },
   icon: { fontSize: 26 },
   cardTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
   course: { fontSize: 13, color: colors.brand, fontWeight: '600', marginTop: 2 },
