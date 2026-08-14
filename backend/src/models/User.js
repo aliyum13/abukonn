@@ -144,6 +144,23 @@ async function isUserPro(id) {
   return result.rows[0]?.active === true;
 }
 
+// Master switch for whether Pro FEATURE GATES are enforced. While false, every
+// Pro-gated feature (multi-media, edit-after-publish, analytics, profile
+// viewers, video stories, unlimited stories) is free for EVERYONE on both
+// platforms — the growth-phase "let people enjoy the platform" mode. Flip to
+// true at launch (alongside Paystack setup + PRO_LAUNCHED) to start enforcing.
+// NOTE: this gates FEATURES only. isUserPro above still reports a user's REAL
+// Pro status (used by the /pro status + verify screens), so those stay honest.
+const PRO_GATES_ENABLED = false;
+
+// Use THIS at every feature gate (not isUserPro): a feature is unlocked if the
+// gates are off (free for all) OR the user is genuinely Pro. When gates are
+// later enabled, this collapses back to real Pro status.
+async function isProFeatureUnlocked(id) {
+  if (!PRO_GATES_ENABLED) return true;
+  return isUserPro(id);
+}
+
 async function findByIdWithPassword(id) {
   const result = await pool.query(
     `SELECT id, email, password_hash, full_name FROM abukonn.users WHERE id = $1`,
@@ -284,6 +301,7 @@ module.exports = {
   findByUsername,
   findById,
   isUserPro,
+  isProFeatureUnlocked,
   findByIdWithPassword,
   updateProfile,
   updateRole,

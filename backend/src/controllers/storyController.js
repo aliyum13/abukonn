@@ -23,7 +23,7 @@ const FREE_DAILY_STORY_CAP = 5;
 async function checkDailyStoryCap(req) {
   // Pro users post unlimited stories/day (fresh-from-DB check). The separate
   // 3-active cap stays universal regardless of Pro.
-  if (await User.isUserPro(req.user.id)) return null;
+  if (await User.isProFeatureUnlocked(req.user.id)) return null;
   const postedToday = await Story.countStoriesToday(req.user.id);
   if (postedToday >= FREE_DAILY_STORY_CAP) {
     return `You've reached your ${FREE_DAILY_STORY_CAP} stories for today. Come back tomorrow, or go Pro for unlimited stories.`;
@@ -257,7 +257,7 @@ async function createStory(req, res) {
 
       // Video stories are a Pro feature (fresh-from-DB check). Image stories
       // stay free. Images fall through unchanged.
-      if (requestedType === 'video' && !(await User.isUserPro(req.user.id))) {
+      if (requestedType === 'video' && !(await User.isProFeatureUnlocked(req.user.id))) {
         return res.status(403).json({ message: 'Video stories are a Pro feature.' });
       }
       // WhatsApp-style cap: up to 3 items in your current story "session" --

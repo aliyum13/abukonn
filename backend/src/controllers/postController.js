@@ -115,7 +115,7 @@ async function createPost(req, res) {
     if (Array.isArray(media) && media.length > 0) {
       const isMultiOrVideo = media.length > 1 || media.some(m => m?.media_type === 'video');
       if (isMultiOrVideo) {
-        isPro = await User.isUserPro(req.user.id);
+        isPro = await User.isProFeatureUnlocked(req.user.id);
         if (!isPro) {
           return res.status(403).json({ message: 'Posting multiple photos or a video is a Pro feature.' });
         }
@@ -534,7 +534,7 @@ async function updatePost(req, res) {
     }
 
     // Editing a post after publishing is a Pro feature (fresh-from-DB check).
-    if (!(await User.isUserPro(req.user.id))) {
+    if (!(await User.isProFeatureUnlocked(req.user.id))) {
       return res.status(403).json({ message: 'Editing posts after publishing is a Pro feature.' });
     }
 
@@ -629,7 +629,7 @@ async function viewPost(req, res) {
 async function getPostAnalytics(req, res) {
   try {
     // Post analytics is a Pro feature (fresh-from-DB check).
-    if (!(await User.isUserPro(req.user.id))) {
+    if (!(await User.isProFeatureUnlocked(req.user.id))) {
       return res.status(403).json({ message: 'Post analytics is a Pro feature.' });
     }
     const posts = await Post.getPostsByUserId(req.user.id, req.user.id);

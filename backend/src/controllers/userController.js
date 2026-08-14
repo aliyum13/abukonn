@@ -108,7 +108,7 @@ async function getProfileViewers(req, res) {
     // "Who viewed my profile" is a Pro feature (fresh-from-DB check).
     // Recording views still happens for everyone (see getUserById); only
     // reading the list back is gated.
-    if (!(await User.isUserPro(req.user.id))) {
+    if (!(await User.isProFeatureUnlocked(req.user.id))) {
       return res.status(403).json({ message: 'Seeing who viewed your profile is a Pro feature.' });
     }
     const viewers = await ProfileView.getViewers(req.user.id);
