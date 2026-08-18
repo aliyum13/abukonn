@@ -10,6 +10,7 @@ import type { Palette } from '../src/theme';
 import { colors, radius } from '../src/theme';
 import { apiFetch } from '../src/lib/api';
 import { optimizedImage } from '../src/lib/image';
+import { StoryComposer } from '../src/components/Stories';
 
 interface MyStory {
   id: number;
@@ -39,12 +40,9 @@ function timeAgo(iso: string | null) {
  * stories with view counts and a way to delete each one, rather than only
  * seeing the view count inline while watching a story in the viewer.
  *
- * Story creation itself is deliberately NOT duplicated here — the composer
- * already lives in Stories.tsx's StoryBar (feed's story ring), fully built
- * and working. Rebuilding it as a second copy here would be a much bigger
- * task than what was actually reported (no list to see what you've already
- * posted), so "Add story" below just sends you back to Feed where the
- * existing composer already is.
+ * Story creation itself is not duplicated here — "Add Story" below opens
+ * Stories.tsx's exported StoryComposer, the same modal StoryBar's own "Add"
+ * ring uses on Feed, rather than maintaining a second copy of it.
  */
 export default function MyStoriesScreen() {
   const s = useThemedStyles(make_s);
@@ -52,6 +50,7 @@ export default function MyStoriesScreen() {
   const [stories, setStories] = useState<MyStory[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [composing, setComposing] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -96,11 +95,11 @@ export default function MyStoriesScreen() {
         <View style={{ width: 24 }} />
       </View>
 
-      <TouchableOpacity style={s.addRow} onPress={() => router.replace('/(tabs)/feed')}>
+      <TouchableOpacity style={s.addRow} onPress={() => setComposing(true)}>
         <View style={s.addIcon}><Ionicons name="add" size={24} color="#fff" /></View>
         <View style={{ flex: 1 }}>
           <Text style={s.addTitle}>Add Story</Text>
-          <Text style={s.addSub}>Tap your story ring on Feed to share one</Text>
+          <Text style={s.addSub}>Share a photo, video, or text</Text>
         </View>
         <Ionicons name="chevron-forward" size={18} color={colors.muted} />
       </TouchableOpacity>
@@ -160,6 +159,13 @@ export default function MyStoriesScreen() {
           ListFooterComponent={<Text style={s.footnote}>Stories disappear after 24 hours</Text>}
         />
       )}
+
+      {composing ? (
+        <StoryComposer
+          onClose={() => setComposing(false)}
+          onPosted={() => { setComposing(false); load(); }}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

@@ -527,7 +527,10 @@ function firstUrlIn(text: string): string | null {
   return trimmed.startsWith('http') ? trimmed : `https://${trimmed}`;
 }
 
-function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: () => void }) {
+// Exported so screens outside the feed's StoryBar (e.g. my-stories.tsx's
+// "Add Story" entry point) can open the same composer directly instead of
+// redirecting to Feed just to reach it.
+export function StoryComposer({ onClose, onPosted }: { onClose: () => void; onPosted: () => void }) {
   const s = useThemedStyles(make_s);
   const c = useThemedStyles(make_c);
   const [mode, setMode] = useState<'text' | 'image'>('text');
