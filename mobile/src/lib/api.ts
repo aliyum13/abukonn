@@ -6,6 +6,47 @@ export const API_URL: string =
   (Constants.expoConfig?.extra as { apiUrl?: string } | undefined)?.apiUrl ||
   'https://abukonn-production.up.railway.app';
 
+// Thrown by fetchWithTimeout when a request is aborted for taking too long,
+// distinct from a plain network failure so callers (namely apiFetch below)
+// can surface a clear "timed out" message instead of collapsing it into the
+// generic "Network error" one.
+export class TimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TimeoutError';
+  }
+}
+
+// fetch() has no timeout of its own -- on a hung connection (weak campus
+// WiFi/cellular handoff, backgrounding mid-request) the promise never
+// resolves OR rejects, so any try/finally gating a `loading` flag never
+// reaches `finally` and the screen is stuck on its spinner permanently with
+// no error and no in-app recovery except backing out and back in. This
+// wraps fetch in an AbortController so a hung request reliably fails
+// instead of hanging forever.
+export async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new TimeoutError('Request timed out — check your connection and try again.');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Generous enough for a normal API call on a slow connection without making
+// a genuinely dead request hang around forever.
+const REQUEST_TIMEOUT_MS = 20000;
+
 // Mirrors the backend's toPrivateUser().
 export interface ApiUser {
   id: number;
@@ -43,8 +84,9 @@ export async function apiFetch<T>(
 
   let res: Response;
   try {
-    res = await fetch(`${API_URL}${path}`, { ...options, headers });
-  } catch {
+    res = await fetchWithTimeout(`${API_URL}${path}`, { ...options, headers }, REQUEST_TIMEOUT_MS);
+  } catch (err) {
+    if (err instanceof TimeoutError) throw err;
     throw new Error('Network error — check your connection.');
   }
 

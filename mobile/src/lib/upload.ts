@@ -1,5 +1,10 @@
-import { API_URL } from './api';
+import { API_URL, fetchWithTimeout } from './api';
 import { getToken } from './storage';
+
+// Longer than apiFetch's default timeout -- large media on weak campus WiFi
+// legitimately takes longer than a normal API call, and killing a real slow
+// upload early would just trade "stuck forever" for "fails needlessly."
+const UPLOAD_TIMEOUT_MS = 60000;
 
 // Upload an image to Cloudinary directly and return its URL.
 //
@@ -81,9 +86,10 @@ export async function uploadMedia(
   const token = await getToken();
 
   // 1. Ask our backend to sign the upload (keeps the Cloudinary secret server-side).
-  const sigRes = await fetch(
+  const sigRes = await fetchWithTimeout(
     `${API_URL}/api/stories/upload-signature?folder=${encodeURIComponent(folder)}`,
     { headers: { Authorization: `Bearer ${token}` } },
+    UPLOAD_TIMEOUT_MS,
   );
   if (!sigRes.ok) throw new Error('Could not start the upload.');
   const { signature, timestamp, api_key, cloud_name, folder: signedFolder } =
@@ -104,10 +110,11 @@ export async function uploadMedia(
   fd.append('signature', signature);
   fd.append('folder', signedFolder);
 
-  const upRes = await fetch(`https://api.cloudinary.com/v1_1/${cloud_name}/${type}/upload`, {
-    method: 'POST',
-    body: fd,
-  });
+  const upRes = await fetchWithTimeout(
+    `https://api.cloudinary.com/v1_1/${cloud_name}/${type}/upload`,
+    { method: 'POST', body: fd },
+    UPLOAD_TIMEOUT_MS,
+  );
   if (!upRes.ok) throw new Error(type === 'video' ? 'Video upload failed.' : 'Image upload failed.');
   const data = (await upRes.json()) as {
     secure_url?: string; duration?: number;
