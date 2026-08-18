@@ -147,8 +147,12 @@ export default function Library() {
     }
   };
 
-  return (
-    <SafeAreaView style={s.safe} edges={['top']}>
+  // Header content (page title, quick-action tiles, search bar, filter chips)
+  // rendered as the materials FlatList's ListHeaderComponent -- same pattern
+  // as feed.tsx's forYouHeader -- so the whole page scrolls as one surface
+  // instead of only the materials list scrolling under a pinned header.
+  const libraryHeader = (
+    <View>
       <View style={s.header}><Text style={s.title}>Library</Text></View>
 
       <View style={s.quickRow}>
@@ -221,14 +225,22 @@ export default function Library() {
           {(faculty || department || level) ? <View style={s.filterDot} /> : null}
         </TouchableOpacity>
       </View>
+    </View>
+  );
 
+  return (
+    <SafeAreaView style={s.safe} edges={['top']}>
       {loading ? (
-        <View style={s.center}><ActivityIndicator size="large" color={colors.brand} /></View>
+        <>
+          {libraryHeader}
+          <View style={s.center}><ActivityIndicator size="large" color={colors.brand} /></View>
+        </>
       ) : (
         <FlatList
           ref={listRef}
           data={materials}
           keyExtractor={m => String(m.id)}
+          ListHeaderComponent={libraryHeader}
           refreshControl={
             <RefreshControl refreshing={refreshing}
               onRefresh={() => { setRefreshing(true); load(type, search, faculty, department, level, 1); }}
