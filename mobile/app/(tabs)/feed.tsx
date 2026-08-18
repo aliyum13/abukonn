@@ -1688,7 +1688,7 @@ export default function Feed() {
       {/* Comments */}
       <Modal visible={!!commentsFor} animationType="slide" onRequestClose={() => setCommentsFor(null)}>
         <SafeAreaView style={s.safe} edges={['bottom']}>
-          <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
             <View style={[s.modalHeader, { paddingTop: insets.top + 12 }]}>
               <TouchableOpacity onPress={() => setCommentsFor(null)} hitSlop={12} style={s.modalClose}>
                 <Text style={s.modalCloseText}>‹ Back</Text>
