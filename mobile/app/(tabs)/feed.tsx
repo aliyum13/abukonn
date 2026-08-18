@@ -1344,6 +1344,7 @@ export default function Feed() {
         <View style={s.center}><ActivityIndicator size="large" color={colors.brand} /></View>
       ) : feedTab === 'messages' ? (
         <FlatList
+          key="messages-list"
           data={filteredMessageItems}
           keyExtractor={i => `${i.kind}-${i.id}`}
           keyboardShouldPersistTaps="handled"
@@ -1416,6 +1417,7 @@ export default function Feed() {
         </View>
       ) : (
         <FlatList
+          key="posts-list"
           ref={listRef}
           data={feedTab === 'following' ? followingPosts : (category === 'ALL' ? posts : posts.filter(p => p.category === category))}
           keyExtractor={p => String(p.id)}
