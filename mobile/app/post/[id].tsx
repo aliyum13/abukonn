@@ -173,6 +173,31 @@ export default function SinglePost() {
     }
   };
 
+  // post/[id].tsx previously had no way to delete the post it's showing --
+  // only the inline "Edit post" link existed here, so anyone who reached a
+  // post via this detail page (notification tap, shared link, the feed
+  // comment-modal's "open" icon, search/hashtag results) had no delete
+  // option even though feed.tsx's own post menu has always had one. Mirrors
+  // web's post-detail "Delete post" (handleDelete) including navigating
+  // away afterward, since the post being shown no longer exists.
+  const deletePost = () => {
+    if (!post) return;
+    Alert.alert('Delete post', 'This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: async () => {
+          try {
+            await apiFetch(`/api/posts/${post.id}`, { method: 'DELETE' });
+            router.replace('/(tabs)/feed');
+          } catch (err) {
+            Alert.alert('Could not delete', err instanceof Error ? err.message : '');
+          }
+        },
+      },
+    ]);
+  };
+
   const repost = async () => {
     if (!post || post.is_reposted) return;
     setPost(p => p ? { ...p, is_reposted: true, reposts_count: (p.reposts_count ?? 0) + 1 } : p);
@@ -367,9 +392,14 @@ export default function SinglePost() {
                 {post.content ? <PostContent content={post.content} style={s.content} /> : null}
                 {post.edited_at ? <Text style={s.editedTag}>edited</Text> : null}
                 {post.user_id === currentUserId ? (
-                  <TouchableOpacity onPress={startEdit} style={s.editLink}>
-                    <Text style={s.editLinkText}>Edit post</Text>
-                  </TouchableOpacity>
+                  <View style={s.ownPostLinks}>
+                    <TouchableOpacity onPress={startEdit} style={s.editLink}>
+                      <Text style={s.editLinkText}>Edit post</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={deletePost} style={s.editLink}>
+                      <Text style={s.deletePostLinkText}>Delete post</Text>
+                    </TouchableOpacity>
+                  </View>
                 ) : null}
                 {post.media && post.media.length > 0 ? (
                   <MediaCarousel items={post.media} onOpenImage={(url) => Linking.openURL(url)} />
@@ -514,8 +544,10 @@ export default function SinglePost() {
 const make_s = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   editedTag: { fontSize: 12, color: colors.textSecondary, marginTop: 2, fontStyle: 'italic' },
+  ownPostLinks: { flexDirection: 'row', gap: 16 },
   editLink: { marginTop: 6, alignSelf: 'flex-start' },
   editLinkText: { fontSize: 13, fontWeight: '600', color: colors.brand },
+  deletePostLinkText: { fontSize: 13, fontWeight: '600', color: colors.danger },
   editBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
   editSheet: { backgroundColor: colors.bg, borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingBottom: 24, minHeight: 240 },
   editHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border },
