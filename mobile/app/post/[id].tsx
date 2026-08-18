@@ -325,7 +325,7 @@ export default function SinglePost() {
       ) : !post ? (
         <View style={s.center}><Text style={s.muted}>Post not found</Text></View>
       ) : (
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={90}>
           <FlatList
             data={comments}
             keyExtractor={c => String(c.id)}
