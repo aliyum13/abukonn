@@ -69,6 +69,7 @@ interface Post {
   original_likes_count?: number;
   original_comments_count?: number;
   original_repost_count?: number;
+  original_view_count?: number;
   view_count?: number;
   created_at: string;
   post_subtype?: string | null;
@@ -169,6 +170,7 @@ const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, on
   const displayLikes = post.is_repost && post.original_likes_count !== undefined ? post.original_likes_count : post.likes_count;
   const displayComments = post.is_repost && post.original_comments_count !== undefined ? post.original_comments_count : post.comments_count;
   const displayReposts = post.is_repost && post.original_repost_count !== undefined ? post.original_repost_count : post.reposts_count;
+  const displayViews = post.is_repost && post.original_view_count !== undefined ? post.original_view_count : post.view_count;
   return (
     <View style={s.card}>
       {post.is_repost ? (
@@ -341,7 +343,7 @@ const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, on
         </TouchableOpacity>
         <View style={s.action}>
           <Ionicons name="stats-chart-outline" size={17} color={palette.textSecondary} />
-          <Text style={s.actionText}>{formatCount(post.view_count ?? 0)}</Text>
+          <Text style={s.actionText}>{formatCount(displayViews ?? 0)}</Text>
         </View>
       </View>
 
@@ -676,7 +678,16 @@ export default function Feed() {
       if (!item?.id || viewedPostsRef.current.has(item.id)) continue;
       viewedPostsRef.current.add(item.id);
       apiFetch(`/api/posts/${item.id}/view`, { method: 'POST' }).catch(() => {});
-      mutateBoth(item.id, p => ({ ...p, view_count: (p.view_count ?? 0) + 1 }));
+      // Same repost-aware field as displayViews above -- a repost card shows
+      // original_view_count, so the optimistic bump has to land on that field
+      // too, or scrolling past a repost silently does nothing until the next
+      // reload even though the server-side write (already canonical-post-
+      // aware) succeeded.
+      mutateBoth(item.id, p => (
+        p.is_repost && p.original_view_count !== undefined
+          ? { ...p, original_view_count: p.original_view_count + 1 }
+          : { ...p, view_count: (p.view_count ?? 0) + 1 }
+      ));
     }
   }).current;
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;

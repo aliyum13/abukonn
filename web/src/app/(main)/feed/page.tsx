@@ -261,6 +261,7 @@ interface Post {
   original_likes_count?: number;
   original_comments_count?: number;
   original_repost_count?: number;
+  original_view_count?: number;
   is_following_author: boolean;
   post_subtype: 'post' | 'discussion' | 'poll' | 'question' | 'event';
   discussion_title: string | null;
@@ -1618,7 +1619,18 @@ export default function FeedPage() {
           if (id && !viewedPostsRef.current.has(id)) {
             viewedPostsRef.current.add(id);
             fetch(`${API_URL}/api/posts/${id}/view`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
-            mutatePosts(prev => prev.map(p => p.id === id ? { ...p, view_count: p.view_count + 1 } : p));
+            // Same repost-aware field as displayViews above -- a repost card
+            // shows original_view_count, so the optimistic bump has to land
+            // there too, or scrolling past a repost does nothing visible
+            // until the next reload even though the server-side write
+            // (already canonical-post-aware) succeeded.
+            mutatePosts(prev => prev.map(p => {
+              if (p.id !== id) return p;
+              if (p.is_repost && p.original_view_count !== undefined) {
+                return { ...p, original_view_count: p.original_view_count + 1 };
+              }
+              return { ...p, view_count: p.view_count + 1 };
+            }));
             observer.unobserve(entry.target);
           }
         }
@@ -2809,6 +2821,7 @@ export default function FeedPage() {
                 const displayLikes = post.is_repost && post.original_likes_count !== undefined ? post.original_likes_count : post.likes_count;
                 const displayComments = post.is_repost && post.original_comments_count !== undefined ? post.original_comments_count : post.comments_count;
                 const displayReposts = post.is_repost && post.original_repost_count !== undefined ? post.original_repost_count : post.repost_count;
+                const displayViews = post.is_repost && post.original_view_count !== undefined ? post.original_view_count : post.view_count;
               return (
               /* ── Post Card (flat, Twitter-style) ── */
               <article key={post.id} id={`post-${post.id}`} data-post-id={post.id}
@@ -3162,7 +3175,7 @@ export default function FeedPage() {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
                           </svg>
                         </span>
-                        {formatCount(post.view_count)}
+                        {formatCount(displayViews)}
                       </span>
                     </div>
                     {(post.engagement_score ?? 0) > 0 && (
