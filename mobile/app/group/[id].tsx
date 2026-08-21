@@ -3,7 +3,7 @@ import { useThemedStyles } from '../../src/theme/ThemeContext';
 import type { Palette } from '../../src/theme';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, TextInput,
-  TouchableOpacity, KeyboardAvoidingView, Platform, Image, Alert, Modal, Clipboard } from 'react-native';
+  TouchableOpacity, KeyboardAvoidingView, Platform, Image, Alert, Modal, Clipboard, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -89,6 +89,18 @@ export default function GroupChat() {
   }, [id, loadingOlder, hasMoreOlder, messages]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Same gap as chat/[id].tsx: the input-visibility fix keeps the input bar
+  // above the keyboard, but doesn't force the latest message into view if
+  // you were scrolled up reading older messages when you tapped the input.
+  // Scroll to the latest message whenever the keyboard shows.
+  useEffect(() => {
+    const sub = Keyboard.addListener('keyboardDidShow', () => {
+      if (pinScrollRef.current) return; // mid load-older; don't yank away from it
+      listRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => sub.remove();
+  }, []);
 
   // Poll while open. Sockets would be nicer, but this is simple and reliable.
   useEffect(() => {

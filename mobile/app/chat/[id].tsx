@@ -3,7 +3,7 @@ import { useThemedStyles } from '../../src/theme/ThemeContext';
 import type { Palette } from '../../src/theme';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, TextInput, Modal,
-  TouchableOpacity, KeyboardAvoidingView, Platform, Image, Alert, Clipboard,
+  TouchableOpacity, KeyboardAvoidingView, Platform, Image, Alert, Clipboard, Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -106,6 +106,22 @@ export default function Chat() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // The input-visibility fix (KeyboardAvoidingView behavior) keeps the input
+  // bar itself above the keyboard, but that's a different problem from this:
+  // if you're scrolled up reading older messages and then tap the input, the
+  // keyboard opening shrinks the visible viewport and nothing was forcing a
+  // scroll back to the bottom -- the latest messages could end up hidden
+  // behind the keyboard the moment it opened. Scroll to the latest message
+  // whenever the keyboard shows, same as addMessage already does for a truly
+  // new incoming/outgoing message.
+  useEffect(() => {
+    const sub = Keyboard.addListener('keyboardDidShow', () => {
+      if (pinScrollRef.current) return; // mid load-older; don't yank away from it
+      listRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => sub.remove();
+  }, []);
 
   // Real-time: join this conversation's room and receive messages instantly.
   useEffect(() => {
