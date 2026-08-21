@@ -316,6 +316,21 @@ const FORYOU = {
                             //   without ever emptying the feed.
   CANDIDATE_MAX_AGE_HOURS: 168, // only consider posts from the last 7 days, so the
                                 //   feed is a bounded, relevant campus window.
+  REFRESH_JITTER_MAGNITUDE: 2,      // small tie-break jitter added to ranking_score so a
+                                     //   caught-up user (nothing new since last visit)
+                                     //   doesn't see an identical order on every refresh.
+                                     //   Far smaller than every real gate above (own/
+                                     //   follow/fresh/engagement), so it can only ever
+                                     //   reorder posts that are already practically tied
+                                     //   -- it cannot bury a new post or promote a
+                                     //   followed/older post above one that's genuinely
+                                     //   ranked higher.
+  REFRESH_JITTER_BUCKET_SECONDS: 600, // deterministic hash of (post id, current bucket),
+                                       //   NOT random() -- stable within one infinite-
+                                       //   scroll session (every page shares the same
+                                       //   bucket, so nothing skips/duplicates across
+                                       //   pages), rotates to a new arrangement roughly
+                                       //   every 10 minutes.
 };
 
 // The ranked "For You" feed (v2). Freshness-first: a post gets a large additive
@@ -401,6 +416,11 @@ async function getForYouFeed(currentUserId, limit = 50, offset = 0) {
                 + (CASE WHEN user_id = $1 AND created_at > NOW() - ($10 || ' hours')::interval THEN $11::float ELSE 0 END)
               )
               * (CASE WHEN already_seen THEN $12::float ELSE 1 END)
+              -- Refresh variety: see REFRESH_JITTER_MAGNITUDE/BUCKET_SECONDS
+              -- above. Deterministic per (post, time bucket) -- NOT random()
+              -- -- so pagination within one scroll session stays exactly
+              -- consistent, while the arrangement rotates every $15 seconds.
+              + (abs(hashtext(id::text || (floor(extract(epoch from now()) / $15::float))::text)) % 1000) / 1000.0 * $14::float
             ) AS ranking_score
       FROM base
     )
@@ -414,6 +434,7 @@ async function getForYouFeed(currentUserId, limit = 50, offset = 0) {
       FORYOU.ENGAGEMENT_WEIGHT, FORYOU.ENGAGEMENT_CAP,
       String(FORYOU.OWN_POST_WINDOW_HOURS), FORYOU.OWN_POST_BOOST,
       FORYOU.SEEN_DEMOTE, String(FORYOU.CANDIDATE_MAX_AGE_HOURS),
+      FORYOU.REFRESH_JITTER_MAGNITUDE, FORYOU.REFRESH_JITTER_BUCKET_SECONDS,
     ]
   );
   const posts = result.rows;
