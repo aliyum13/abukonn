@@ -104,6 +104,16 @@ export default function SettingsScreen() {
   const [bio, setBio] = useState(user?.bio ?? '');
   const [department, setDepartment] = useState(user?.department ?? '');
   const [level, setLevel] = useState(user?.level ?? '');
+  // Was previously only on the separate Edit Profile screen -- testers
+  // looking for it in Settings (where web's own DOB input lives, right next
+  // to "Show my birthday" below in Privacy) found only the visibility
+  // toggle, with no way to actually set the date. Moved here to match web's
+  // placement; the field on the standalone Edit Profile screen was removed
+  // so there's a single source of truth instead of two inputs that could
+  // drift out of sync. Still a plain YYYY-MM-DD text field, same as before --
+  // a native date picker needs a new native module (none installed), so
+  // that's a follow-up, not this fix.
+  const [dob, setDob] = useState(user?.date_of_birth ? String(user.date_of_birth).split('T')[0] : '');
   const [photo, setPhoto] = useState(user?.profile_photo_url ?? null);
   const [savingProfile, setSavingProfile] = useState(false);
 
@@ -169,6 +179,7 @@ export default function SettingsScreen() {
           bio: bio.trim(),
           department: department.trim(),
           level: level.trim(),
+          date_of_birth: dob.trim() || null,
         }),
       });
       Alert.alert('Saved', 'Your profile has been updated.');
@@ -380,6 +391,9 @@ export default function SettingsScreen() {
             <Text style={s.label}>Level</Text>
             <TextInput style={s.input} value={level} onChangeText={setLevel} placeholder="e.g. 300" placeholderTextColor={colors.muted} />
 
+            <Text style={s.label}>Date of birth <Text style={s.labelHint}>(for birthday wishes)</Text></Text>
+            <TextInput style={s.input} value={dob} onChangeText={setDob} placeholder="YYYY-MM-DD" placeholderTextColor={colors.muted} />
+
             <TouchableOpacity style={s.saveBtn} onPress={saveProfile} disabled={savingProfile}>
               {savingProfile ? <ActivityIndicator color={colors.white} /> : <Text style={s.saveText}>Save profile</Text>}
             </TouchableOpacity>
@@ -513,6 +527,7 @@ const make_s = (colors: Palette) => StyleSheet.create({
   letter: { color: colors.brand, fontWeight: '800', fontSize: 24 },
   changePhoto: { color: colors.brand, fontWeight: '700', fontSize: 14 },
   label: { fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6, marginTop: 10 },
+  labelHint: { color: colors.muted, fontWeight: '400', fontSize: 12 },
   input: {
     backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border,
     borderRadius: radius.sm, paddingHorizontal: 14, paddingVertical: 11, fontSize: 15, color: colors.text,
