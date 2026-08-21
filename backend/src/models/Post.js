@@ -62,6 +62,12 @@ async function createPostsTable() {
   // text was changed after posting, which the clients surface as an "edited"
   // marker. Only the text/caption is editable (not media) -- see updatePost.
   await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS edited_at TIMESTAMP WITH TIME ZONE`);
+  // The feed queries (getForYouFeed and friends) bound their candidate pool to
+  // "posts from the last N hours" -- without an index on created_at, that
+  // WHERE has nothing to seek on and falls back to scanning the whole table,
+  // a cost that only grows as historical post volume grows even though the
+  // window itself stays fixed.
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_posts_created_at ON abukonn.posts(created_at)`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS abukonn.poll_options (
       id SERIAL PRIMARY KEY,
@@ -320,7 +326,7 @@ const FORYOU = {
 // posts left (client shows "you're all caught up").
 async function getForYouFeed(currentUserId, limit = 50, offset = 0) {
   const result = await pool.query(
-    `WITH scored AS (
+    `WITH base AS (
       SELECT p.id, p.user_id, p.content, p.image_url, p.likes_count, p.comments_count,
             COALESCE(p.repost_count, 0) AS repost_count,
             COALESCE(p.view_count, 0) AS view_count,
@@ -345,43 +351,55 @@ async function getForYouFeed(currentUserId, limit = 50, offset = 0) {
               SELECT 1 FROM abukonn.post_likes pl
               WHERE pl.post_id = p.id AND pl.user_id = $1
             ) AS is_liked,
+            -- Computed once here (was previously re-written verbatim a second
+            -- time inside the ranking_score expression below -- same EXISTS,
+            -- same subplan, run twice per row for no reason). scored below
+            -- references this column instead of re-running the subquery.
             EXISTS(
               SELECT 1 FROM abukonn.follows f
               WHERE f.follower_id = $1 AND f.following_id = p.user_id
             ) AS is_following_author,
+            -- Also computed once here -- was previously re-written three more
+            -- times (is_trending, is_hot, and again inside ranking_score).
             (p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) AS engagement_score,
-            (p.created_at > NOW() - INTERVAL '24 hours' AND (p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) > 20) AS is_trending,
-            ((p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) > 50) AS is_hot,
             (SELECT COUNT(*)::int FROM abukonn.comments c WHERE c.post_id = p.id AND c.created_at > NOW() - INTERVAL '1 hour') AS comment_velocity,
             p.poll_duration_hours, p.poll_ends_at,
             p.event_title, p.event_date, p.event_location, COALESCE(p.event_rsvp_count, 0) AS event_rsvp_count, p.edited_at,
             (SELECT json_agg(json_build_object('id', po.id, 'option_text', po.option_text, 'vote_count', po.vote_count) ORDER BY po.id) FROM abukonn.poll_options po WHERE po.post_id = p.id) AS poll_options,
             (SELECT pv.option_id FROM abukonn.poll_votes pv WHERE pv.post_id = p.id AND pv.user_id = $1) AS voted_option_id,
             EXISTS(SELECT 1 FROM abukonn.event_rsvps er WHERE er.post_id = p.id AND er.user_id = $1) AS is_attending,
-            EXISTS(SELECT 1 FROM abukonn.post_views pvw WHERE pvw.post_id = p.id AND pvw.viewer_id = $1) AS already_seen,
-            -- v2 ranking: additive freshness floor + follow + capped engagement,
-            -- times the seen-demote. hours_old drives a linear freshness ramp.
-            (
-              (
-                -- freshness floor: FRESH_BOOST at age 0, linearly to 0 at FRESH_WINDOW_HOURS
-                GREATEST(0, $4::float * (1 - (EXTRACT(EPOCH FROM (NOW() - p.created_at)) / 3600.0) / $5::float))
-                -- following boost (+ extra if the followed post is also fresh)
-                + (CASE WHEN EXISTS(SELECT 1 FROM abukonn.follows f WHERE f.follower_id = $1 AND f.following_id = p.user_id)
-                        THEN $6::float + (CASE WHEN p.created_at > NOW() - ($5 || ' hours')::interval THEN $7::float ELSE 0 END)
-                        ELSE 0 END)
-                -- capped engagement so trending mixes in but can't bury fresh
-                + LEAST($9::float, $8::float * (p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1))
-                -- your own very recent post floats to the very top
-                + (CASE WHEN p.user_id = $1 AND p.created_at > NOW() - ($10 || ' hours')::interval THEN $11::float ELSE 0 END)
-              )
-              * (CASE WHEN EXISTS(SELECT 1 FROM abukonn.post_views pvw2 WHERE pvw2.post_id = p.id AND pvw2.viewer_id = $1) THEN $12::float ELSE 1 END)
-            ) AS ranking_score
+            -- Computed once here -- was previously re-written a second time
+            -- inside the seen-demote multiplier below (same EXISTS twice).
+            EXISTS(SELECT 1 FROM abukonn.post_views pvw WHERE pvw.post_id = p.id AND pvw.viewer_id = $1) AS already_seen
       FROM abukonn.posts p
       JOIN abukonn.users u ON p.user_id = u.id
       LEFT JOIN abukonn.posts orig ON p.is_repost = TRUE AND orig.id = p.original_post_id
       LEFT JOIN abukonn.users orig_u ON orig.user_id = orig_u.id
       WHERE p.user_id NOT IN (SELECT blocked_id FROM abukonn.blocks WHERE blocker_id = $1)
         AND p.created_at > NOW() - ($13 || ' hours')::interval
+    ),
+    scored AS (
+      SELECT *,
+            (created_at > NOW() - INTERVAL '24 hours' AND engagement_score > 20) AS is_trending,
+            (engagement_score > 50) AS is_hot,
+            -- v2 ranking: additive freshness floor + follow + capped engagement,
+            -- times the seen-demote. hours_old drives a linear freshness ramp.
+            (
+              (
+                -- freshness floor: FRESH_BOOST at age 0, linearly to 0 at FRESH_WINDOW_HOURS
+                GREATEST(0, $4::float * (1 - (EXTRACT(EPOCH FROM (NOW() - created_at)) / 3600.0) / $5::float))
+                -- following boost (+ extra if the followed post is also fresh)
+                + (CASE WHEN is_following_author
+                        THEN $6::float + (CASE WHEN created_at > NOW() - ($5 || ' hours')::interval THEN $7::float ELSE 0 END)
+                        ELSE 0 END)
+                -- capped engagement so trending mixes in but can't bury fresh
+                + LEAST($9::float, $8::float * engagement_score)
+                -- your own very recent post floats to the very top
+                + (CASE WHEN user_id = $1 AND created_at > NOW() - ($10 || ' hours')::interval THEN $11::float ELSE 0 END)
+              )
+              * (CASE WHEN already_seen THEN $12::float ELSE 1 END)
+            ) AS ranking_score
+      FROM base
     )
     SELECT * FROM scored
     ORDER BY ranking_score DESC, created_at DESC

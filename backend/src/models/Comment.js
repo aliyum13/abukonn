@@ -12,6 +12,12 @@ CREATE TABLE IF NOT EXISTS abukonn.comments (
 
 async function createCommentsTable() {
   await pool.query(CREATE_COMMENTS_TABLE);
+  // The feed's comment_velocity (comments in the last hour, per post) is a
+  // correlated subquery run once per candidate post in getForYouFeed and
+  // friends -- without this, it's a full table scan of comments for every
+  // single candidate row on every feed request. (post_id, created_at) covers
+  // both the equality and the time-range filter that query does.
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_comments_post ON abukonn.comments(post_id, created_at)`);
   await pool.query(`ALTER TABLE abukonn.comments ADD COLUMN IF NOT EXISTS is_best_answer BOOLEAN DEFAULT FALSE`);
   await pool.query(`ALTER TABLE abukonn.comments ADD COLUMN IF NOT EXISTS likes_count INTEGER NOT NULL DEFAULT 0`);
   await pool.query(`
