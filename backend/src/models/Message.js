@@ -25,6 +25,19 @@ CREATE TABLE IF NOT EXISTS abukonn.messages (
 async function createMessagesTables() {
   await pool.query(CREATE_CONVERSATIONS_TABLE);
   await pool.query(CREATE_MESSAGES_TABLE);
+  // getConversations runs THREE correlated subqueries per conversation
+  // (last_message, last_message_at, unread_count), each filtering on
+  // conversation_id -- with no index at all, every one was a full table scan
+  // of the entire messages table, times three, times however many
+  // conversations the caller has. Same pattern as idx_comments_post, and
+  // group_messages already had its own equivalent (idx_gm_group) -- this was
+  // the one table that got missed. Composite with created_at (not just
+  // conversation_id alone) so the two ORDER BY created_at DESC LIMIT 1
+  // lookups (last_message/last_message_at) resolve as a single index scan
+  // each, not just an index-narrowed-then-sorted scan; unread_count still
+  // benefits from the conversation_id prefix even though it doesn't use the
+  // created_at column.
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_messages_conversation ON abukonn.messages(conversation_id, created_at)`);
   await pool.query(`ALTER TABLE abukonn.messages ADD COLUMN IF NOT EXISTS image_url TEXT`);
   await pool.query(`ALTER TABLE abukonn.messages ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE`);
   await pool.query(`ALTER TABLE abukonn.messages ADD COLUMN IF NOT EXISTS file_url TEXT`);
