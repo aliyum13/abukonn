@@ -74,7 +74,15 @@ export default function Profile() {
 
   const load = useCallback(async () => {
     try {
-      const [data, storiesData, viewersData] = await Promise.all([
+      // /api/users/me never includes followers_count/following_count -- that
+      // endpoint's user object comes from User.toPrivateUser, which doesn't
+      // add them (unlike /api/users/:id, which merges in a live
+      // Follow.getStats() count). Web already knows this and makes a second
+      // call to /api/follows/:id/stats for its own-profile counts; mobile
+      // was reading a field that never existed on this response, so it
+      // silently fell back to 0 every time. Match web: fetch real counts
+      // from the same stats endpoint web uses.
+      const [data, storiesData, viewersData, statsData] = await Promise.all([
         apiFetch<{
           user: { followers_count: number; following_count: number };
           posts: ProfilePost[];
@@ -83,12 +91,14 @@ export default function Profile() {
         }>('/api/users/me'),
         apiFetch<{ stories: MyStatusStory[] }>('/api/stories/mine').catch(() => ({ stories: [] })),
         apiFetch<{ viewers: unknown[] }>('/api/users/me/profile-viewers').catch(() => ({ viewers: [] })),
+        apiFetch<{ followers_count: number; following_count: number }>(`/api/follows/${user?.id}/stats`)
+          .catch(() => ({ followers_count: 0, following_count: 0 })),
       ]);
       setPosts(data.posts || []);
       setReplies(data.replies || []);
       setClassRepFor(data.class_rep_for || []);
-      setFollowers(data.user?.followers_count || 0);
-      setFollowing(data.user?.following_count || 0);
+      setFollowers(statsData.followers_count || 0);
+      setFollowing(statsData.following_count || 0);
       setViewersCount(viewersData.viewers?.length || 0);
       setMyStories(storiesData.stories || []);
     } catch {
@@ -97,7 +107,7 @@ export default function Profile() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [user?.id]);
 
   const deleteStory = async (storyId: number) => {
     setDeletingStoryId(storyId);
