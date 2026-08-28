@@ -609,6 +609,17 @@ async function repostPost(req, res) {
   }
 }
 
+async function unrepostPost(req, res) {
+  try {
+    const originalPostId = parseInt(req.params.id, 10);
+    await Post.unrepostPost(originalPostId, req.user.id);
+    res.json({ message: 'Repost removed' });
+  } catch (err) {
+    console.error('Unrepost error:', err.message);
+    res.status(500).json({ message: err.message === 'Post not found' ? 'Post not found' : 'Server error' });
+  }
+}
+
 async function viewPost(req, res) {
   try {
     const postId = parseInt(req.params.id, 10);
@@ -715,4 +726,4 @@ async function addReply(req, res) {
   }
 }
 
-module.exports = { createPost, getFeed, getFollowingFeed, getSinglePost, likePost, addComment, getComments, likeCommentHandler, deleteCommentHandler, deletePost, updatePost, getReplies, addReply, repostPost, viewPost, voteOnPoll, getPollVotersHandler, toggleRSVP, setBestAnswer, attachMedia, getPostAnalytics };
+module.exports = { createPost, getFeed, getFollowingFeed, getSinglePost, likePost, addComment, getComments, likeCommentHandler, deleteCommentHandler, deletePost, updatePost, getReplies, addReply, repostPost, unrepostPost, viewPost, voteOnPoll, getPollVotersHandler, toggleRSVP, setBestAnswer, attachMedia, getPostAnalytics };

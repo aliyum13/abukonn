@@ -206,13 +206,22 @@ export default function SinglePost() {
     ]);
   };
 
+  // Real toggle now (see feed.tsx's repost for the full root-cause writeup):
+  // is_reposted is authoritative from the backend, and un-reposting is a real
+  // DELETE, not just a client-side "already reposted" guard that reset to
+  // false on every reload and let repeat taps create duplicate rows.
   const repost = async () => {
-    if (!post || post.is_reposted) return;
-    setPost(p => p ? { ...p, is_reposted: true, reposts_count: (p.reposts_count ?? 0) + 1 } : p);
+    if (!post) return;
+    const was = post.is_reposted;
+    const bump = (p: Post, liked: boolean, dir: number): Post =>
+      p.is_repost && p.original_repost_count !== undefined
+        ? { ...p, is_reposted: liked, original_repost_count: Math.max(0, p.original_repost_count + dir) }
+        : { ...p, is_reposted: liked, reposts_count: Math.max(0, (p.reposts_count ?? 0) + dir) };
+    setPost(p => p ? bump(p, !was, was ? -1 : 1) : p);
     try {
-      await apiFetch(`/api/posts/${post.id}/repost`, { method: 'POST' });
+      await apiFetch(`/api/posts/${post.id}/repost`, { method: was ? 'DELETE' : 'POST' });
     } catch {
-      setPost(p => p ? { ...p, is_reposted: false, reposts_count: Math.max(0, (p.reposts_count ?? 1) - 1) } : p);
+      setPost(p => p ? bump(p, was, was ? 1 : -1) : p);
     }
   };
 

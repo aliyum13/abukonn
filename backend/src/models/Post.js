@@ -68,6 +68,25 @@ async function createPostsTable() {
   // a cost that only grows as historical post volume grows even though the
   // window itself stays fixed.
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_posts_created_at ON abukonn.posts(created_at)`);
+  // Uniqueness guard: a user can only ever have ONE repost of a given
+  // original. Before this, nothing stopped repeat POST /:id/repost calls --
+  // mobile's is_reposted was a client-only fiction that reset on every
+  // reload, so a user re-tapping repost after a refresh (thinking it hadn't
+  // registered) created a SECOND repost row and double-incremented
+  // repost_count, and nothing guarded the race between two near-simultaneous
+  // requests either. Partial (only actual repost rows) so it doubles as the
+  // lookup index the new is_reposted EXISTS checks above and the
+  // repost/unrepost functions below all use -- one index, three jobs.
+  // Wrapped: if duplicate reposts already exist in prod from before this fix,
+  // Postgres refuses to create a UNIQUE index over data that violates it --
+  // this logs instead of crashing backend startup. Needs a one-time manual
+  // cleanup first (see this commit's message) before the index actually
+  // takes effect; nothing else in this migration depends on it existing yet.
+  try {
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_posts_unique_repost ON abukonn.posts(user_id, original_post_id) WHERE is_repost = TRUE`);
+  } catch (err) {
+    console.error('Could not create idx_posts_unique_repost (likely duplicate reposts already exist -- needs manual cleanup):', err.message);
+  }
   await pool.query(`
     CREATE TABLE IF NOT EXISTS abukonn.poll_options (
       id SERIAL PRIMARY KEY,
@@ -203,6 +222,16 @@ async function getFollowingPosts(currentUserId, limit = 50, offset = 0) {
               SELECT 1 FROM abukonn.post_likes pl
               WHERE pl.post_id = p.id AND pl.user_id = $1
             ) AS is_liked,
+            -- Have I already reposted the thing THIS card represents --
+            -- canonical id (its own id, or original_post_id if this card
+            -- IS a repost), so it reads the same whether you're looking at
+            -- the original or someone else's repost of it. Mirrors is_liked
+            -- exactly (same cost shape: EXISTS keyed on the viewer).
+            EXISTS(
+              SELECT 1 FROM abukonn.posts rp
+              WHERE rp.user_id = $1 AND rp.is_repost = TRUE
+                AND rp.original_post_id = (CASE WHEN p.is_repost THEN p.original_post_id ELSE p.id END)
+            ) AS is_reposted,
             TRUE AS is_following_author,
             (p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) AS engagement_score,
             (p.created_at > NOW() - INTERVAL '24 hours' AND (p.likes_count * 2 + p.comments_count * 3 + COALESCE(p.repost_count,0) * 2 + COALESCE(p.view_count,0) * 0.1) > 20) AS is_trending,
@@ -257,6 +286,13 @@ async function getAllPosts(currentUserId, limit = 50, offset = 0) {
               SELECT 1 FROM abukonn.post_likes pl
               WHERE pl.post_id = p.id AND pl.user_id = $1
             ) AS is_liked,
+            -- See getFollowingPosts's is_reposted comment -- same canonical-id
+            -- EXISTS, mirrors is_liked.
+            EXISTS(
+              SELECT 1 FROM abukonn.posts rp
+              WHERE rp.user_id = $1 AND rp.is_repost = TRUE
+                AND rp.original_post_id = (CASE WHEN p.is_repost THEN p.original_post_id ELSE p.id END)
+            ) AS is_reposted,
             EXISTS(
               SELECT 1 FROM abukonn.follows f
               WHERE f.follower_id = $1 AND f.following_id = p.user_id
@@ -389,6 +425,13 @@ async function getForYouFeed(currentUserId, limit = 50, offset = 0, sessionStart
               SELECT 1 FROM abukonn.post_likes pl
               WHERE pl.post_id = p.id AND pl.user_id = $1
             ) AS is_liked,
+            -- See getFollowingPosts's is_reposted comment -- same canonical-id
+            -- EXISTS, mirrors is_liked.
+            EXISTS(
+              SELECT 1 FROM abukonn.posts rp
+              WHERE rp.user_id = $1 AND rp.is_repost = TRUE
+                AND rp.original_post_id = (CASE WHEN p.is_repost THEN p.original_post_id ELSE p.id END)
+            ) AS is_reposted,
             -- Computed once here (was previously re-written verbatim a second
             -- time inside the ranking_score expression below -- same EXISTS,
             -- same subplan, run twice per row for no reason). scored below
@@ -534,6 +577,14 @@ async function getPostByIdForUser(id, currentUserId) {
               SELECT 1 FROM abukonn.post_likes pl
               WHERE pl.post_id = p.id AND pl.user_id = $2
             ) AS is_liked,
+            -- See getFollowingPosts's is_reposted comment -- same canonical-id
+            -- EXISTS, mirrors is_liked. $2 here since this function's own id
+            -- (the post being fetched) is $1.
+            EXISTS(
+              SELECT 1 FROM abukonn.posts rp
+              WHERE rp.user_id = $2 AND rp.is_repost = TRUE
+                AND rp.original_post_id = (CASE WHEN p.is_repost THEN p.original_post_id ELSE p.id END)
+            ) AS is_reposted,
             EXISTS(
               SELECT 1 FROM abukonn.follows f
               WHERE f.follower_id = $2 AND f.following_id = p.user_id
@@ -636,6 +687,14 @@ async function getPostsByUserId(userId, currentUserId = null) {
               SELECT 1 FROM abukonn.post_likes pl
               WHERE pl.post_id = p.id AND pl.user_id = $2
             ) AS is_liked,
+            -- See getFollowingPosts's is_reposted comment -- same canonical-id
+            -- EXISTS, mirrors is_liked. $2 here since this function's own id
+            -- (the profile owner) is $1.
+            EXISTS(
+              SELECT 1 FROM abukonn.posts rp
+              WHERE rp.user_id = $2 AND rp.is_repost = TRUE
+                AND rp.original_post_id = (CASE WHEN p.is_repost THEN p.original_post_id ELSE p.id END)
+            ) AS is_reposted,
             EXISTS(
               SELECT 1 FROM abukonn.follows f
               WHERE f.follower_id = $2 AND f.following_id = p.user_id
@@ -660,31 +719,81 @@ async function getPostsByUserId(userId, currentUserId = null) {
   return result.rows;
 }
 
+// Idempotent: repost is a real toggle now (see unrepostPost), and this must
+// never create a second row for a (user, original) pair that already has
+// one -- that's exactly how repost_count got inflated before this fix (a
+// stale client re-tapping repost, or a race between two near-simultaneous
+// requests). Checked at the application level first (cheap, avoids a wasted
+// INSERT in the common case), AND backstopped by idx_posts_unique_repost at
+// the database level for the race case the application check alone can't
+// close -- if that unique index rejects the INSERT, treat it exactly like
+// finding the row via the SELECT: fetch and return the existing repost
+// rather than surfacing the constraint violation as an error.
 async function repostPost(originalPostId, userId) {
   const target = await getPostById(originalPostId);
   if (!target) throw new Error('Post not found');
   // Reposting a repost must point at the ONE true original, not chain
   // through the intermediate repost -- resolve first.
   const original = await resolveCanonicalPost(target);
-  const newPost = await pool.query(
-    `INSERT INTO abukonn.posts
-       (user_id, content, image_url, category, is_repost, original_post_id, original_author_name)
-     VALUES ($1, $2, $3, $4, TRUE, $5, $6)
-     RETURNING *`,
-    [
-      userId,
-      original.content,
-      original.image_url,
-      original.category || 'GENERAL',
-      original.id,
-      original.author_name,
-    ]
+
+  const existing = await pool.query(
+    `SELECT * FROM abukonn.posts WHERE user_id = $1 AND is_repost = TRUE AND original_post_id = $2`,
+    [userId, original.id]
   );
-  await pool.query(
-    `UPDATE abukonn.posts SET repost_count = COALESCE(repost_count, 0) + 1 WHERE id = $1`,
-    [original.id]
+  if (existing.rows.length > 0) return existing.rows[0];
+
+  try {
+    const newPost = await pool.query(
+      `INSERT INTO abukonn.posts
+         (user_id, content, image_url, category, is_repost, original_post_id, original_author_name)
+       VALUES ($1, $2, $3, $4, TRUE, $5, $6)
+       RETURNING *`,
+      [
+        userId,
+        original.content,
+        original.image_url,
+        original.category || 'GENERAL',
+        original.id,
+        original.author_name,
+      ]
+    );
+    await pool.query(
+      `UPDATE abukonn.posts SET repost_count = COALESCE(repost_count, 0) + 1 WHERE id = $1`,
+      [original.id]
+    );
+    return newPost.rows[0];
+  } catch (err) {
+    if (err.code === '23505') { // unique_violation -- lost the race, someone else's request won
+      const row = await pool.query(
+        `SELECT * FROM abukonn.posts WHERE user_id = $1 AND is_repost = TRUE AND original_post_id = $2`,
+        [userId, original.id]
+      );
+      if (row.rows.length > 0) return row.rows[0];
+    }
+    throw err;
+  }
+}
+
+// Removes the current user's repost of this original (a no-op, not an
+// error, if they don't have one) and decrements the canonical original's
+// repost_count to match. Resolves canonical the same way repostPost does,
+// so calling this with either the original's id or any repost's id un-
+// reposts the same underlying thing.
+async function unrepostPost(originalPostId, userId) {
+  const target = await getPostById(originalPostId);
+  if (!target) throw new Error('Post not found');
+  const original = await resolveCanonicalPost(target);
+
+  const deleted = await pool.query(
+    `DELETE FROM abukonn.posts WHERE user_id = $1 AND is_repost = TRUE AND original_post_id = $2 RETURNING id`,
+    [userId, original.id]
   );
-  return newPost.rows[0];
+  if (deleted.rows.length > 0) {
+    await pool.query(
+      `UPDATE abukonn.posts SET repost_count = GREATEST(COALESCE(repost_count, 0) - 1, 0) WHERE id = $1`,
+      [original.id]
+    );
+  }
 }
 
 async function incrementViewCount(postId) {
@@ -787,6 +896,7 @@ module.exports = {
   incrementCommentsCount,
   decrementCommentsCount,
   repostPost,
+  unrepostPost,
   incrementViewCount,
   deletePost,
   updatePostContent,

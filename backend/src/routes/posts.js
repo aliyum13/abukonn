@@ -17,6 +17,7 @@ const {
   getReplies,
   addReply,
   repostPost,
+  unrepostPost,
   viewPost,
   voteOnPoll,
   getPollVotersHandler,
@@ -40,6 +41,7 @@ router.post('/:id/comments', addComment);
 router.delete('/:id', deletePost);
 router.put('/:id', updatePost);
 router.post('/:id/repost', repostPost);
+router.delete('/:id/repost', unrepostPost);
 router.post('/:id/view', viewPost);
 router.post('/:id/vote', voteOnPoll);
 router.get('/:id/voters', getPollVotersHandler);

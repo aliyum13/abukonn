@@ -252,6 +252,7 @@ interface Post {
   view_count: number;
   category: PostCategory;
   is_liked: boolean;
+  is_reposted?: boolean;
   is_repost: boolean;
   original_post_id: number | null;
   original_author_name: string | null;
@@ -2577,22 +2578,55 @@ export default function FeedPage() {
 
   // ── Repost ───────────────────────────────────────────────────────────────────
 
+  // Real toggle now: the backend has authoritative per-viewer is_reposted (an
+  // EXISTS check, same as is_liked) and a DELETE endpoint to undo. Previously
+  // this only ever POSTed -- nothing stopped repeat clicks (the in-flight
+  // guard below only blocked a double-click WHILE a request was pending, not
+  // a second, later click) from creating duplicate repost rows and
+  // double-incrementing repost_count each time.
   const handleRepost = async (postId: number) => {
     if (!token || repostingId !== null) return;
+    // Same canonical-match reasoning as handleLike -- see there for why.
+    const canonicalId = (p: Post) => (p.is_repost && p.original_post_id ? p.original_post_id : p.id);
+    const tapped = posts.find((p) => p.id === postId) ?? followingPosts.find((p) => p.id === postId);
+    const targetCanonical = tapped ? canonicalId(tapped) : postId;
+    const matches = (p: Post) => canonicalId(p) === targetCanonical;
+    const was = !!tapped?.is_reposted;
     setRepostingId(postId);
+
+    const bump = (reposted: boolean, dir: number) => (p: Post): Post => {
+      if (!matches(p)) return p;
+      if (p.is_repost && p.original_repost_count !== undefined) {
+        return { ...p, is_reposted: reposted, original_repost_count: Math.max(0, p.original_repost_count + dir) };
+      }
+      return { ...p, is_reposted: reposted, repost_count: Math.max(0, p.repost_count + dir) };
+    };
+    mutatePosts((prev) => prev.map(bump(!was, was ? -1 : 1)));
+
     try {
       const res = await fetch(`${API_URL}/api/posts/${postId}/repost`, {
-        method: 'POST',
+        method: was ? 'DELETE' : 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error('Failed');
-      const data = await res.json();
-      // Increment repost_count on original, prepend new post
-      setPosts(prev => [
-        { ...data.post, is_liked: false, is_following_author: false, repost_count: 0, view_count: 0, comments_count: 0, likes_count: 0 },
-        ...prev.map(p => p.id === postId ? { ...p, repost_count: p.repost_count + 1 } : p),
-      ]);
-    } catch { /* silent */ }
+      if (!was) {
+        // Creating a repost also surfaces it as a new card at the top of
+        // your own feed -- existing behavior from before this was a toggle,
+        // unchanged here.
+        const data = await res.json();
+        setPosts((prev) => [
+          { ...data.post, is_liked: false, is_reposted: false, is_following_author: false, repost_count: 0, view_count: 0, comments_count: 0, likes_count: 0 },
+          ...prev,
+        ]);
+      } else {
+        // Un-reposting removes the card your own repost previously added to
+        // your feed (if it's still there) -- otherwise you'd keep seeing
+        // your own now-undone repost sitting at the top.
+        setPosts((prev) => prev.filter((p) => !(p.is_repost && p.original_post_id === targetCanonical && p.user_id === user?.id)));
+      }
+    } catch {
+      mutatePosts((prev) => prev.map(bump(was, was ? 1 : -1)));
+    }
     finally { setRepostingId(null); }
   };
 
@@ -3159,7 +3193,8 @@ export default function FeedPage() {
                       {/* Repost */}
                       {post.user_id !== user.id ? (
                         <button type="button" onClick={() => handleRepost(post.id)} disabled={repostingId === post.id}
-                          className="group flex items-center gap-1 text-[13px] text-ink-muted transition hover:text-brand-600 disabled:opacity-40">
+                          className={cn('group flex items-center gap-1 text-[13px] transition disabled:opacity-40',
+                            post.is_reposted ? 'text-brand-600' : 'text-ink-muted hover:text-brand-600')}>
                           <span className="flex h-8 w-8 items-center justify-center rounded-full transition group-hover:bg-brand-50">
                             <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" />

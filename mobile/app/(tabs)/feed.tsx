@@ -772,23 +772,32 @@ export default function Feed() {
     }
   }, [mutateCanonical]);
 
+  // Repost is a real toggle now: the backend has authoritative per-viewer
+  // is_reposted (an EXISTS check, same as is_liked) and a DELETE endpoint to
+  // undo. Previously is_reposted was a client-only fiction that reset to
+  // false on every reload -- re-tapping after a refresh created a genuine
+  // duplicate repost row server-side (now guarded there too) with zero
+  // client-side indication anything was wrong. Canonical, not raw-id: every
+  // card sharing this original (the original itself, plus any other repost
+  // of it) must reflect the same state, same as likes already do via
+  // mutateCanonical -- the old mutateBoth only touched the tapped row.
   const repost = useCallback(async (post: Post) => {
     const was = post.is_reposted;
-    mutateBoth(post.id, p => ({
-      ...p,
-      is_reposted: !was,
-      reposts_count: (p.reposts_count || 0) + (was ? -1 : 1),
-    }));
+    const bump = (dir: number) => (p: Post): Post =>
+      p.is_repost && p.original_repost_count !== undefined
+        ? { ...p, is_reposted: !was, original_repost_count: Math.max(0, p.original_repost_count + dir) }
+        : { ...p, is_reposted: !was, reposts_count: Math.max(0, (p.reposts_count || 0) + dir) };
+    mutateCanonical(post, bump(was ? -1 : 1));
     try {
-      await apiFetch(`/api/posts/${post.id}/repost`, { method: 'POST' });
+      await apiFetch(`/api/posts/${post.id}/repost`, { method: was ? 'DELETE' : 'POST' });
     } catch {
-      mutateBoth(post.id, p => ({
-        ...p,
-        is_reposted: was,
-        reposts_count: (p.reposts_count || 0) + (was ? 1 : -1),
-      }));
+      const revert = (p: Post): Post =>
+        p.is_repost && p.original_repost_count !== undefined
+          ? { ...p, is_reposted: was, original_repost_count: Math.max(0, (p.original_repost_count ?? 0) + (was ? 1 : -1)) }
+          : { ...p, is_reposted: was, reposts_count: Math.max(0, (p.reposts_count || 0) + (was ? 1 : -1)) };
+      mutateCanonical(post, revert);
     }
-  }, [mutateBoth]);
+  }, [mutateCanonical]);
 
   const voteOnPoll = useCallback(async (post: Post, optionId: number) => {
     if (post.voted_option_id != null) return; // already voted
