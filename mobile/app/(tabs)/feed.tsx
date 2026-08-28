@@ -9,6 +9,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/theme/ThemeContext';
 import * as ImagePicker from 'expo-image-picker';
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { uploadMedia } from '../../src/lib/upload';
 import { MenuSheet } from '../../src/components/MenuSheet';
 import { useTabScrollToTop } from '../../src/lib/useScrollToTop';
@@ -464,8 +465,16 @@ export default function Feed() {
   const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
   const [pollDuration, setPollDuration] = useState(24);
   const [eventTitle, setEventTitle] = useState('');
+  // Holds a real ISO datetime string once picked (never free text anymore --
+  // see openEventDatePicker). Matches what web's <input type="datetime-local">
+  // always produces, so the backend never sees an unparseable date from
+  // either client.
   const [eventDate, setEventDate] = useState('');
   const [eventLocation, setEventLocation] = useState('');
+  // iOS renders its picker inline (spinner) with an explicit Done step;
+  // Android's is an imperative native dialog with no rendered component, so
+  // this flag is iOS-only.
+  const [showIosDatePicker, setShowIosDatePicker] = useState(false);
   const [posting, setPosting] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [feedTab, setFeedTab] = useState<'for_you' | 'following' | 'messages'>('for_you');
@@ -1018,6 +1027,38 @@ export default function Feed() {
     setComposerCategory('GENERAL'); setDiscussionTitle('');
     setPollOptions(['', '']); setPollDuration(24);
     setEventTitle(''); setEventDate(''); setEventLocation('');
+    setShowIosDatePicker(false);
+  };
+
+  // Replaces the old free-text date field. Android's native picker is
+  // imperative (two chained dialogs -- date, then time; Android has no
+  // combined datetime dialog the way iOS does); iOS renders an inline
+  // spinner (see the JSX below) since DateTimePickerAndroid doesn't exist
+  // on that platform. Either path always ends in a real Date, serialized as
+  // ISO -- never a hand-typed string again.
+  const openEventDatePicker = () => {
+    const initial = eventDate ? new Date(eventDate) : new Date();
+    if (Platform.OS === 'android') {
+      DateTimePickerAndroid.open({
+        value: initial,
+        mode: 'date',
+        onChange: (_e, pickedDate) => {
+          if (!pickedDate) return; // dismissed
+          DateTimePickerAndroid.open({
+            value: pickedDate,
+            mode: 'time',
+            onChange: (_e2, pickedTime) => {
+              if (!pickedTime) return; // dismissed
+              const combined = new Date(pickedDate);
+              combined.setHours(pickedTime.getHours(), pickedTime.getMinutes(), 0, 0);
+              setEventDate(combined.toISOString());
+            },
+          });
+        },
+      });
+    } else {
+      setShowIosDatePicker(true);
+    }
   };
 
   const submitPost = async () => {
@@ -1592,7 +1633,26 @@ export default function Feed() {
               {composerMode === 'event' ? (
                 <>
                   <TextInput style={s.titleInput} placeholder="Event title" placeholderTextColor={colors.muted} value={eventTitle} onChangeText={setEventTitle} maxLength={200} />
-                  <TextInput style={s.fieldInput} placeholder="Date (e.g. 2026-03-15 3:00 PM)" placeholderTextColor={colors.muted} value={eventDate} onChangeText={setEventDate} />
+                  <TouchableOpacity style={s.fieldInput} onPress={openEventDatePicker} activeOpacity={0.7}>
+                    <Text style={eventDate ? s.fieldInputValueText : s.fieldInputPlaceholderText}>
+                      {eventDate
+                        ? new Date(eventDate).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+                        : 'Date & time'}
+                    </Text>
+                  </TouchableOpacity>
+                  {showIosDatePicker ? (
+                    <View style={s.iosDatePickerWrap}>
+                      <DateTimePicker
+                        value={eventDate ? new Date(eventDate) : new Date()}
+                        mode="datetime"
+                        display="spinner"
+                        onChange={(_e, selected) => { if (selected) setEventDate(selected.toISOString()); }}
+                      />
+                      <TouchableOpacity onPress={() => setShowIosDatePicker(false)} style={s.iosDatePickerDone}>
+                        <Text style={s.iosDatePickerDoneText}>Done</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
                   <TextInput style={s.fieldInput} placeholder="Location (optional)" placeholderTextColor={colors.muted} value={eventLocation} onChangeText={setEventLocation} />
                 </>
               ) : null}
@@ -2044,6 +2104,11 @@ const make_s = (colors: Palette) => StyleSheet.create({
     fontSize: 15, color: colors.text, backgroundColor: colors.surfaceSubtle,
     marginHorizontal: 16, marginTop: 8, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11,
   },
+  fieldInputValueText: { fontSize: 15, color: colors.text },
+  fieldInputPlaceholderText: { fontSize: 15, color: colors.muted },
+  iosDatePickerWrap: { marginHorizontal: 16, marginTop: 4, alignItems: 'flex-end' },
+  iosDatePickerDone: { paddingHorizontal: 12, paddingVertical: 6 },
+  iosDatePickerDoneText: { color: colors.brand, fontWeight: '700', fontSize: 15 },
   pollBox: { paddingHorizontal: 16, paddingTop: 8 },
   pollOptRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   pollInput: {
