@@ -67,6 +67,17 @@ async function createPost(req, res) {
       // poll_options is JSON string from FormData
     } else if (postSubtype === 'event') {
       if (!req.body.event_title?.trim()) return res.status(400).json({ message: 'Event title is required' });
+      // Mobile's event-date field used to be free text (no picker), so an
+      // unparseable string (natural-language dates, 12-hour "3:00 PM" with no
+      // seconds, wrong field order) went straight into a TIMESTAMP WITH TIME
+      // ZONE column with zero validation -- Postgres rejected the INSERT and
+      // the whole request surfaced as an opaque 500, while web's native
+      // datetime-local picker can never produce an invalid string in the
+      // first place. Validate here so a bad date is a clear 400 regardless of
+      // which client (or a future one) sent it, rather than a server error.
+      if (req.body.event_date && isNaN(new Date(req.body.event_date).getTime())) {
+        return res.status(400).json({ message: 'Invalid event date' });
+      }
     } else {
       if (!content.trim()) return res.status(400).json({ message: 'Post content is required' });
     }
