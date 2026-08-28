@@ -17,7 +17,7 @@ const REASONS: { value: string; label: string }[] = [
   { value: 'other', label: 'Other' },
 ];
 
-export interface ReportTarget { type: 'post' | 'user'; id: number; name: string }
+export interface ReportTarget { type: 'post' | 'comment' | 'user'; id: number; name: string }
 
 export function ReportModal({ target, onClose }: { target: ReportTarget | null; onClose: () => void }) {
   const s = useThemedStyles(make_s);
@@ -33,6 +33,8 @@ export function ReportModal({ target, onClose }: { target: ReportTarget | null; 
     try {
       const endpoint = target.type === 'post'
         ? `/api/moderation/report/post/${target.id}`
+        : target.type === 'comment'
+        ? `/api/moderation/report/comment/${target.id}`
         : `/api/moderation/report/user/${target.id}`;
       await apiFetch(endpoint, {
         method: 'POST',
@@ -53,7 +55,9 @@ export function ReportModal({ target, onClose }: { target: ReportTarget | null; 
       <View style={s.backdrop}>
         <View style={s.sheet}>
           <View style={s.header}>
-            <Text style={s.title}>{target?.type === 'post' ? 'Report post' : `Report ${target?.name ?? ''}`}</Text>
+            <Text style={s.title}>
+              {target?.type === 'post' ? 'Report post' : target?.type === 'comment' ? 'Report comment' : `Report ${target?.name ?? ''}`}
+            </Text>
             <TouchableOpacity onPress={() => { reset(); onClose(); }} hitSlop={12}><Text style={s.close}>✕</Text></TouchableOpacity>
           </View>
 

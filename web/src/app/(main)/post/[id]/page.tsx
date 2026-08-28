@@ -8,6 +8,7 @@ import { timeAgo } from '@/lib/format';
 import { optimizedImage } from '@/lib/image';
 import { cn } from '@/lib/utils';
 import { useMentionAutocomplete, MentionDropdown } from '@/hooks/useMentionAutocomplete';
+import ReportModal from '@/components/ReportModal';
 import {
   Avatar,
   Button,
@@ -130,6 +131,7 @@ export default function PostDetailPage() {
   const [expandedReplies, setExpandedReplies] = useState<Set<number>>(new Set());
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const [replyText, setReplyText] = useState('');
+  const [reportTarget, setReportTarget] = useState<{ type: 'comment'; id: number; name: string } | null>(null);
 
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [postMenuOpen, setPostMenuOpen] = useState(false);
@@ -862,11 +864,17 @@ export default function PostDetailPage() {
                             : `View ${c.reply_count > 0 ? c.reply_count : replies[c.id]?.length} ${(c.reply_count === 1 || replies[c.id]?.length === 1) ? 'reply' : 'replies'}`}
                         </button>
                       )}
-                      {c.user_id === user.id && (
+                      {c.user_id === user.id ? (
                         <button type="button"
                           onClick={() => handleDeleteComment(c.id)}
                           className="text-caption font-medium text-ink-secondary transition hover:text-red-500">
                           Delete
+                        </button>
+                      ) : (
+                        <button type="button"
+                          onClick={() => setReportTarget({ type: 'comment', id: c.id, name: c.author_name })}
+                          className="text-caption font-medium text-ink-secondary transition hover:text-red-500">
+                          Report
                         </button>
                       )}
                     </div>
@@ -1037,6 +1045,16 @@ export default function PostDetailPage() {
             className="max-h-[90vh] max-w-full rounded-xl object-contain shadow-2xl"
             onClick={e => e.stopPropagation()} />
         </div>
+      )}
+
+      {reportTarget && (
+        <ReportModal
+          target={reportTarget}
+          token={token}
+          apiUrl={API_URL}
+          onClose={() => setReportTarget(null)}
+          onSuccess={(msg) => { setReportTarget(null); alert(msg); }}
+        />
       )}
     </div>
   );

@@ -54,6 +54,11 @@ async function toggleCommentLike(commentId, userId) {
   return { liked: true, likes_count: rows[0]?.likes_count ?? 0 };
 }
 
+async function getCommentById(commentId) {
+  const { rows } = await pool.query('SELECT * FROM abukonn.comments WHERE id = $1', [commentId]);
+  return rows[0] || null;
+}
+
 // Delete a comment — only by its author. Returns the deleted row (or null).
 async function deleteComment(commentId, userId) {
   const { rows } = await pool.query(
@@ -129,6 +134,7 @@ module.exports = {
   CREATE_COMMENTS_TABLE,
   createCommentsTable,
   createComment,
+  getCommentById,
   getCommentsByPost,
   getCommentsByUser,
   toggleCommentLike,

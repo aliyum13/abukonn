@@ -3,6 +3,7 @@ const auth = require('../middleware/auth');
 const adminAuth = require('../middleware/adminAuth');
 const {
   reportPost,
+  reportComment,
   reportUser,
   blockUser,
   unblockUser,
@@ -18,6 +19,7 @@ const router = express.Router();
 router.use(auth);
 
 router.post('/report/post/:id', reportPost);
+router.post('/report/comment/:id', reportComment);
 router.post('/report/user/:id', reportUser);
 router.post('/block/:id', blockUser);
 router.delete('/block/:id', unblockUser);

@@ -15,7 +15,7 @@ const REASONS: { value: string; label: string }[] = [
 ];
 
 interface ReportModalProps {
-  target: { type: 'post' | 'user'; id: number; name: string };
+  target: { type: 'post' | 'comment' | 'user'; id: number; name: string };
   token: string | null;
   apiUrl: string;
   onClose: () => void;
@@ -35,6 +35,8 @@ export default function ReportModal({ target, token, apiUrl, onClose, onSuccess 
     try {
       const endpoint = target.type === 'post'
         ? `${apiUrl}/api/moderation/report/post/${target.id}`
+        : target.type === 'comment'
+        ? `${apiUrl}/api/moderation/report/comment/${target.id}`
         : `${apiUrl}/api/moderation/report/user/${target.id}`;
 
       const res = await fetch(endpoint, {
@@ -63,7 +65,7 @@ export default function ReportModal({ target, token, apiUrl, onClose, onSuccess 
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-4 py-3.5 dark:border-[#222]">
           <h3 className="font-semibold text-ink">
-            {target.type === 'post' ? 'Report post' : `Report ${target.name}`}
+            {target.type === 'post' ? 'Report post' : target.type === 'comment' ? 'Report comment' : `Report ${target.name}`}
           </h3>
           <button type="button" onClick={onClose} className="rounded-full p-1 text-ink-muted hover:bg-surface-muted" aria-label="Close">
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>

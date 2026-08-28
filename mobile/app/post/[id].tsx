@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../../src/lib/api';
 import { PostContent } from '../../src/components/PostContent';
 import { ShareSheet } from '../../src/components/ShareSheet';
+import { ReportModal, type ReportTarget } from '../../src/components/ReportModal';
 import { useAuth } from '../../src/context/AuthContext';
 import { colors } from '../../src/theme';
 
@@ -75,6 +76,7 @@ export default function SinglePost() {
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [replyText, setReplyText] = useState('');
+  const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
 
   const loadReplies = useCallback(async (commentId: number) => {
     try {
@@ -453,7 +455,11 @@ export default function SinglePost() {
                     <TouchableOpacity onPress={() => deleteComment(item.id)}>
                       <Text style={s.deleteAction}>Delete</Text>
                     </TouchableOpacity>
-                  ) : null}
+                  ) : (
+                    <TouchableOpacity onPress={() => setReportTarget({ type: 'comment', id: item.id, name: item.author_name })}>
+                      <Text style={s.deleteAction}>Report</Text>
+                    </TouchableOpacity>
+                  )}
                   {item.reply_count ? (
                     <TouchableOpacity onPress={() => toggleReplies(item.id)}>
                       <Text style={s.replyAction}>
@@ -517,6 +523,7 @@ export default function SinglePost() {
           onClose={() => setShareOpen(false)}
         />
       ) : null}
+      <ReportModal target={reportTarget} onClose={() => setReportTarget(null)} />
       <Modal visible={editing} transparent animationType="slide" onRequestClose={() => setEditing(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={s.editBackdrop}>
           <View style={s.editSheet}>

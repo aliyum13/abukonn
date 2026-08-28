@@ -22,6 +22,9 @@ interface Report {
   reported_user_id: number | null;
   reported_post_content: string | null;
   reported_post_id: number | null;
+  reported_comment_content: string | null;
+  reported_comment_id: number | null;
+  reported_comment_author_name: string | null;
   reviewed_by_name: string | null;
 }
 
@@ -139,20 +142,30 @@ export default function AdminReportsPage() {
                       <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', STATUS_BADGE[r.status] || STATUS_BADGE.dismissed)}>
                         {r.status}
                       </span>
-                      {r.reported_post_id ? (
+                      {r.reported_comment_id ? (
+                        <span className="rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-2 py-0.5 text-[11px] font-medium">Comment</span>
+                      ) : r.reported_post_id ? (
                         <span className="rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 px-2 py-0.5 text-[11px] font-medium">Post</span>
                       ) : (
                         <span className="rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 px-2 py-0.5 text-[11px] font-medium">User</span>
                       )}
                     </div>
 
-                    {/* Target */}
+                    {/* Target -- check comment before post: a comment report also
+                        carries its parent post_id for context, so post_id alone
+                        isn't enough to tell the two apart. */}
                     <p className="mt-1 text-body-sm text-ink-muted">
                       <span className="font-medium text-ink">Reported: </span>
-                      {r.reported_post_id
-                        ? <span className="line-clamp-1">{r.reported_post_content || '(post deleted)'}</span>
-                        : <span>{r.reported_user_name} (@{r.reported_user_username})</span>
-                      }
+                      {r.reported_comment_id ? (
+                        <span className="line-clamp-1">
+                          {r.reported_comment_content || '(comment deleted)'}
+                          {r.reported_comment_author_name ? ` — ${r.reported_comment_author_name}` : ''}
+                        </span>
+                      ) : r.reported_post_id ? (
+                        <span className="line-clamp-1">{r.reported_post_content || '(post deleted)'}</span>
+                      ) : (
+                        <span>{r.reported_user_name} (@{r.reported_user_username})</span>
+                      )}
                     </p>
 
                     {/* Reporter */}

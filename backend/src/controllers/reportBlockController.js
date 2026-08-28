@@ -1,4 +1,5 @@
 const ReportBlock = require('../models/ReportBlock');
+const Comment = require('../models/Comment');
 
 const VALID_REASONS = [
   'spam',
@@ -31,6 +32,39 @@ async function reportPost(req, res) {
     res.status(201).json({ message: 'Report submitted. Our team will review it shortly.' });
   } catch (err) {
     console.error('Report post error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// Reporting a comment was never built end-to-end -- no schema column, no
+// controller function, no route, and neither client's ReportModal even had a
+// 'comment' target type. Mirrors reportPost, plus looks the comment up first
+// (to 404 on a deleted/bad id, and to carry its parent post_id for admin
+// context alongside reported_comment_id).
+async function reportComment(req, res) {
+  try {
+    const commentId = parseInt(req.params.id, 10);
+    const { reason, details } = req.body;
+    if (!VALID_REASONS.includes(reason)) {
+      return res.status(400).json({ message: 'Invalid report reason.' });
+    }
+    const comment = await Comment.getCommentById(commentId);
+    if (!comment) {
+      return res.status(404).json({ message: 'Comment not found' });
+    }
+    const result = await ReportBlock.createReport({
+      reporterId: req.user.id,
+      reportedCommentId: commentId,
+      reportedPostId: comment.post_id,
+      reason,
+      details,
+    });
+    if (result.duplicate) {
+      return res.status(409).json({ message: 'You have already reported this comment.' });
+    }
+    res.status(201).json({ message: 'Report submitted. Our team will review it shortly.' });
+  } catch (err) {
+    console.error('Report comment error:', err.message);
     res.status(500).json({ message: 'Server error' });
   }
 }
@@ -143,6 +177,7 @@ async function adminResolveReport(req, res) {
 
 module.exports = {
   reportPost,
+  reportComment,
   reportUser,
   blockUser,
   unblockUser,
