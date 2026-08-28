@@ -1751,8 +1751,15 @@ export default function Feed() {
                         <Image source={{ uri: item.previewUri }} style={s.preview} resizeMode="cover" />
                       )}
                       {!item.uploaded && !item.error ? (
+                        // uploadMedia is a single fetch() with no real upload-progress
+                        // event (React Native's fetch has no equivalent of
+                        // XHR's upload.onprogress), so item.progress only ever jumps
+                        // 0 -> 100 on completion -- showing it as "0%" the whole time
+                        // read as frozen, especially for a large video upload that can
+                        // take tens of seconds. A spinner honestly represents "working,
+                        // duration unknown" instead of a percentage that never moves.
                         <View style={s.mediaOverlay}>
-                          <Text style={s.mediaOverlayText}>{item.progress}%</Text>
+                          <ActivityIndicator color="#fff" />
                         </View>
                       ) : null}
                       {item.error ? (
