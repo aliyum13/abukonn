@@ -91,11 +91,17 @@ interface Post {
 
 interface Comment {
   id: number;
+  user_id?: number;
   content: string;
   author_name: string;
   created_at: string;
   is_best_answer?: boolean;
+  reply_count?: number;
+  likes_count?: number;
+  is_liked?: boolean;
 }
+
+interface CommentReply { id: number; content: string; author_name: string; created_at: string }
 
 function timeAgo(iso: string) {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -509,7 +515,7 @@ export default function Feed() {
   const [commentsFor, setCommentsFor] = useState<Post | null>(null);
   const [sharePost, setSharePost] = useState<Post | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
-  const [reportTarget, setReportTarget] = useState<{ type: 'post' | 'user'; id: number; name: string } | null>(null);
+  const [reportTarget, setReportTarget] = useState<{ type: 'post' | 'comment' | 'user'; id: number; name: string } | null>(null);
   // Edit-after-publish: the post being edited (null = modal closed), its draft
   // text, and a saving flag. A modal is used rather than inline editing —
   // better keyboard/focus handling on a phone than editing inside the feed.
@@ -519,6 +525,12 @@ export default function Feed() {
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentText, setCommentText] = useState('');
   const [commentsLoading, setCommentsLoading] = useState(false);
+  // Threaded replies, ported from post/[id].tsx (which already had this --
+  // this modal, opened from the feed's own comment button, never did).
+  const [expandedComments, setExpandedComments] = useState<Set<number>>(new Set());
+  const [repliesByComment, setRepliesByComment] = useState<Record<number, CommentReply[]>>({});
+  const [replyingToId, setReplyingToId] = useState<number | null>(null);
+  const [replyText, setReplyText] = useState('');
 
   const load = useCallback(async () => {
     const gen = ++loadGenRef.current;
@@ -912,6 +924,13 @@ export default function Feed() {
     setCommentsFor(post);
     setComments([]);
     setCommentsLoading(true);
+    // This modal instance is reused across posts (opened/closed repeatedly,
+    // never remounted) -- without resetting these, a previous post's expanded
+    // replies/reply-composer state would leak into the next one's thread.
+    setExpandedComments(new Set());
+    setRepliesByComment({});
+    setReplyingToId(null);
+    setReplyText('');
     try {
       const data = await apiFetch<{ comments: Comment[] }>(`/api/posts/${post.id}/comments`);
       setComments(data.comments || []);
@@ -921,6 +940,45 @@ export default function Feed() {
       setCommentsLoading(false);
     }
   }, []);
+
+  const loadCommentReplies = useCallback(async (commentId: number) => {
+    if (!commentsFor) return;
+    try {
+      const d = await apiFetch<{ replies: CommentReply[] }>(`/api/posts/${commentsFor.id}/comments/${commentId}/replies`);
+      setRepliesByComment(prev => ({ ...prev, [commentId]: d.replies || [] }));
+    } catch {
+      setRepliesByComment(prev => ({ ...prev, [commentId]: [] }));
+    }
+  }, [commentsFor]);
+
+  const toggleCommentReplies = (commentId: number) => {
+    setExpandedComments(prev => {
+      const next = new Set(prev);
+      if (next.has(commentId)) { next.delete(commentId); }
+      else { next.add(commentId); if (!repliesByComment[commentId]) loadCommentReplies(commentId); }
+      return next;
+    });
+  };
+
+  const sendCommentReply = async (commentId: number) => {
+    if (!commentsFor) return;
+    const body = replyText.trim();
+    if (!body) return;
+    setReplyText('');
+    try {
+      const res = await apiFetch<{ reply: CommentReply }>(
+        `/api/posts/${commentsFor.id}/comments/${commentId}/replies`,
+        { method: 'POST', body: JSON.stringify({ content: body }) });
+      if (res.reply) {
+        setRepliesByComment(prev => ({ ...prev, [commentId]: [...(prev[commentId] || []), res.reply] }));
+        setComments(prev => prev.map(c => c.id === commentId ? { ...c, reply_count: (c.reply_count || 0) + 1 } : c));
+        setExpandedComments(prev => new Set(prev).add(commentId));
+      }
+      setReplyingToId(null);
+    } catch {
+      setReplyText(body);
+    }
+  };
 
   const markBestAnswer = async (commentId: number) => {
     if (!commentsFor) return;
@@ -1834,12 +1892,58 @@ export default function Feed() {
                       ) : null}
                       <View style={s.commentMetaRow}>
                         <Text style={s.muted}>{timeAgo(item.created_at)}</Text>
+                        <TouchableOpacity onPress={() => { setReplyingToId(replyingToId === item.id ? null : item.id); setReplyText(''); }}>
+                          <Text style={s.commentActionText}>Reply</Text>
+                        </TouchableOpacity>
+                        {item.reply_count ? (
+                          <TouchableOpacity onPress={() => toggleCommentReplies(item.id)}>
+                            <Text style={s.commentActionText}>
+                              {expandedComments.has(item.id) ? 'Hide' : 'View'} {item.reply_count} {item.reply_count === 1 ? 'reply' : 'replies'}
+                            </Text>
+                          </TouchableOpacity>
+                        ) : null}
+                        {item.user_id !== user?.id ? (
+                          <TouchableOpacity onPress={() => setReportTarget({ type: 'comment', id: item.id, name: item.author_name })}>
+                            <Text style={s.commentReportText}>Report</Text>
+                          </TouchableOpacity>
+                        ) : null}
                         {canMark ? (
                           <TouchableOpacity onPress={() => markBestAnswer(item.id)} hitSlop={8}>
                             <Text style={s.markBestText}>✓ Best Answer</Text>
                           </TouchableOpacity>
                         ) : null}
                       </View>
+
+                      {/* Reply composer for this comment */}
+                      {replyingToId === item.id ? (
+                        <View style={s.replyBox}>
+                          <TextInput
+                            style={s.replyInput}
+                            value={replyText}
+                            onChangeText={setReplyText}
+                            placeholder={`Reply to ${item.author_name}...`}
+                            placeholderTextColor={colors.muted}
+                            autoFocus
+                            multiline
+                          />
+                          <TouchableOpacity style={s.replySend} onPress={() => sendCommentReply(item.id)} disabled={!replyText.trim()}>
+                            <Ionicons name="send" size={16} color="#fff" />
+                          </TouchableOpacity>
+                        </View>
+                      ) : null}
+
+                      {/* Nested replies */}
+                      {expandedComments.has(item.id) ? (
+                        <View style={s.replyThread}>
+                          {(repliesByComment[item.id] || []).map(r => (
+                            <View key={r.id} style={s.replyItem}>
+                              <Text style={s.author}>{r.author_name}</Text>
+                              <Text style={s.content}>{r.content}</Text>
+                              <Text style={s.muted}>{timeAgo(r.created_at)}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      ) : null}
                     </View>
                   );
                 }}
@@ -2060,8 +2164,18 @@ const make_s = (colors: Palette) => StyleSheet.create({
   hotBadge: { backgroundColor: 'rgba(220,38,38,0.12)' },
   bestAnswerBadge: { alignSelf: 'flex-start', backgroundColor: 'rgba(22,163,74,0.12)', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2, marginTop: 4 },
   bestAnswerBadgeText: { fontSize: 11, fontWeight: '700', color: '#16a34a' },
-  commentMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 4 },
+  commentMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 4, flexWrap: 'wrap' },
   markBestText: { fontSize: 12, fontWeight: '600', color: '#16a34a' },
+  commentActionText: { fontSize: 12, fontWeight: '600', color: colors.brand },
+  commentReportText: { fontSize: 12, fontWeight: '600', color: colors.danger },
+  replyBox: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 8 },
+  replyInput: {
+    flex: 1, fontSize: 14, color: colors.text, backgroundColor: colors.surfaceSubtle,
+    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, maxHeight: 90,
+  },
+  replySend: { backgroundColor: colors.brand, borderRadius: 16, width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  replyThread: { marginTop: 8, paddingLeft: 14, borderLeftWidth: 2, borderLeftColor: colors.border, gap: 10 },
+  replyItem: { gap: 2 },
   hotBadgeText: { fontSize: 11, fontWeight: '700', color: '#dc2626' },
   trendingBadgeBg: { backgroundColor: 'rgba(234,88,12,0.12)' },
   trendingBadgeText: { fontSize: 11, fontWeight: '700', color: '#ea580c' },
