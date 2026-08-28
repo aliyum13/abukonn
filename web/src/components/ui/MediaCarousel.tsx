@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { optimizedImage } from '@/lib/image';
+import { optimizedImage, optimizedVideo } from '@/lib/image';
 
 export interface MediaItem {
   id: number;
@@ -53,7 +53,7 @@ export function MediaCarousel({
           <div key={item.id} className="w-full shrink-0 snap-center">
             {item.media_type === 'video' ? (
               <video
-                src={item.media_url}
+                src={optimizedVideo(item.media_url)}
                 poster={item.thumbnail_url || undefined}
                 controls
                 className="max-h-[500px] w-full bg-black object-contain"

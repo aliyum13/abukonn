@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
-import { optimizedImage } from '../lib/image';
+import { optimizedImage, optimizedVideo } from '../lib/image';
 import { useThemedStyles } from '../theme/ThemeContext';
 import type { Palette } from '../theme';
 
@@ -25,7 +25,7 @@ export interface MediaItem {
 // unconditionally at that component's top level. Doesn't autoplay (bad for
 // mobile data); shows native controls, tap to play.
 function VideoItem({ item, width }: { item: MediaItem; width: number }) {
-  const player = useVideoPlayer(item.media_url, p => {
+  const player = useVideoPlayer(optimizedVideo(item.media_url), p => {
     p.loop = false;
   });
   return (

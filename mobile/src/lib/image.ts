@@ -37,3 +37,22 @@ export function optimizedAvatar(
   if (url.includes('/upload/f_auto') || url.includes('/upload/q_auto')) return url;
   return url.replace('/upload/', `/upload/f_auto,q_auto,w_${size},h_${size},c_fill,g_face,dpr_auto/`);
 }
+
+// Same problem as images, worse in practice: a post video is served at
+// whatever resolution/bitrate the phone camera recorded it at, with zero
+// compression, so expo-video's player has to buffer the full raw file before
+// playback can even start. f_auto/q_auto apply the same way to video as to
+// images (best codec/container, smart bitrate); the width cap is lower than
+// optimizedImage's default (720 vs 1080) since video payload size scales
+// with resolution far more steeply than a static image's does, and dpr_auto
+// is dropped -- it's a retina-display concept that doesn't carry over to
+// video the way it does a still image.
+export function optimizedVideo(
+  url: string | null | undefined,
+  width = 720,
+): string {
+  if (!url) return '';
+  if (!url.includes('/upload/')) return url;
+  if (url.includes('/upload/f_auto') || url.includes('/upload/q_auto')) return url;
+  return url.replace('/upload/', `/upload/f_auto,q_auto,w_${width},c_limit/`);
+}
