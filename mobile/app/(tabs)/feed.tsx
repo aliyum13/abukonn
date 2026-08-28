@@ -434,6 +434,12 @@ export default function Feed() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState(false);
   const loadGenRef = useRef(0);
+  // Anchors one scroll session for the backend's ranking: captured fresh
+  // whenever page 1 loads (a real refresh), reused unchanged across that
+  // session's loadMore() calls. Lets the server give refreshes real variety
+  // while keeping one session's pages internally consistent -- see
+  // Post.getForYouFeed's sessionStart doc comment on the backend.
+  const sessionStartRef = useRef<number | null>(null);
 
   const [composeOpen, setComposeOpen] = useState(false);
   const [newPost, setNewPost] = useState('');
@@ -506,8 +512,9 @@ export default function Feed() {
 
   const load = useCallback(async () => {
     const gen = ++loadGenRef.current;
+    sessionStartRef.current = Date.now();
     try {
-      const data = await apiFetch<{ posts: Post[]; hasMore?: boolean; caughtUp?: boolean }>('/api/posts?page=1');
+      const data = await apiFetch<{ posts: Post[]; hasMore?: boolean; caughtUp?: boolean }>(`/api/posts?page=1&session_start=${sessionStartRef.current}`);
       if (gen !== loadGenRef.current) return; // superseded by a newer load()
       setPosts(data.posts || []);
       setPage(1);
@@ -533,12 +540,15 @@ export default function Feed() {
     setLoadMoreError(false);
     const nextPage = page + 1;
     try {
-      const data = await apiFetch<{ posts: Post[]; hasMore?: boolean; caughtUp?: boolean }>(`/api/posts?page=${nextPage}`);
+      const data = await apiFetch<{ posts: Post[]; hasMore?: boolean; caughtUp?: boolean }>(`/api/posts?page=${nextPage}&session_start=${sessionStartRef.current ?? Date.now()}`);
       if (gen !== loadGenRef.current) return; // a refresh landed while this was in flight
       const incoming = data.posts || [];
       setPosts(prev => {
-        const existingIds = new Set(prev.map(p => p.id));
-        const deduped = incoming.filter(p => !existingIds.has(p.id));
+        // Canonical (not raw) id: a repost is its own row with its own id, so
+        // raw-id dedup let a repost of an already-shown original slip through
+        // -- same underlying content, reads as a duplicate to the user.
+        const existingIds = new Set(prev.map(canonicalId));
+        const deduped = incoming.filter(p => !existingIds.has(canonicalId(p)));
         return deduped.length > 0 ? [...prev, ...deduped] : prev;
       });
       setPage(nextPage);

@@ -341,7 +341,27 @@ const FORYOU = {
 // content. Candidate pool is campus-wide but bounded to the last 7 days.
 // Returns { posts, exhausted } -- exhausted=true when there are no more UNSEEN
 // posts left (client shows "you're all caught up").
-async function getForYouFeed(currentUserId, limit = 50, offset = 0) {
+//
+// sessionStart (epoch ms, optional): the client captures Date.now() once when
+// it fetches page 1, and resends the SAME value on every loadMore() call for
+// that scroll session. Serves two purposes here:
+//   1. Seen-demote cutoff -- only views recorded BEFORE sessionStart count
+//      toward already_seen. Without this, viewing page 1's posts mid-scroll
+//      (the view-tracker fires in real time as posts cross 60% visibility,
+//      well before the user reaches the bottom to trigger loadMore) would
+//      retroactively demote them by the time page 2's query runs, shifting
+//      them out of the ranking window OFFSET expected them in -- the root
+//      cause of load-more duplicates/skips. Freezing "seen" as of session
+//      start means viewing during THIS session can't reorder THIS session's
+//      later pages; a genuine new session (real refresh) still demotes
+//      normally.
+//   2. Jitter seed (see REFRESH_JITTER_* below) -- reusing the client's
+//      session value instead of a server time-bucket means refresh always
+//      gets a new arrangement (sessionStart is different practically every
+//      call), while staying fixed across one session's pages.
+// Absent (older client, or any caller that doesn't pass it) falls back to
+// today's exact behavior on both counts -- no seen cutoff, time-bucketed jitter.
+async function getForYouFeed(currentUserId, limit = 50, offset = 0, sessionStart = null) {
   const result = await pool.query(
     `WITH base AS (
       SELECT p.id, p.user_id, p.content, p.image_url, p.likes_count, p.comments_count,
@@ -388,7 +408,13 @@ async function getForYouFeed(currentUserId, limit = 50, offset = 0) {
             EXISTS(SELECT 1 FROM abukonn.event_rsvps er WHERE er.post_id = p.id AND er.user_id = $1) AS is_attending,
             -- Computed once here -- was previously re-written a second time
             -- inside the seen-demote multiplier below (same EXISTS twice).
-            EXISTS(SELECT 1 FROM abukonn.post_views pvw WHERE pvw.post_id = p.id AND pvw.viewer_id = $1) AS already_seen
+            -- $16 IS NULL means no session cutoff was supplied -- any prior
+            -- view counts, matching pre-sessionStart behavior exactly.
+            EXISTS(
+              SELECT 1 FROM abukonn.post_views pvw
+              WHERE pvw.post_id = p.id AND pvw.viewer_id = $1
+                AND ($16::bigint IS NULL OR pvw.viewed_at < to_timestamp($16::bigint / 1000.0))
+            ) AS already_seen
       FROM abukonn.posts p
       JOIN abukonn.users u ON p.user_id = u.id
       LEFT JOIN abukonn.posts orig ON p.is_repost = TRUE AND orig.id = p.original_post_id
@@ -417,10 +443,12 @@ async function getForYouFeed(currentUserId, limit = 50, offset = 0) {
               )
               * (CASE WHEN already_seen THEN $12::float ELSE 1 END)
               -- Refresh variety: see REFRESH_JITTER_MAGNITUDE/BUCKET_SECONDS
-              -- above. Deterministic per (post, time bucket) -- NOT random()
-              -- -- so pagination within one scroll session stays exactly
-              -- consistent, while the arrangement rotates every $15 seconds.
-              + (abs(hashtext(id::text || (floor(extract(epoch from now()) / $15::float))::text)) % 1000) / 1000.0 * $14::float
+              -- above. Deterministic per (post, seed) -- NOT random() -- so
+              -- pagination within one scroll session stays exactly
+              -- consistent. Seed is the client's sessionStart ($16) when
+              -- supplied (a new value every real refresh, fixed for that
+              -- session's pages), else the old time-bucket fallback.
+              + (abs(hashtext(id::text || COALESCE($16::text, (floor(extract(epoch from now()) / $15::float))::text))) % 1000) / 1000.0 * $14::float
             ) AS ranking_score
       FROM base
     )
@@ -435,6 +463,7 @@ async function getForYouFeed(currentUserId, limit = 50, offset = 0) {
       String(FORYOU.OWN_POST_WINDOW_HOURS), FORYOU.OWN_POST_BOOST,
       FORYOU.SEEN_DEMOTE, String(FORYOU.CANDIDATE_MAX_AGE_HOURS),
       FORYOU.REFRESH_JITTER_MAGNITUDE, FORYOU.REFRESH_JITTER_BUCKET_SECONDS,
+      sessionStart,
     ]
   );
   const posts = result.rows;

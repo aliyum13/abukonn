@@ -283,11 +283,17 @@ async function getFeed(req, res) {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const offset = (page - 1) * limit;
+    // Client-supplied session anchor (epoch ms) -- same value across one
+    // scroll session's page 1 + all its loadMore() calls. See
+    // Post.getForYouFeed's sessionStart doc comment for why. Absent/invalid
+    // falls back to null, which getForYouFeed treats as "no session" (today's
+    // exact prior behavior).
+    const sessionStart = req.query.session_start ? parseInt(req.query.session_start, 10) : null;
     // "For You" v2: freshness-first ranking (every new post gets a chance),
     // following + capped trending, own recent posts on top, seen-demoted so
     // refresh brings newer content. Returns an "exhausted" flag when there are
     // no more unseen posts -- the client shows "you're all caught up".
-    const { posts, exhausted } = await Post.getForYouFeed(req.user.id, limit, offset);
+    const { posts, exhausted } = await Post.getForYouFeed(req.user.id, limit, offset, Number.isFinite(sessionStart) ? sessionStart : null);
     await attachMedia(posts);
     res.json({ posts, page, limit, hasMore: posts.length === limit && !exhausted, caughtUp: exhausted });
   } catch (err) {

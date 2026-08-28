@@ -1266,6 +1266,12 @@ export default function FeedPage() {
   const [loadMorePostsError, setLoadMorePostsError] = useState(false);
   const loadGenRef = useRef(0);
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
+  // Anchors one scroll session for the backend's ranking: captured fresh
+  // whenever page 1 loads (a real refresh), reused unchanged across that
+  // session's loadMorePosts() calls. Lets the server give refreshes real
+  // variety while keeping one session's pages internally consistent -- see
+  // Post.getForYouFeed's sessionStart doc comment on the backend.
+  const sessionStartRef = useRef<number | null>(null);
 
   // Apply an update to EVERY list a post can appear in.
   //
@@ -1841,8 +1847,9 @@ export default function FeedPage() {
   const fetchPosts = async (isRetry = false) => {
     if (!token) return;
     const gen = ++loadGenRef.current;
+    sessionStartRef.current = Date.now();
     try {
-      const res = await fetchWithRetry(`${API_URL}/api/posts?page=1`, {
+      const res = await fetchWithRetry(`${API_URL}/api/posts?page=1&session_start=${sessionStartRef.current}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.status === 401 && !isRetry) {
@@ -1885,7 +1892,7 @@ export default function FeedPage() {
     setLoadMorePostsError(false);
     const nextPage = feedPage + 1;
     try {
-      const res = await fetchWithRetry(`${API_URL}/api/posts?page=${nextPage}`, {
+      const res = await fetchWithRetry(`${API_URL}/api/posts?page=${nextPage}&session_start=${sessionStartRef.current ?? Date.now()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -1893,8 +1900,12 @@ export default function FeedPage() {
       if (gen !== loadGenRef.current) return; // a fresh fetchPosts() landed while this was in flight
       const incoming: Post[] = data.posts || [];
       setPosts(prev => {
-        const existingIds = new Set(prev.map(p => p.id));
-        const deduped = incoming.filter(p => !existingIds.has(p.id));
+        // Canonical (not raw) id: a repost is its own row with its own id, so
+        // raw-id dedup let a repost of an already-shown original slip through
+        // -- same underlying content, reads as a duplicate to the user.
+        const canonicalId = (p: Post) => (p.is_repost && p.original_post_id ? p.original_post_id : p.id);
+        const existingIds = new Set(prev.map(canonicalId));
+        const deduped = incoming.filter(p => !existingIds.has(canonicalId(p)));
         return deduped.length > 0 ? [...prev, ...deduped] : prev;
       });
       setFeedPage(nextPage);
