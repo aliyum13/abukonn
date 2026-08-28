@@ -16,6 +16,9 @@ import {
   EmptyState,
   Skeleton,
   PostContent,
+  VerifiedBadge,
+  RoleBadge,
+  ContentCreatorBadge,
 } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
@@ -29,6 +32,11 @@ interface SearchUser {
   level: string;
   profile_photo_url: string | null;
   is_following: boolean;
+  role?: string;
+  is_verified?: boolean;
+  is_content_creator?: boolean;
+  is_admin?: boolean;
+  is_class_rep?: boolean;
 }
 
 interface SearchPost {
@@ -121,9 +129,17 @@ function UserCard({ user, token }: { user: SearchUser; token: string | null }) {
           <Avatar src={user.profile_photo_url} name={user.full_name} size="lg" />
         </Link>
         <div className="min-w-0 flex-1">
-          <Link href={`/profile/${user.id}`} className="font-semibold text-ink transition hover:text-brand-600">
-            {user.full_name}
-          </Link>
+          <div className="flex items-center gap-1">
+            <Link href={`/profile/${user.id}`} className="font-semibold text-ink transition hover:text-brand-600">
+              {user.full_name}
+            </Link>
+            <VerifiedBadge verified={user.is_verified} />
+            <RoleBadge role={user.role || 'user'} iconOnly />
+            <ContentCreatorBadge isCreator={user.is_content_creator} iconOnly />
+            {user.is_class_rep && (
+              <span title="Class Representative" className="inline-flex items-center rounded-full bg-brand-100 px-1.5 py-0.5 text-[11px] font-semibold text-brand-700 dark:bg-brand-950 dark:text-brand-300">🎓</span>
+            )}
+          </div>
           <div className="mt-1 flex flex-wrap gap-1.5">
             <Badge variant="brand">{user.department}</Badge>
             <Badge variant="default">{user.level}</Badge>

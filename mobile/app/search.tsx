@@ -10,11 +10,14 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../src/lib/api';
 import { PostContent } from '../src/components/PostContent';
+import { RoleBadge } from '../src/components/RoleBadge';
 import { colors, radius } from '../src/theme';
 
 interface SearchUser {
   id: number; full_name: string; department: string | null; level: string | null;
   profile_photo_url: string | null; is_following: boolean;
+  role?: string; is_verified?: boolean; is_content_creator?: boolean;
+  is_admin?: boolean; is_class_rep?: boolean;
 }
 interface SearchPost {
   id: number; content: string; author_name: string; author_department: string | null;
@@ -185,7 +188,12 @@ export default function Search() {
                       <View style={[s.avatar, s.fallback]}><Text style={s.letter}>{item.full_name.charAt(0).toUpperCase()}</Text></View>
                     )}
                     <View style={{ flex: 1 }}>
-                      <Text style={s.name}>{item.full_name}</Text>
+                      <View style={s.nameRow}>
+                        <Text style={s.name}>{item.full_name}</Text>
+                        <RoleBadge role={item.role || (item.is_admin ? 'admin' : item.is_verified ? 'verified' : 'user')} iconOnly />
+                        {item.is_content_creator ? <Text style={s.creatorIcon}>✎</Text> : null}
+                        {item.is_class_rep ? <Text style={s.classRepIcon}>🎓</Text> : null}
+                      </View>
                       {item.department ? <Text style={s.muted}>{item.department}{item.level ? ` · ${item.level}` : ''}</Text> : null}
                     </View>
                   </TouchableOpacity>
@@ -229,7 +237,12 @@ export default function Search() {
                   <View style={[s.avatar, s.fallback]}><Text style={s.letter}>{item.full_name.charAt(0).toUpperCase()}</Text></View>
                 )}
                 <View style={{ flex: 1 }}>
-                  <Text style={s.name}>{item.full_name}</Text>
+                  <View style={s.nameRow}>
+                    <Text style={s.name}>{item.full_name}</Text>
+                    <RoleBadge role={item.role || (item.is_admin ? 'admin' : item.is_verified ? 'verified' : 'user')} iconOnly />
+                    {item.is_content_creator ? <Text style={s.creatorIcon}>✎</Text> : null}
+                    {item.is_class_rep ? <Text style={s.classRepIcon}>🎓</Text> : null}
+                  </View>
                   {item.department ? <Text style={s.muted}>{item.department}{item.level ? ` · ${item.level}` : ''}</Text> : null}
                 </View>
               </TouchableOpacity>
@@ -307,6 +320,9 @@ const make_s = (colors: Palette) => StyleSheet.create({
   fallback: { alignItems: 'center', justifyContent: 'center' },
   letter: { fontSize: 20, fontWeight: '800', color: colors.brand },
   name: { fontSize: 15, fontWeight: '700', color: colors.text },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  creatorIcon: { fontSize: 13, color: '#d97706', fontWeight: '800' },
+  classRepIcon: { fontSize: 13 },
   followBtn: { backgroundColor: colors.brand, borderRadius: radius.full, paddingVertical: 7, paddingHorizontal: 16 },
   followingBtn: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   followText: { color: '#fff', fontWeight: '700', fontSize: 13 },
