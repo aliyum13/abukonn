@@ -525,7 +525,7 @@ export default function SinglePost() {
       ) : null}
       <ReportModal target={reportTarget} onClose={() => setReportTarget(null)} />
       <Modal visible={editing} transparent animationType="slide" onRequestClose={() => setEditing(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={s.editBackdrop}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.editBackdrop}>
           <View style={s.editSheet}>
             <View style={s.editHeader}>
               <TouchableOpacity onPress={() => { setEditing(false); setEditDraft(''); }} disabled={editSaving}>

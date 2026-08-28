@@ -1372,7 +1372,7 @@ export default function Feed() {
       <ReportModal target={reportTarget} onClose={() => setReportTarget(null)} />
 
       <Modal visible={!!editPost} transparent animationType="slide" onRequestClose={() => setEditPost(null)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={s.editBackdrop}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.editBackdrop}>
           <View style={s.editSheet}>
             <View style={s.editHeader}>
               <TouchableOpacity onPress={() => { setEditPost(null); setEditDraft(''); }} disabled={editSaving}>
