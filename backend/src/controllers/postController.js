@@ -79,7 +79,15 @@ async function createPost(req, res) {
         return res.status(400).json({ message: 'Invalid event date' });
       }
     } else {
-      if (!content.trim()) return res.status(400).json({ message: 'Post content is required' });
+      // A plain post needs EITHER text or an attached image/media -- not
+      // necessarily both. This required non-empty content unconditionally,
+      // so a single-image-no-caption post (both composers already allow
+      // submitting one -- their own client-side check is
+      // !text && !media, same as this) was rejected here regardless. Checked
+      // against the raw request fields since imageUrl/media aren't parsed
+      // into local vars until just below this block.
+      const hasMedia = !!(req.body.image_url || req.file || req.body.media);
+      if (!content.trim() && !hasMedia) return res.status(400).json({ message: 'Post content is required' });
     }
 
     let imageUrl = null;
