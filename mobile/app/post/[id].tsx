@@ -189,7 +189,13 @@ export default function SinglePost() {
         onPress: async () => {
           try {
             await apiFetch(`/api/posts/${post.id}`, { method: 'DELETE' });
-            router.replace('/(tabs)/feed');
+            // Feed's tab screen stays mounted (React Navigation keeps tabs
+            // alive for instant switching) and only reloads its post list on
+            // mount or explicit refresh -- not on focus -- so without this,
+            // the just-deleted post stayed visible until a manual
+            // pull-to-refresh. Pass the id so Feed can remove it locally
+            // instead of a full refetch (would undo the query-cost work).
+            router.replace({ pathname: '/(tabs)/feed', params: { deletedPostId: String(post.id) } });
           } catch (err) {
             Alert.alert('Could not delete', err instanceof Error ? err.message : '');
           }

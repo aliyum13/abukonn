@@ -5,7 +5,7 @@ import {
   View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl, Image,
   TouchableOpacity, TextInput, Modal, KeyboardAvoidingView, Platform, Alert, ScrollView, AppState } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/theme/ThemeContext';
 import * as ImagePicker from 'expo-image-picker';
@@ -389,6 +389,7 @@ const POST_CATEGORIES = [
 export default function Feed() {
   const s = useThemedStyles(make_s);
   const router = useRouter();
+  const { deletedPostId } = useLocalSearchParams<{ deletedPostId?: string }>();
   const { ref: listRef, setRefresh } = useTabScrollToTop<Post>();
   const openProfile = useCallback((userId: number) => router.push({ pathname: '/user/[id]', params: { id: String(userId) } }), [router]);
   const followUser = useCallback(async (id: number) => {
@@ -572,6 +573,22 @@ export default function Feed() {
   }, [loadingMore, hasMore, page, feedTab]);
 
   useEffect(() => { load(); setRefresh(load); }, [load, setRefresh]);
+
+  // post/[id].tsx's delete navigates back here with the deleted post's id as
+  // a param, since Feed's own list only loads on mount/explicit refresh, not
+  // on focus (see the mount effect above) -- without this, a just-deleted
+  // post stayed visible until a manual pull-to-refresh. Filter it out
+  // locally rather than refetching (would undo the query-cost work), then
+  // clear the param so this doesn't re-fire on a later, unrelated focus.
+  useEffect(() => {
+    if (!deletedPostId) return;
+    const id = parseInt(deletedPostId, 10);
+    if (Number.isFinite(id)) {
+      setPosts(prev => prev.filter(p => p.id !== id));
+      setFollowingPosts(prev => prev.filter(p => p.id !== id));
+    }
+    router.setParams({ deletedPostId: undefined });
+  }, [deletedPostId, router]);
 
   // When the app returns to the foreground (user left and came back), if the
   // feed is sitting in an error state, auto-retry. Previously a brief network
