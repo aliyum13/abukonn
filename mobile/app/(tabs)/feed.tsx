@@ -980,6 +980,24 @@ export default function Feed() {
     }
   };
 
+  // Ported from post/[id].tsx's likeComment -- same endpoint, same optimistic
+  // pattern. Comment ids are already unified onto the canonical post's thread
+  // server-side (addComment/getComments resolve reposts before writing/
+  // reading), so no repost-aware resolution is needed here, same as there.
+  const likeCommentInModal = async (commentId: number) => {
+    if (!commentsFor) return;
+    setComments(prev => prev.map(c => c.id === commentId
+      ? { ...c, is_liked: !c.is_liked, likes_count: (c.likes_count ?? 0) + (c.is_liked ? -1 : 1) }
+      : c));
+    try {
+      await apiFetch(`/api/posts/${commentsFor.id}/comments/${commentId}/like`, { method: 'POST' });
+    } catch {
+      setComments(prev => prev.map(c => c.id === commentId
+        ? { ...c, is_liked: !c.is_liked, likes_count: (c.likes_count ?? 0) + (c.is_liked ? 1 : -1) }
+        : c));
+    }
+  };
+
   const markBestAnswer = async (commentId: number) => {
     if (!commentsFor) return;
     // Optimistic: this comment becomes the sole best answer, matching web.
@@ -1892,6 +1910,10 @@ export default function Feed() {
                       ) : null}
                       <View style={s.commentMetaRow}>
                         <Text style={s.muted}>{timeAgo(item.created_at)}</Text>
+                        <TouchableOpacity style={s.commentLikeBtn} onPress={() => likeCommentInModal(item.id)}>
+                          <Ionicons name={item.is_liked ? 'heart' : 'heart-outline'} size={14} color={item.is_liked ? colors.danger : colors.textSecondary} />
+                          {item.likes_count ? <Text style={[s.commentLikeCount, item.is_liked ? { color: colors.danger } : null]}>{item.likes_count}</Text> : null}
+                        </TouchableOpacity>
                         <TouchableOpacity onPress={() => { setReplyingToId(replyingToId === item.id ? null : item.id); setReplyText(''); }}>
                           <Text style={s.commentActionText}>Reply</Text>
                         </TouchableOpacity>
@@ -2168,6 +2190,8 @@ const make_s = (colors: Palette) => StyleSheet.create({
   markBestText: { fontSize: 12, fontWeight: '600', color: '#16a34a' },
   commentActionText: { fontSize: 12, fontWeight: '600', color: colors.brand },
   commentReportText: { fontSize: 12, fontWeight: '600', color: colors.danger },
+  commentLikeBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  commentLikeCount: { fontSize: 12, fontWeight: '700', color: colors.textSecondary },
   replyBox: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 8 },
   replyInput: {
     flex: 1, fontSize: 14, color: colors.text, backgroundColor: colors.surfaceSubtle,
