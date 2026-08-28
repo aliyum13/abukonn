@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Modal, FlatList,
-  ActivityIndicator, Image, Alert, Clipboard,
+  ActivityIndicator, Image, Alert, Clipboard, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemedStyles } from '../theme/ThemeContext';
@@ -84,7 +84,11 @@ export function ShareSheet({ post, onClose }: { post: SharePost | null; onClose:
 
   return (
     <Modal visible={post !== null} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={s.backdrop}>
+      {/* Had no keyboard handling at all -- not even the Android-only gap
+          seen elsewhere, this one lacked a KeyboardAvoidingView on both
+          platforms, so the "Search people you follow" field could end up
+          hidden behind the keyboard with nothing pushing the sheet up. */}
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.backdrop}>
         <View style={s.sheet}>
           <View style={s.header}>
             <Text style={s.title}>Share</Text>
@@ -135,7 +139,7 @@ export function ShareSheet({ post, onClose }: { post: SharePost | null; onClose:
             />
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
