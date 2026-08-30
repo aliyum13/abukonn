@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { Button, Card, CardContent, Skeleton } from '@/components/ui';
@@ -60,7 +60,7 @@ function externalViewUrl(fileUrl: string, fileName: string): string {
 }
 
 export default function LibraryPage() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [materials, setMaterials] = useState<Material[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -69,9 +69,32 @@ export default function LibraryPage() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [faculty, setFaculty] = useState('');
   const [department, setDepartment] = useState('');
-  const [level, setLevel] = useState('');
+  // Defaults to the viewer's own level so the first screenful is material for
+  // the year they're actually in, instead of everything ever uploaded. Every
+  // filter still browses freely -- this only seeds the initial value.
+  //
+  // Guarded on LEVELS membership: settings offers a 'Spill Over' level that
+  // this page's LEVELS list doesn't have, and seeding the select with a value
+  // it has no <option> for would apply an invisible filter (the query filters,
+  // the dropdown shows blank). An unrecognised level falls back to All Levels.
+  const initialLevel = (u: typeof user) =>
+    u?.level && (LEVELS as readonly string[]).includes(u.level) ? u.level : '';
+  const [level, setLevel] = useState(() => initialLevel(user));
+  // user arrives asynchronously, so the useState seed above misses when the
+  // page mounts before auth resolves. This applies it once, and only once --
+  // levelSeededRef makes sure a later user refresh can't reset a filter the
+  // person has since changed themselves (including deliberately clearing it).
+  const levelSeededRef = useRef(!!user);
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
+
+  useEffect(() => {
+    if (levelSeededRef.current || !user) return;
+    levelSeededRef.current = true;
+    const seeded = initialLevel(user);
+    if (seeded) { setLevel(seeded); setPage(1); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const fetchMaterials = useCallback(async () => {
     if (!token) return;
