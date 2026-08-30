@@ -29,6 +29,7 @@ import {
   PostContent,
   MediaCarousel,
 } from '@/components/ui';
+import { CONTENT_TOKEN_RE, HASHTAG_RE } from '@/components/ui/PostContent';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -1253,6 +1254,27 @@ function FeedModalUserRow({
   );
 }
 
+// Renders the composer's text with #hashtags tinted, for the overlay that sits
+// behind the (transparent-text) textarea. Purely visual -- it never touches
+// what gets submitted; the textarea remains the single source of truth for
+// `newPost`. Splits on CONTENT_TOKEN_RE, the same pattern PostContent uses to
+// decide what becomes a real link, so what lights up while typing is exactly
+// what will be a tag once posted. A trailing newline gets a zero-width space
+// so the overlay's last line keeps height and cannot drift from the textarea.
+function renderComposerHighlight(text: string) {
+  const parts = text.split(CONTENT_TOKEN_RE);
+  return (
+    <>
+      {parts.map((part, i) =>
+        HASHTAG_RE.test(part)
+          ? <span key={i} className="font-medium text-brand-600 dark:text-brand-400">{part}</span>
+          : <span key={i}>{part}</span>
+      )}
+      {/^[\s\S]*\n$/.test(text) ? '​' : ''}
+    </>
+  );
+}
+
 export default function FeedPage() {
   const { user, token, loading: authLoading, logout } = useAuth();
   const router = useRouter();
@@ -1296,6 +1318,9 @@ export default function FeedPage() {
   const [newPost, setNewPost] = useState('');
   const composerMention = useMentionAutocomplete(token);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
+  // Mirrors the composer textarea's scroll so the highlight overlay behind it
+  // stays aligned once the text grows past the textarea's max height.
+  const composerHighlightRef = useRef<HTMLDivElement>(null);
   const [composerMode, setComposerMode] = useState<'post' | 'discussion' | 'poll' | 'question' | 'event'>('post');
   const [discussionTitle, setDiscussionTitle] = useState('');
   const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
@@ -4036,8 +4061,29 @@ export default function FeedPage() {
                     </div>
                   )}
                   <div className="relative">
+                    {/* Highlight overlay. Sits behind the textarea and mirrors
+                        its text exactly; the textarea's own glyphs are made
+                        transparent (caret kept visible) so what you see is the
+                        overlay. Typography, wrapping and box metrics are kept
+                        identical to the textarea below, or the two would drift
+                        apart character by character. aria-hidden: it is decor,
+                        the textarea is still the real, readable control. */}
+                    <div
+                      ref={composerHighlightRef}
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words text-[15px] leading-relaxed text-ink"
+                      style={{ minHeight: '28px', maxHeight: '200px' }}
+                    >
+                      {renderComposerHighlight(newPost)}
+                    </div>
                     <textarea
                       ref={composerTextareaRef}
+                      onScroll={(e) => {
+                        // Keep the overlay pinned to the textarea once the text
+                        // is long enough for the textarea to scroll internally.
+                        const el = composerHighlightRef.current;
+                        if (el) el.scrollTop = e.currentTarget.scrollTop;
+                      }}
                       value={newPost}
                       onChange={(e) => {
                         setNewPost(e.target.value);
@@ -4072,7 +4118,7 @@ export default function FeedPage() {
                         "What's happening on campus?"
                       }
                       rows={1}
-                      className="w-full resize-none bg-transparent text-[15px] text-ink placeholder:text-ink-muted focus:outline-none leading-relaxed"
+                      className="relative w-full resize-none bg-transparent text-[15px] text-transparent caret-ink placeholder:text-ink-muted focus:outline-none leading-relaxed"
                       style={{ minHeight: '28px', maxHeight: '200px', overflow: 'hidden' }}
                     />
                     {composerMention.isOpen && (

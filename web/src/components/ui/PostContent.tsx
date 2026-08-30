@@ -8,18 +8,25 @@ interface PostContentProps {
   clamp?: boolean;
 }
 
+// The canonical content tokeniser. Exported so anything that needs to agree
+// with what BECOMES a link -- notably the composer's live hashtag highlight --
+// reuses this exact pattern instead of keeping a second copy that can drift.
+// Split form keeps the delimiters; test form matches a single token.
+export const CONTENT_TOKEN_RE = /(#[a-zA-Z0-9_]+|@[a-zA-Z0-9_]{2,30})/g;
+export const HASHTAG_RE = /^#[a-zA-Z0-9_]+$/;
+
 /**
  * Renders post content with clickable #hashtag and @mention links.
  * Splits on #word and @word tokens while keeping the delimiter in the array.
  */
 export function PostContent({ content, className }: PostContentProps) {
   // Split by hashtag OR mention pattern while keeping the delimiter in the array
-  const parts = content.split(/(#[a-zA-Z0-9_]+|@[a-zA-Z0-9_]{2,30})/g);
+  const parts = content.split(CONTENT_TOKEN_RE);
 
   return (
     <span className={className}>
       {parts.map((part, i) => {
-        if (/^#[a-zA-Z0-9_]+$/.test(part)) {
+        if (HASHTAG_RE.test(part)) {
           const tag = part.slice(1).toLowerCase();
           return (
             <Link
