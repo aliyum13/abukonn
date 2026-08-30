@@ -228,4 +228,43 @@ async function deleteMessageHandler(req, res) {
   }
 }
 
-module.exports = { saveMessage, getConversations, getMessages, sendMessageHandler, startConversation, getUnreadCountHandler, uploadMessageImage, deleteMessageHandler };
+async function editMessageHandler(req, res) {
+  try {
+    const messageId = parseInt(req.params.id, 10);
+    if (!messageId) return res.status(400).json({ message: 'Invalid message id' });
+
+    const result = await Message.editMessage(messageId, req.user.id, req.body?.content);
+
+    if (result.error === 'empty') {
+      return res.status(400).json({ message: 'Message cannot be empty' });
+    }
+    if (result.error === 'not_found') {
+      return res.status(404).json({ message: 'Message not found' });
+    }
+    if (result.error === 'forbidden') {
+      return res.status(403).json({ message: 'You can only edit your own messages' });
+    }
+    if (result.error === 'deleted') {
+      return res.status(400).json({ message: 'A deleted message cannot be edited' });
+    }
+
+    // Same room + same shape as message_deleted, so both clients can wire the
+    // edit listener exactly where they already handle the delete one.
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`conversation_${result.message.conversation_id}`).emit('message_edited', {
+        messageId: result.message.id,
+        conversationId: result.message.conversation_id,
+        content: result.message.content,
+        editedAt: result.message.edited_at,
+      });
+    }
+
+    res.json({ message: 'Message updated', data: result.message });
+  } catch (err) {
+    console.error('Edit message error:', err.message);
+    res.status(500).json({ message: 'Server error editing message' });
+  }
+}
+
+module.exports = { saveMessage, getConversations, getMessages, sendMessageHandler, startConversation, getUnreadCountHandler, uploadMessageImage, deleteMessageHandler, editMessageHandler };

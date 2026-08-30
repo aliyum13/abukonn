@@ -56,6 +56,7 @@ interface ChatMessage {
   sender_name: string;
   is_read: boolean;
   is_deleted?: boolean;
+  edited_at?: string | null;
 }
 
 interface GroupMessage {
@@ -71,6 +72,7 @@ interface GroupMessage {
   file_size?: number | null;
   created_at: string;
   is_deleted?: boolean;
+  edited_at?: string | null;
 }
 
 interface GroupMember {
@@ -244,6 +246,40 @@ function plainMessageText(content: string | null): string {
   const messageReply = parseMessageReply(content);
   if (messageReply) return messageReply.reply;
   return content;
+}
+
+/**
+ * The part of a message its sender can actually edit: plain text, or the reply
+ * text inside a reply / story-reply envelope. Returns '' for anything with no
+ * editable words of the sender's own — a shared-post card (those are the
+ * original post's words) or an attachment-only message. Callers treat '' as
+ * "don't offer Edit".
+ */
+function editableMessageText(content: string | null): string {
+  if (!content) return '';
+  if (parseSharedPost(content)) return '';
+  const storyReply = parseStoryReply(content);
+  if (storyReply) return storyReply.reply;
+  const messageReply = parseMessageReply(content);
+  if (messageReply) return messageReply.reply;
+  return content;
+}
+
+/**
+ * Puts edited text back where editableMessageText took it from, keeping any
+ * JSON envelope intact — otherwise editing a reply would flatten it into a
+ * plain message and lose the quoted context it was rendering.
+ */
+function withEditedText(content: string | null, text: string): string {
+  if (content) {
+    try {
+      const data = JSON.parse(content);
+      if (data?.type === 'story_reply' || data?.type === 'message_reply') {
+        return JSON.stringify({ ...data, reply: text });
+      }
+    } catch { /* plain text — nothing to preserve */ }
+  }
+  return text;
 }
 
 // Renders message text with @mentions highlighted (brand color, semibold)
@@ -786,6 +822,18 @@ export function MessagesView() {
       }
     });
 
+    socket.on('message_edited', ({ messageId, conversationId, content, editedAt }: { messageId: number; conversationId: number; content: string; editedAt: string }) => {
+      if (conversationId === activeIdRef.current) {
+        setMessages(prev => prev.map(m => m.id === messageId ? { ...m, content, edited_at: editedAt } : m));
+      }
+    });
+
+    socket.on('group_message_edited', ({ messageId, groupId, content, editedAt }: { messageId: number; groupId: number; content: string; editedAt: string }) => {
+      if (groupId === activeGroupIdRef.current) {
+        setGroupMessages(prev => prev.map(m => m.id === messageId ? { ...m, content, edited_at: editedAt } : m));
+      }
+    });
+
     socket.on('user_typing', ({ conversationId }: { conversationId: number }) => {
       if (conversationId === activeIdRef.current) {
         const conv = conversationsRef.current.find(c => c.id === conversationId);
@@ -1203,6 +1251,13 @@ export function MessagesView() {
 
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; kind: 'dm' | 'group' } | null>(null);
   const [deletingMsg, setDeletingMsg] = useState(false);
+  // Edit state mirrors delete's: a target (opens the modal), a saving flag, and
+  // — unlike delete, which is optimistic and best-effort — an inline error, so
+  // a rejected edit keeps the modal open with the user's text still in it.
+  const [editTarget, setEditTarget] = useState<{ msg: ChatMessage | GroupMessage; kind: 'dm' | 'group' } | null>(null);
+  const [editText, setEditText] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState('');
   const [imageLightbox, setImageLightbox] = useState<string | null>(null);
   const [docViewer, setDocViewer] = useState<{ url: string; name: string } | null>(null);
   const [replyTo, setReplyTo] = useState<{ id: number; senderName: string; preview: string } | null>(null);
@@ -1320,6 +1375,53 @@ export function MessagesView() {
     } finally {
       setDeletingMsg(false);
       setDeleteTarget(null);
+    }
+  };
+
+  const openEdit = (msg: ChatMessage | GroupMessage, kind: 'dm' | 'group') => {
+    setEditTarget({ msg, kind });
+    setEditText(editableMessageText(msg.content));
+    setEditError('');
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editTarget || !token) return;
+    const { msg, kind } = editTarget;
+    const text = editText.trim();
+    if (!text) { setEditError('Message cannot be empty'); return; }
+    // Re-wraps the envelope when there is one, so an edited reply stays a reply.
+    const content = withEditedText(msg.content, text);
+    if (content === msg.content) { setEditTarget(null); return; } // nothing changed
+    setSavingEdit(true);
+    setEditError('');
+    try {
+      const url = kind === 'dm'
+        ? `${API_URL}/api/messages/${msg.id}`
+        : `${API_URL}/api/groups/${'group_id' in msg ? msg.group_id : activeGroupId}/messages/${msg.id}`;
+      const res = await fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ content }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setEditError(data?.message || 'Could not save the edit');
+        return;
+      }
+      const data = await res.json();
+      const editedAt: string = data?.data?.edited_at ?? new Date().toISOString();
+      // Apply locally rather than waiting on the socket echo — the sender's own
+      // client should never see its edit lag behind everyone else's.
+      if (kind === 'dm') {
+        setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, content, edited_at: editedAt } : m));
+      } else {
+        setGroupMessages(prev => prev.map(m => m.id === msg.id ? { ...m, content, edited_at: editedAt } : m));
+      }
+      setEditTarget(null);
+    } catch {
+      setEditError('Could not save the edit');
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -1618,6 +1720,14 @@ export function MessagesView() {
                                   }
                                   <div className={cn('mt-1 flex items-center gap-2', isSent ? 'justify-end' : 'justify-start')}>
                                     <span className={cn('text-caption', isSent ? 'text-brand-200' : 'text-ink-muted')}>{formatTime(msg.created_at)}</span>
+                                    {msg.edited_at && (
+                                      <span
+                                        className={cn('text-caption', isSent ? 'text-brand-200' : 'text-ink-muted')}
+                                        title={`Edited ${new Date(msg.edited_at).toLocaleString()}`}
+                                      >
+                                        edited
+                                      </span>
+                                    )}
                                     {isLastSent && <span className={cn('text-caption', isSent ? 'text-brand-200' : 'text-ink-muted')}>{msg.is_read ? '✓✓ Read' : '✓ Delivered'}</span>}
                                   </div>
                                 </div>
@@ -1841,7 +1951,12 @@ export function MessagesView() {
                                           {msg.content && <p className="whitespace-pre-wrap break-words">{renderWithMentions(msg.content)}</p>}
                                         </>
                                     }
-                                    <p className={cn('mt-1 text-caption', isSent ? 'text-brand-200 text-right' : 'text-ink-muted')}>{formatTime(msg.created_at)}</p>
+                                    <p className={cn('mt-1 text-caption', isSent ? 'text-brand-200 text-right' : 'text-ink-muted')}>
+                                      {formatTime(msg.created_at)}
+                                      {msg.edited_at && (
+                                        <span className="ml-1.5" title={`Edited ${new Date(msg.edited_at).toLocaleString()}`}>· edited</span>
+                                      )}
+                                    </p>
                                   </div>
                                 );
                               })()}
@@ -2555,6 +2670,28 @@ export function MessagesView() {
         </div>
       )}
 
+      {editTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={e => { if (e.target === e.currentTarget && !savingEdit) setEditTarget(null); }}>
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl dark:bg-[#111] dark:border dark:border-[#222]">
+            <h3 className="font-semibold text-ink">Edit message</h3>
+            <textarea
+              autoFocus
+              value={editText}
+              onChange={e => { setEditText(e.target.value); if (editError) setEditError(''); }}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); } }}
+              rows={3}
+              disabled={savingEdit}
+              className="mt-3 w-full resize-none rounded-xl border border-border bg-white px-3 py-2.5 text-body-sm text-ink placeholder:text-ink-muted focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-60 dark:border-[#333] dark:bg-[#1a1a1a]"
+            />
+            {editError && <p className="mt-2 text-caption text-red-600">{editError}</p>}
+            <div className="mt-4 flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setEditTarget(null)} disabled={savingEdit}>Cancel</Button>
+              <Button className="flex-1" loading={savingEdit} disabled={!editText.trim()} onClick={handleSaveEdit}>Save</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Press-and-hold message action sheet ─────────────────────────── */}
       {actionSheet && (() => {
         const { msg, kind, senderName } = actionSheet;
@@ -2596,6 +2733,16 @@ export function MessagesView() {
                   <svg className="h-4.5 w-4.5 text-ink-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17.25 8.25L21 12m0 0l-3.75 3.75M21 12H7.5M3 6.75v10.5" /></svg>
                   Forward
                 </button>
+                {isOwn && !msg.is_deleted && !!editableMessageText(msg.content) && (
+                  <button
+                    type="button"
+                    onClick={() => { openEdit(msg, kind); setActionSheet(null); }}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-body-sm font-medium text-ink hover:bg-surface-muted dark:hover:bg-[#222]"
+                  >
+                    <svg className="h-4.5 w-4.5 text-ink-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zM19.5 14.25v4.125c0 1.243-1.007 2.25-2.25 2.25H5.625a2.25 2.25 0 01-2.25-2.25V9.375c0-1.243 1.007-2.25 2.25-2.25H9.75" /></svg>
+                    Edit Message
+                  </button>
+                )}
                 {isOwn && (
                   <button
                     type="button"

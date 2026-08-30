@@ -56,6 +56,9 @@ async function createGroupTables() {
   await pool.query(`ALTER TABLE abukonn.group_messages ADD COLUMN IF NOT EXISTS file_url TEXT`);
   await pool.query(`ALTER TABLE abukonn.group_messages ADD COLUMN IF NOT EXISTS file_name TEXT`);
   await pool.query(`ALTER TABLE abukonn.group_messages ADD COLUMN IF NOT EXISTS file_size INTEGER`);
+  // See Message.js's messages.edited_at -- same column, same meaning, so group
+  // messages and DMs render the "edited" marker off identical data.
+  await pool.query(`ALTER TABLE abukonn.group_messages ADD COLUMN IF NOT EXISTS edited_at TIMESTAMP WITH TIME ZONE`);
 
   // Backfill invite codes
   await pool.query(`
@@ -308,7 +311,7 @@ async function getGroupMessages(groupId, { limit = 50, before } = {}) {
 
   const { rows } = await pool.query(
     `SELECT * FROM (
-       SELECT gm.id, gm.group_id, gm.sender_id, gm.content, gm.image_url, gm.file_url, gm.file_name, gm.file_size, gm.created_at, gm.is_deleted,
+       SELECT gm.id, gm.group_id, gm.sender_id, gm.content, gm.image_url, gm.file_url, gm.file_name, gm.file_size, gm.created_at, gm.is_deleted, gm.edited_at,
               u.full_name AS sender_name, u.profile_photo_url AS sender_photo
        FROM abukonn.group_messages gm
        JOIN abukonn.users u ON gm.sender_id = u.id
@@ -354,6 +357,31 @@ async function deleteGroupMessage(messageId, userId) {
   return { message: result.rows[0] };
 }
 
+// Group-message twin of Message.editMessage -- same guard order, same
+// semantics, so a group message and a DM behave identically when edited.
+async function editGroupMessage(messageId, userId, content) {
+  const text = (content || '').trim();
+  if (!text) return { error: 'empty' };
+
+  const existing = await pool.query(
+    'SELECT * FROM abukonn.group_messages WHERE id = $1',
+    [messageId]
+  );
+  const msg = existing.rows[0];
+  if (!msg) return { error: 'not_found' };
+  if (msg.sender_id !== userId) return { error: 'forbidden' };
+  if (msg.is_deleted) return { error: 'deleted' };
+
+  const result = await pool.query(
+    `UPDATE abukonn.group_messages
+     SET content = $2, edited_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+    [messageId, text]
+  );
+  return { message: result.rows[0] };
+}
+
 async function getGroupMembers(groupId) {
   const { rows } = await pool.query(
     `SELECT u.id, u.full_name, u.username, u.profile_photo_url, u.department, gm.role, gm.status, gm.joined_at
@@ -385,5 +413,5 @@ module.exports = {
   countAdmins, setMemberRole, setMemberStatus, getMyGroups, getGroupById,
   getGroupByInviteCode, resetInviteCode, updateGroupSettings, deleteGroup,
   getGroupMessages, sendGroupMessage, getGroupMembers, getPendingMembers,
-  deleteGroupMessage,
+  deleteGroupMessage, editGroupMessage,
 };
