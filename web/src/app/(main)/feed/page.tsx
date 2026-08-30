@@ -302,6 +302,7 @@ interface Comment {
   author_photo: string | null;
   reply_count: number;
   is_best_answer?: boolean;
+  edited_at?: string | null;
 }
 
 interface Reply {
@@ -1339,6 +1340,10 @@ export default function FeedPage() {
   const [shareCopied, setShareCopied] = useState(false);
 
   // Reply to Comments
+  // Inline comment editing. Author-only; see handleEditComment.
+  const [editingComment, setEditingComment] = useState<{ postId: number; commentId: number } | null>(null);
+  const [editCommentText, setEditCommentText] = useState('');
+  const [savingCommentEdit, setSavingCommentEdit] = useState(false);
   const [replyingTo, setReplyingTo] = useState<{ postId: number; commentId: number } | null>(null);
   const [replyText, setReplyText] = useState('');
   const [replies, setReplies] = useState<Record<number, Reply[]>>({});
@@ -2203,6 +2208,45 @@ export default function FeedPage() {
           return { ...p, comments_count: p.comments_count + 1 };
         })
       );
+    }
+  };
+
+  // Edit one of YOUR OWN comments. Author-gated to match the server, whose
+  // UPDATE is scoped `WHERE id = $1 AND user_id = $2` -- so a post owner or
+  // reposter cannot rewrite someone else's words even if the UI offered it.
+  //
+  // Deliberately NOT Pro-gated (post editing is). Fixing a typo in your own
+  // comment is table stakes, and gating it would make it disappear for free
+  // users the day PRO_GATES_ENABLED flips.
+  const handleEditComment = async (postId: number, commentId: number) => {
+    if (!token) return;
+    const text = editCommentText.trim();
+    if (!text) return;
+    const before = comments[postId] ?? [];
+    const original = before.find((c) => c.id === commentId);
+    if (original && text === original.content) { setEditingComment(null); return; } // nothing changed
+    setSavingCommentEdit(true);
+    try {
+      const res = await fetch(`${API_URL}/api/posts/${postId}/comments/${commentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ content: text }),
+      });
+      if (!res.ok) throw new Error('edit failed');
+      const data = await res.json();
+      setComments((c) => ({
+        ...c,
+        [postId]: (c[postId] ?? []).map((x) =>
+          x.id === commentId
+            ? { ...x, content: data.comment.content, edited_at: data.comment.edited_at }
+            : x
+        ),
+      }));
+      setEditingComment(null);
+    } catch {
+      // Leave the editor open with the text intact so nothing is lost.
+    } finally {
+      setSavingCommentEdit(false);
     }
   };
 
@@ -3343,7 +3387,35 @@ export default function FeedPage() {
                                           <span className="text-body-sm font-semibold text-ink">{c.author_name}</span>
                                           <span className="text-caption text-ink-muted">{timeAgo(c.created_at)}</span>
                                         </div>
-                                        <p className="mt-0.5 text-body-sm text-ink leading-relaxed"><PostContent content={c.content} /></p>
+                                        {editingComment?.commentId === c.id ? (
+                                          <div className="mt-1 flex flex-col gap-2">
+                                            <textarea
+                                              autoFocus
+                                              value={editCommentText}
+                                              onChange={(e) => setEditCommentText(e.target.value)}
+                                              onKeyDown={(e) => {
+                                                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleEditComment(post.id, c.id); }
+                                                if (e.key === 'Escape') setEditingComment(null);
+                                              }}
+                                              rows={2}
+                                              disabled={savingCommentEdit}
+                                              className="w-full resize-none rounded-xl border border-border bg-white px-3 py-2 text-body-sm text-ink focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-60 dark:border-[#333] dark:bg-[#1a1a1a]"
+                                            />
+                                            <div className="flex items-center gap-2">
+                                              <Button size="sm" loading={savingCommentEdit} disabled={!editCommentText.trim()}
+                                                onClick={() => handleEditComment(post.id, c.id)}>Save</Button>
+                                              <button type="button" onClick={() => setEditingComment(null)} disabled={savingCommentEdit}
+                                                className="text-caption font-medium text-ink-secondary transition hover:text-ink">Cancel</button>
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <p className="mt-0.5 text-body-sm text-ink leading-relaxed">
+                                            <PostContent content={c.content} />
+                                            {c.edited_at && (
+                                              <span className="ml-1 text-[12px] text-ink-muted" title={`Edited ${new Date(c.edited_at).toLocaleString()}`}>· edited</span>
+                                            )}
+                                          </p>
+                                        )}
                                         {c.is_best_answer && (
                                           <div className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-semibold text-green-700 dark:bg-green-950 dark:text-green-400">
                                             ✓ Best Answer
@@ -3377,6 +3449,13 @@ export default function FeedPage() {
                                           </button>
                                         )}
                                         {/* Author-gated, exactly like the server's own check. */}
+                                        {c.user_id === user.id && editingComment?.commentId !== c.id && (
+                                          <button type="button"
+                                            onClick={() => { setEditingComment({ postId: post.id, commentId: c.id }); setEditCommentText(c.content); }}
+                                            className="text-caption font-medium text-ink-secondary transition hover:text-brand-600">
+                                            Edit
+                                          </button>
+                                        )}
                                         {c.user_id === user.id && (
                                           <button type="button"
                                             onClick={() => handleDeleteComment(post.id, c.id)}

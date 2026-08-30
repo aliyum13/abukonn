@@ -91,6 +91,7 @@ interface Comment {
   reply_count: number;
   likes_count?: number;
   is_liked?: boolean;
+  edited_at?: string | null;
 }
 
 interface Reply {
@@ -129,6 +130,10 @@ export default function PostDetailPage() {
   const [replies, setReplies] = useState<Record<number, Reply[]>>({});
   const [repliesLoading, setRepliesLoading] = useState<Record<number, boolean>>({});
   const [expandedReplies, setExpandedReplies] = useState<Set<number>>(new Set());
+  // Inline comment editing, mirroring the feed's.
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
+  const [editCommentText, setEditCommentText] = useState('');
+  const [savingCommentEdit, setSavingCommentEdit] = useState(false);
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const [replyText, setReplyText] = useState('');
   const [reportTarget, setReportTarget] = useState<{ type: 'comment'; id: number; name: string } | null>(null);
@@ -355,6 +360,36 @@ export default function PostDetailPage() {
       setComments(prev => prev.map(c => c.id === commentId
         ? { ...c, is_liked: !c.is_liked, likes_count: (c.likes_count ?? 0) + (c.is_liked ? 1 : -1) }
         : c));
+    }
+  };
+
+  // Edit one of YOUR OWN comments. Author-gated to match the server, whose
+  // UPDATE is scoped `WHERE id = $1 AND user_id = $2`. Not Pro-gated (post
+  // editing is) -- fixing a typo in your own comment is table stakes.
+  // Mirrors the feed's inline editor.
+  const handleEditComment = async (commentId: number) => {
+    if (!token) return;
+    const text = editCommentText.trim();
+    if (!text) return;
+    const original = comments.find((c) => c.id === commentId);
+    if (original && text === original.content) { setEditingCommentId(null); return; }
+    setSavingCommentEdit(true);
+    try {
+      const res = await fetch(`${API_URL}/api/posts/${postId}/comments/${commentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ content: text }),
+      });
+      if (!res.ok) throw new Error('edit failed');
+      const data = await res.json();
+      setComments((cs) => cs.map((c) =>
+        c.id === commentId ? { ...c, content: data.comment.content, edited_at: data.comment.edited_at } : c
+      ));
+      setEditingCommentId(null);
+    } catch {
+      // Leave the editor open with the text intact so nothing is lost.
+    } finally {
+      setSavingCommentEdit(false);
     }
   };
 
@@ -833,7 +868,35 @@ export default function PostDetailPage() {
                         <Link href={`/profile/${c.user_id}`} className="text-body-sm font-semibold text-ink hover:text-brand-600 transition">{c.author_name}</Link>
                         <span className="text-caption text-ink-muted">{timeAgo(c.created_at)}</span>
                       </div>
-                      <p className="mt-0.5 text-body-sm text-ink leading-relaxed"><PostContent content={c.content} /></p>
+                      {editingCommentId === c.id ? (
+                        <div className="mt-1 flex flex-col gap-2">
+                          <textarea
+                            autoFocus
+                            value={editCommentText}
+                            onChange={(e) => setEditCommentText(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleEditComment(c.id); }
+                              if (e.key === 'Escape') setEditingCommentId(null);
+                            }}
+                            rows={2}
+                            disabled={savingCommentEdit}
+                            className="w-full resize-none rounded-xl border border-border bg-white px-3 py-2 text-body-sm text-ink focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-60 dark:border-[#333] dark:bg-[#1a1a1a]"
+                          />
+                          <div className="flex items-center gap-2">
+                            <Button size="sm" loading={savingCommentEdit} disabled={!editCommentText.trim()}
+                              onClick={() => handleEditComment(c.id)}>Save</Button>
+                            <button type="button" onClick={() => setEditingCommentId(null)} disabled={savingCommentEdit}
+                              className="text-caption font-medium text-ink-secondary transition hover:text-ink">Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="mt-0.5 text-body-sm text-ink leading-relaxed">
+                          <PostContent content={c.content} />
+                          {c.edited_at && (
+                            <span className="ml-1 text-[12px] text-ink-muted" title={`Edited ${new Date(c.edited_at).toLocaleString()}`}>· edited</span>
+                          )}
+                        </p>
+                      )}
                     </div>
 
                     {/* Reply controls */}
@@ -862,6 +925,13 @@ export default function PostDetailPage() {
                           {expandedReplies.has(c.id)
                             ? 'Hide replies'
                             : `View ${c.reply_count > 0 ? c.reply_count : replies[c.id]?.length} ${(c.reply_count === 1 || replies[c.id]?.length === 1) ? 'reply' : 'replies'}`}
+                        </button>
+                      )}
+                      {c.user_id === user.id && editingCommentId !== c.id && (
+                        <button type="button"
+                          onClick={() => { setEditingCommentId(c.id); setEditCommentText(c.content); }}
+                          className="text-caption font-medium text-ink-secondary transition hover:text-brand-600">
+                          Edit
                         </button>
                       )}
                       {c.user_id === user.id ? (
