@@ -434,6 +434,47 @@ async function deleteGroupMessageHandler(req, res) {
   }
 }
 
+async function editGroupMessageHandler(req, res) {
+  try {
+    const messageId = parseInt(req.params.messageId, 10);
+    if (!messageId) return res.status(400).json({ message: 'Invalid message id' });
+
+    const result = await Group.editGroupMessage(messageId, req.user.id, req.body?.content);
+
+    if (result.error === 'empty') {
+      return res.status(400).json({ message: 'Message cannot be empty' });
+    }
+    if (result.error === 'not_found') {
+      return res.status(404).json({ message: 'Message not found' });
+    }
+    if (result.error === 'forbidden') {
+      return res.status(403).json({ message: 'You can only edit your own messages' });
+    }
+    if (result.error === 'deleted') {
+      return res.status(400).json({ message: 'A deleted message cannot be edited' });
+    }
+
+    // Mirrors group_message_deleted's room + payload shape, but broadcasts to
+    // the message's OWN group rather than the :id in the URL -- the two are
+    // the same in every real call, and keying off the row means a mismatched
+    // path param can't fan an event out to an unrelated group's room.
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`group_${result.message.group_id}`).emit('group_message_edited', {
+        messageId: result.message.id,
+        groupId: result.message.group_id,
+        content: result.message.content,
+        editedAt: result.message.edited_at,
+      });
+    }
+
+    res.json({ message: 'Message updated', data: result.message });
+  } catch (err) {
+    console.error('Edit group message error:', err.message);
+    res.status(500).json({ message: 'Server error editing message' });
+  }
+}
+
 module.exports = {
   discoverGroups,
   joinGroup,
@@ -441,5 +482,5 @@ module.exports = {
   addGroupMember, removeGroupMember, setMemberRoleHandler, leaveGroup, deleteGroupHandler,
   getInviteLink, resetGroupInviteCode, joinByInviteCode, getGroupByInvitePreview,
   getPendingMembersHandler, approveMember, rejectMember, updateGroupSettingsHandler,
-  deleteGroupMessageHandler,
+  deleteGroupMessageHandler, editGroupMessageHandler,
 };

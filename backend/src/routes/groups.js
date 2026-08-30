@@ -7,7 +7,7 @@ const {
   addGroupMember, removeGroupMember, setMemberRoleHandler, leaveGroup, deleteGroupHandler,
   getInviteLink, resetGroupInviteCode, joinByInviteCode, getGroupByInvitePreview,
   getPendingMembersHandler, approveMember, rejectMember, updateGroupSettingsHandler,
-  deleteGroupMessageHandler,
+  deleteGroupMessageHandler, editGroupMessageHandler,
 } = require('../controllers/groupController');
 
 const router = express.Router();
@@ -25,6 +25,7 @@ router.post('/join/:inviteCode', joinByInviteCode);
 router.get('/:id/messages', getGroupMessages);
 router.post('/:id/messages', sendGroupMessage);
 router.delete('/:id/messages/:messageId', deleteGroupMessageHandler);
+router.patch('/:id/messages/:messageId', editGroupMessageHandler);
 router.post('/:id/members', addGroupMember);
 router.delete('/:id/members/:userId', removeGroupMember);
 router.patch('/:id/members/:userId/role', setMemberRoleHandler);

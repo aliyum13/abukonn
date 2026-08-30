@@ -12,7 +12,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { apiFetch } from '../../src/lib/api';
 import { uploadImage } from '../../src/lib/upload';
 import { MessageBody } from '../../src/components/MessageBody';
-import { friendlyPreview, plainText } from '../../src/lib/messagePreview';
+import { friendlyPreview, plainText, editableText, withEditedText } from '../../src/lib/messagePreview';
 import { getSocket } from '../../src/lib/socket';
 import type { Socket } from 'socket.io-client';
 import { useAuth } from '../../src/context/AuthContext';
@@ -26,6 +26,7 @@ interface Msg {
   image_url?: string | null;
   is_read?: boolean;
   is_deleted?: boolean;
+  edited_at?: string | null;
   created_at: string;
 }
 
@@ -48,6 +49,11 @@ export default function Chat() {
   const [theyreTyping, setTheyreTyping] = useState(false);
   const [replyTo, setReplyTo] = useState<{ id: number; senderName: string; preview: string } | null>(null);
   const [sendingImage, setSendingImage] = useState(false);
+  // Edit sheet state. A Modal rather than Alert.prompt — prompt is iOS-only,
+  // and Edit has to work identically on Android.
+  const [editMsg, setEditMsg] = useState<Msg | null>(null);
+  const [editText, setEditText] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
   const [forwardMsg, setForwardMsg] = useState<Msg | null>(null);
   const [forwardConvos, setForwardConvos] = useState<{ id: number; other_user_name: string; other_user_id: number }[]>([]);
   const [forwardingTo, setForwardingTo] = useState<number | null>(null);
@@ -166,11 +172,31 @@ export default function Chat() {
       socket.on('user_typing', onTyping);
       socket.on('user_stopped_typing', onStopTyping);
 
+      // Live delete/edit sync, mirroring web's two handlers. Without the
+      // delete one, a message the other side removed stayed fully readable
+      // here until the 20s reconcile poll happened to fire.
+      const onDeleted = ({ messageId, conversationId }: { messageId: number; conversationId: number }) => {
+        if (String(conversationId) !== String(id)) return;
+        setMessages(prev => prev.map(m => (
+          m.id === messageId ? { ...m, is_deleted: true, content: '', image_url: null } : m
+        )));
+      };
+      const onEdited = ({ messageId, conversationId, content, editedAt }: { messageId: number; conversationId: number; content: string; editedAt: string }) => {
+        if (String(conversationId) !== String(id)) return;
+        setMessages(prev => prev.map(m => (
+          m.id === messageId ? { ...m, content, edited_at: editedAt } : m
+        )));
+      };
+      socket.on('message_deleted', onDeleted);
+      socket.on('message_edited', onEdited);
+
       cleanup = () => {
         socket.off('receive_message', onReceive);
         socket.off('messages_read', onRead);
         socket.off('user_typing', onTyping);
         socket.off('user_stopped_typing', onStopTyping);
+        socket.off('message_deleted', onDeleted);
+        socket.off('message_edited', onEdited);
       };
     })();
     return () => {
@@ -226,17 +252,57 @@ export default function Chat() {
       {
         text: 'Delete', style: 'destructive',
         onPress: async () => {
-          setMessages(prev => prev.filter(x => x.id !== m.id));
+          // Tombstone rather than remove: the server soft-deletes, so the row
+          // comes back as "This message was deleted" on the next reconcile
+          // anyway. Dropping it locally made the message flicker out and then
+          // reappear as a tombstone — and it disagreed with what every other
+          // client (web, and now this screen's message_deleted listener) shows.
+          setMessages(prev => prev.map(x => (
+            x.id === m.id ? { ...x, is_deleted: true, content: '', image_url: null } : x
+          )));
           try {
             await apiFetch(`/api/messages/${m.id}`, { method: 'DELETE' });
           } catch {
             // Put it back if the server rejects (e.g. not your message).
-            setMessages(prev => [...prev, m].sort((a, b) => a.id - b.id));
+            setMessages(prev => prev.map(x => (x.id === m.id ? m : x)));
             Alert.alert('Could not delete', 'The message could not be removed.');
           }
         },
       },
     ]);
+  };
+
+  const startEdit = (m: Msg) => {
+    setEditMsg(m);
+    setEditText(editableText(m.content));
+  };
+
+  const saveEdit = async () => {
+    if (!editMsg) return;
+    const body = editText.trim();
+    if (!body) { Alert.alert('Message cannot be empty'); return; }
+    // Re-wraps the envelope when there is one, so an edited reply stays a reply.
+    const content = withEditedText(editMsg.content, body);
+    if (content === editMsg.content) { setEditMsg(null); return; } // nothing changed
+    const target = editMsg;
+    setSavingEdit(true);
+    try {
+      const res = await apiFetch<{ data: Msg }>(`/api/messages/${target.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ content }),
+      });
+      const editedAt = res.data?.edited_at ?? new Date().toISOString();
+      // Apply locally rather than waiting on the socket echo — the sender's own
+      // screen should never see its edit lag behind everyone else's.
+      setMessages(prev => prev.map(m => (
+        m.id === target.id ? { ...m, content, edited_at: editedAt } : m
+      )));
+      setEditMsg(null);
+    } catch (err) {
+      Alert.alert('Could not save', err instanceof Error ? err.message : 'The edit was not saved.');
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   const openMessageMenu = (m: Msg) => {
@@ -247,6 +313,11 @@ export default function Chat() {
     ];
     if (m.content) {
       options.push({ text: 'Copy', onPress: () => Clipboard.setString(plainText(m.content)) });
+    }
+    // Only offer Edit where there is text of the sender's own to change:
+    // shared-post cards and image-only messages have none.
+    if (mine && !m.is_deleted && editableText(m.content)) {
+      options.push({ text: 'Edit', onPress: () => startEdit(m) });
     }
     if (mine) {
       options.push({ text: 'Delete', style: 'destructive', onPress: () => deleteMessage(m) });
@@ -398,6 +469,7 @@ export default function Chat() {
                     </TouchableOpacity>
                     <Text style={[s.msgTime, mine ? s.msgTimeMine : s.msgTimeTheirs]}>
                       {formatMessageTime(item.created_at)}
+                      {item.edited_at && !item.is_deleted ? ' · edited' : ''}
                     </Text>
                     {showReceipt ? (
                       <Text style={s.receipt}>{item.is_read ? '✓✓ Read' : '✓ Delivered'}</Text>
@@ -444,6 +516,35 @@ export default function Chat() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Edit sheet */}
+      <Modal visible={editMsg !== null} animationType="slide" transparent onRequestClose={() => setEditMsg(null)}>
+        <View style={s.fwdBackdrop}>
+          <View style={s.fwdSheet}>
+            <View style={s.fwdHeader}>
+              <Text style={s.fwdTitle}>Edit message</Text>
+              <TouchableOpacity onPress={() => setEditMsg(null)} hitSlop={12}><Text style={s.fwdClose}>✕</Text></TouchableOpacity>
+            </View>
+            <TextInput
+              style={s.editInput}
+              value={editText}
+              onChangeText={setEditText}
+              placeholder="Message..."
+              placeholderTextColor={colors.muted}
+              multiline
+              autoFocus
+              editable={!savingEdit}
+            />
+            <TouchableOpacity
+              style={[s.editSave, (!editText.trim() || savingEdit) ? { opacity: 0.5 } : null]}
+              onPress={saveEdit}
+              disabled={!editText.trim() || savingEdit}
+            >
+              {savingEdit ? <ActivityIndicator color="#fff" size="small" /> : <Text style={s.editSaveText}>Save</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Forward sheet */}
       <Modal visible={forwardMsg !== null} animationType="slide" transparent onRequestClose={() => setForwardMsg(null)}>
@@ -527,6 +628,13 @@ const make_s = (colors: Palette) => StyleSheet.create({
   fwdBtnText: { color: colors.brand, fontWeight: '700', fontSize: 14 },
   fwdBtnDone: { borderColor: colors.border },
   fwdBtnDoneText: { color: colors.muted, fontWeight: '700', fontSize: 14 },
+  editInput: {
+    borderWidth: 1, borderColor: colors.border, borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 10, color: colors.text,
+    fontSize: 15, minHeight: 80, maxHeight: 180, textAlignVertical: 'top',
+  },
+  editSave: { marginTop: 14, backgroundColor: colors.brand, borderRadius: 20, paddingVertical: 12, alignItems: 'center' },
+  editSaveText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   receipt: { fontSize: 11, color: colors.muted, marginTop: 2, marginBottom: 4, marginRight: 4 },
   replyPreview: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface },
   replyPreviewSender: { fontSize: 12, fontWeight: '700', color: colors.brand },

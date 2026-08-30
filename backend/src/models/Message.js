@@ -43,6 +43,10 @@ async function createMessagesTables() {
   await pool.query(`ALTER TABLE abukonn.messages ADD COLUMN IF NOT EXISTS file_url TEXT`);
   await pool.query(`ALTER TABLE abukonn.messages ADD COLUMN IF NOT EXISTS file_name TEXT`);
   await pool.query(`ALTER TABLE abukonn.messages ADD COLUMN IF NOT EXISTS file_size INTEGER`);
+  // Set the first time a message's text is edited; NULL means never edited.
+  // Same shape as posts.edited_at -- the clients read it purely as a boolean
+  // ("edited" marker) plus a tooltip timestamp.
+  await pool.query(`ALTER TABLE abukonn.messages ADD COLUMN IF NOT EXISTS edited_at TIMESTAMP WITH TIME ZONE`);
   console.log('Messages tables ready');
 }
 
@@ -195,6 +199,34 @@ async function deleteMessage(messageId, userId) {
   return { message: result.rows[0] };
 }
 
+// Edits a message's text in place. Mirrors deleteMessage's guard order so the
+// two behave identically: only the sender can touch their own message, and a
+// deleted (tombstoned) message is not editable -- its content is already gone,
+// so an edit would silently resurrect a message the sender chose to remove.
+// Only `content` changes: image/file attachments and read state are untouched.
+async function editMessage(messageId, userId, content) {
+  const text = (content || '').trim();
+  if (!text) return { error: 'empty' };
+
+  const existing = await pool.query(
+    'SELECT * FROM abukonn.messages WHERE id = $1',
+    [messageId]
+  );
+  const msg = existing.rows[0];
+  if (!msg) return { error: 'not_found' };
+  if (msg.sender_id !== userId) return { error: 'forbidden' };
+  if (msg.is_deleted) return { error: 'deleted' };
+
+  const result = await pool.query(
+    `UPDATE abukonn.messages
+     SET content = $2, edited_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+    [messageId, text]
+  );
+  return { message: result.rows[0] };
+}
+
 module.exports = {
   CREATE_CONVERSATIONS_TABLE,
   CREATE_MESSAGES_TABLE,
@@ -207,4 +239,5 @@ module.exports = {
   markConversationRead,
   getUnreadCount,
   deleteMessage,
+  editMessage,
 };

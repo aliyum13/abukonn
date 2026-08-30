@@ -11,7 +11,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { apiFetch } from '../../src/lib/api';
 import { uploadImage } from '../../src/lib/upload';
 import { useAuth } from '../../src/context/AuthContext';
-import { plainText } from '../../src/lib/messagePreview';
+import { plainText, editableText, withEditedText } from '../../src/lib/messagePreview';
 import { MessageBody } from '../../src/components/MessageBody';
 import { colors } from '../../src/theme';
 
@@ -24,6 +24,7 @@ interface GroupMsg {
   image_url: string | null;
   created_at: string;
   is_deleted?: boolean;
+  edited_at?: string | null;
 }
 
 export default function GroupChat() {
@@ -37,6 +38,13 @@ export default function GroupChat() {
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
   const [sendingImage, setSendingImage] = useState(false);
+  // Edit sheet state, same shape as chat/[id].tsx (Modal, not Alert.prompt —
+  // prompt is iOS-only). This screen polls rather than holding a socket, so
+  // other members pick edits up on the next 5s reconcile, exactly as they
+  // already do for deletes.
+  const [editMsg, setEditMsg] = useState<GroupMsg | null>(null);
+  const [editText, setEditText] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
   const [forwardMsg, setForwardMsg] = useState<GroupMsg | null>(null);
   const [forwardConvos, setForwardConvos] = useState<{ id: number; other_user_name: string; other_user_id: number }[]>([]);
   const [forwardingTo, setForwardingTo] = useState<number | null>(null);
@@ -131,16 +139,51 @@ export default function GroupChat() {
       {
         text: 'Delete', style: 'destructive',
         onPress: async () => {
-          setMessages(prev => prev.filter(x => x.id !== m.id));
+          // Tombstone rather than remove — the server soft-deletes, so the 5s
+          // poll brings the row straight back as "This message was deleted".
+          // Dropping it locally made it flicker out and reappear.
+          setMessages(prev => prev.map(x => (
+            x.id === m.id ? { ...x, is_deleted: true, content: '', image_url: null } : x
+          )));
           try {
             await apiFetch(`/api/groups/${id}/messages/${m.id}`, { method: 'DELETE' });
           } catch {
-            setMessages(prev => [...prev, m].sort((a, b) => a.id - b.id));
+            setMessages(prev => prev.map(x => (x.id === m.id ? m : x)));
             Alert.alert('Could not delete', 'The message could not be removed.');
           }
         },
       },
     ]);
+  };
+
+  const startEdit = (m: GroupMsg) => {
+    setEditMsg(m);
+    setEditText(editableText(m.content));
+  };
+
+  const saveEdit = async () => {
+    if (!editMsg) return;
+    const body = editText.trim();
+    if (!body) { Alert.alert('Message cannot be empty'); return; }
+    const content = withEditedText(editMsg.content, body);
+    if (content === editMsg.content) { setEditMsg(null); return; } // nothing changed
+    const target = editMsg;
+    setSavingEdit(true);
+    try {
+      const res = await apiFetch<{ data: GroupMsg }>(`/api/groups/${id}/messages/${target.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ content }),
+      });
+      const editedAt = res.data?.edited_at ?? new Date().toISOString();
+      setMessages(prev => prev.map(m => (
+        m.id === target.id ? { ...m, content, edited_at: editedAt } : m
+      )));
+      setEditMsg(null);
+    } catch (err) {
+      Alert.alert('Could not save', err instanceof Error ? err.message : 'The edit was not saved.');
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   const openMessageMenu = (m: GroupMsg) => {
@@ -149,6 +192,11 @@ export default function GroupChat() {
       { text: 'Forward', onPress: () => setForwardMsg(m) },
     ];
     if (m.content) options.push({ text: 'Copy', onPress: () => Clipboard.setString(plainText(m.content)) });
+    // Only where there is text of the sender's own to change — shared-post
+    // cards and image-only messages have none.
+    if (mine && !m.is_deleted && editableText(m.content)) {
+      options.push({ text: 'Edit', onPress: () => startEdit(m) });
+    }
     if (mine) options.push({ text: 'Delete', style: 'destructive', onPress: () => deleteMessage(m) });
     options.push({ text: 'Cancel', style: 'cancel' });
     Alert.alert('Message', undefined, options);
@@ -282,6 +330,9 @@ export default function GroupChat() {
                         {item.content ? (
                           <MessageBody content={item.content} mine={mine} />
                         ) : null}
+                        {item.edited_at ? (
+                          <Text style={[s.editedTag, mine ? s.editedTagMine : null]}>edited</Text>
+                        ) : null}
                       </>
                     )}
                   </TouchableOpacity>
@@ -310,6 +361,35 @@ export default function GroupChat() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Edit sheet */}
+      <Modal visible={editMsg !== null} animationType="slide" transparent onRequestClose={() => setEditMsg(null)}>
+        <View style={s.fwdBackdrop}>
+          <View style={s.fwdSheet}>
+            <View style={s.fwdHeader}>
+              <Text style={s.fwdTitle}>Edit message</Text>
+              <TouchableOpacity onPress={() => setEditMsg(null)} hitSlop={12}><Text style={s.fwdClose}>✕</Text></TouchableOpacity>
+            </View>
+            <TextInput
+              style={s.editInput}
+              value={editText}
+              onChangeText={setEditText}
+              placeholder="Message..."
+              placeholderTextColor={colors.muted}
+              multiline
+              autoFocus
+              editable={!savingEdit}
+            />
+            <TouchableOpacity
+              style={[s.editSave, (!editText.trim() || savingEdit) ? { opacity: 0.5 } : null]}
+              onPress={saveEdit}
+              disabled={!editText.trim() || savingEdit}
+            >
+              {savingEdit ? <ActivityIndicator color="#fff" size="small" /> : <Text style={s.editSaveText}>Save</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Forward sheet */}
       <Modal visible={forwardMsg !== null} animationType="slide" transparent onRequestClose={() => setForwardMsg(null)}>
@@ -376,6 +456,15 @@ const make_s = (colors: Palette) => StyleSheet.create({
   senderName: { fontSize: 12, fontWeight: '700', color: colors.brand, marginBottom: 2 },
   mineText: { color: '#fff', fontSize: 15 },
   theirsText: { color: colors.text, fontSize: 15 },
+  editedTag: { fontSize: 11, color: colors.muted, marginTop: 2 },
+  editedTagMine: { color: 'rgba(255,255,255,0.75)' },
+  editInput: {
+    borderWidth: 1, borderColor: colors.border, borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 10, color: colors.text,
+    fontSize: 15, minHeight: 80, maxHeight: 180, textAlignVertical: 'top',
+  },
+  editSave: { marginTop: 14, backgroundColor: colors.brand, borderRadius: 20, paddingVertical: 12, alignItems: 'center' },
+  editSaveText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   deletedText: { fontSize: 15, fontStyle: 'italic', color: colors.muted },
   deletedTextMine: { color: 'rgba(255,255,255,0.85)' },
   loadOlderBtn: { alignItems: 'center', justifyContent: 'center', paddingVertical: 12, marginBottom: 4 },
