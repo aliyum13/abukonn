@@ -1,10 +1,27 @@
 import { API_URL, fetchWithTimeout } from './api';
 import { getToken } from './storage';
 
-// Longer than apiFetch's default timeout -- large media on weak campus WiFi
-// legitimately takes longer than a normal API call, and killing a real slow
-// upload early would just trade "stuck forever" for "fails needlessly."
-const UPLOAD_TIMEOUT_MS = 60000;
+// The signature call is a tiny JSON round-trip -- it should fail fast.
+const SIGNATURE_TIMEOUT_MS = 30000;
+
+// The upload itself gets a SIZE-SCALED deadline instead of one flat number.
+// A single 60s cap was fine for 10MB images but is nowhere near enough for a
+// 200MB video: even a healthy 2 MB/s connection needs ~100s, and weak campus
+// WiFi (~300 KB/s) needs ~11 minutes. A flat cap large enough for the worst
+// case would also mean a genuinely hung 2MB image sat there for 15 minutes
+// before failing. Scaling by bytes keeps small uploads failing fast while
+// giving big ones the room they actually need.
+const MIN_UPLOAD_BYTES_PER_SEC = 300 * 1024; // slowest throughput we'll wait for
+const MIN_UPLOAD_TIMEOUT_MS = 60000;         // floor, for small files
+const MAX_UPLOAD_TIMEOUT_MS = 900000;        // 15min ceiling, so nothing hangs forever
+
+// Deadline for uploading `bytes`. Callers that don't know the size pass the
+// tier cap, so an unknown-size file is treated as the largest it's allowed
+// to be rather than defaulting to the (far too short) floor.
+function uploadTimeoutFor(bytes: number): number {
+  const needed = Math.ceil(bytes / MIN_UPLOAD_BYTES_PER_SEC) * 1000;
+  return Math.min(MAX_UPLOAD_TIMEOUT_MS, Math.max(MIN_UPLOAD_TIMEOUT_MS, needed));
+}
 
 // Upload an image to Cloudinary directly and return its URL.
 //
@@ -23,15 +40,20 @@ export async function uploadImage(uri: string, folder: string): Promise<string> 
 const VIDEO_EXTENSIONS = new Set(['mp4', 'mov', 'm4v', 'webm', '3gp']);
 
 // Multi-media upload limits, tiered for the "increased upload limits" Pro
-// perk. Free: 10MB image / 50MB video / 60s. Pro: 25MB / 150MB / 180s.
+// perk. Free: 10MB image / 200MB video / 180s. Pro: 25MB / 400MB / 360s.
+// Free's video allowance was raised from 50MB/60s -- 60s was far too short
+// for the lecture clips and event footage testers actually post. Pro was
+// raised in step (was 150MB/180s, which the new free tier would otherwise
+// have matched or beaten) so the tier structure stays intact and Pro is
+// still strictly the better deal.
 // Checked client-side before the network request starts, so a huge file is
 // rejected instantly instead of failing partway through (or wasting the
 // person's data on an upload the backend would reject anyway). Kept as
 // explicit tiers so the Pro values read in one place and the free→pro
 // switch is a single flag.
 const LIMITS = {
-  free: { imageBytes: 10 * 1024 * 1024, videoBytes: 50 * 1024 * 1024, videoMs: 60000 },
-  pro:  { imageBytes: 25 * 1024 * 1024, videoBytes: 150 * 1024 * 1024, videoMs: 180000 },
+  free: { imageBytes: 10 * 1024 * 1024, videoBytes: 200 * 1024 * 1024, videoMs: 180000 },
+  pro:  { imageBytes: 25 * 1024 * 1024, videoBytes: 400 * 1024 * 1024, videoMs: 360000 },
 } as const;
 
 // Picks the active tier. is_pro doesn't exist yet, so callers pass nothing
@@ -89,7 +111,7 @@ export async function uploadMedia(
   const sigRes = await fetchWithTimeout(
     `${API_URL}/api/stories/upload-signature?folder=${encodeURIComponent(folder)}`,
     { headers: { Authorization: `Bearer ${token}` } },
-    UPLOAD_TIMEOUT_MS,
+    SIGNATURE_TIMEOUT_MS,
   );
   if (!sigRes.ok) throw new Error('Could not start the upload.');
   const { signature, timestamp, api_key, cloud_name, folder: signedFolder } =
@@ -113,7 +135,9 @@ export async function uploadMedia(
   const upRes = await fetchWithTimeout(
     `https://api.cloudinary.com/v1_1/${cloud_name}/${type}/upload`,
     { method: 'POST', body: fd },
-    UPLOAD_TIMEOUT_MS,
+    // Size-scaled: the caller's measured size when it has one, else the tier
+    // cap for this media type (the largest this file is allowed to be).
+    uploadTimeoutFor(fileSizeBytes ?? (type === 'video' ? limits.videoBytes : limits.imageBytes)),
   );
   if (!upRes.ok) throw new Error(type === 'video' ? 'Video upload failed.' : 'Image upload failed.');
   const data = (await upRes.json()) as {

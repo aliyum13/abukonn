@@ -12,13 +12,30 @@
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 // Multi-media upload limits, tiered for the "increased upload limits" Pro
-// perk. Free: 10MB image / 50MB video / 60s. Pro: 25MB / 150MB / 180s.
-// Kept as explicit tiers rather than magic numbers so the Pro values are
-// one obvious place to read and the free→pro switch is a single flag.
+// perk. Free: 10MB image / 200MB video / 180s. Pro: 25MB / 400MB / 360s.
+// Free's video allowance was raised from 50MB/60s -- 60s was far too short
+// for the lecture clips and event footage testers actually post. Pro was
+// raised in step (was 150MB/180s, which the new free tier would otherwise
+// have matched or beaten) so the tier structure stays intact and Pro is
+// still strictly the better deal. Mirrors mobile/src/lib/upload.ts.
 const LIMITS = {
-  free: { imageBytes: 10 * 1024 * 1024, videoBytes: 50 * 1024 * 1024, videoSeconds: 60 },
-  pro:  { imageBytes: 25 * 1024 * 1024, videoBytes: 150 * 1024 * 1024, videoSeconds: 180 },
+  free: { imageBytes: 10 * 1024 * 1024, videoBytes: 200 * 1024 * 1024, videoSeconds: 180 },
+  pro:  { imageBytes: 25 * 1024 * 1024, videoBytes: 400 * 1024 * 1024, videoSeconds: 360 },
 } as const;
+
+// Size-scaled upload deadline, mirroring mobile's uploadTimeoutFor(). The old
+// flat 5-minute abort was sized for 50MB video; a 200MB upload on weak campus
+// WiFi (~300 KB/s) legitimately needs ~11 minutes and would have been killed
+// mid-flight. Scaling by bytes keeps a small stuck upload failing fast while
+// giving a genuinely large one the room it needs.
+const MIN_UPLOAD_BYTES_PER_SEC = 300 * 1024;
+const MIN_UPLOAD_TIMEOUT_MS = 60000;
+const MAX_UPLOAD_TIMEOUT_MS = 900000; // 15min ceiling, so nothing hangs forever
+
+function uploadTimeoutFor(bytes: number): number {
+  const needed = Math.ceil(bytes / MIN_UPLOAD_BYTES_PER_SEC) * 1000;
+  return Math.min(MAX_UPLOAD_TIMEOUT_MS, Math.max(MIN_UPLOAD_TIMEOUT_MS, needed));
+}
 
 // Picks the active tier. is_pro doesn't exist yet, so callers pass nothing
 // and everyone gets free limits (Option A, matching every other Pro
@@ -99,9 +116,9 @@ export async function uploadMedia(
           };
 
         const xhr = new XMLHttpRequest();
-        // 5 minutes — video files are larger and slower to upload than the
-        // images this timeout was originally sized for.
-        const tid = setTimeout(() => xhr.abort(), 300000);
+        // file.size is always known in the browser, so the deadline is scaled
+        // to this exact upload rather than to a worst-case guess.
+        const tid = setTimeout(() => xhr.abort(), uploadTimeoutFor(file.size));
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
         };
