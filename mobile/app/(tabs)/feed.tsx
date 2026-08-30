@@ -1087,6 +1087,55 @@ export default function Feed() {
     }
   };
 
+  // Delete one of YOUR OWN comments from the feed's comment modal.
+  //
+  // The modal offered Like / Reply / Report / Best Answer but never Delete, so
+  // a comment made from the feed (which is where reposts are read and
+  // commented on) could only be removed by opening the post's own screen. On a
+  // repost there was no obvious route there at all, which is what "can't
+  // delete my comment on a repost" actually was.
+  //
+  // Authorisation is by COMMENT AUTHOR, matching the server: the endpoint
+  // deletes `WHERE id = $1 AND user_id = $2`, so a post owner (or reposter)
+  // cannot remove someone else's comment regardless of what the UI offers.
+  // This action is gated the same way, so affordance matches permission.
+  const deleteCommentInModal = (commentId: number) => {
+    if (!commentsFor) return;
+    const target = commentsFor;
+    Alert.alert('Delete comment', 'This comment will be removed.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: async () => {
+          const prev = comments;
+          setComments(cs => cs.filter(c => c.id !== commentId));
+          // Repost-aware decrement, mirroring sendComment's increment.
+          setPosts(ps => ps.map(p => {
+            if (p.id !== target.id) return p;
+            if (p.is_repost && p.original_comments_count !== undefined) {
+              return { ...p, original_comments_count: Math.max(0, p.original_comments_count - 1) };
+            }
+            return { ...p, comments_count: Math.max(0, p.comments_count - 1) };
+          }));
+          try {
+            await apiFetch(`/api/posts/${target.id}/comments/${commentId}`, { method: 'DELETE' });
+          } catch (err) {
+            // Put the comment and the count back if the server refused.
+            setComments(prev);
+            setPosts(ps => ps.map(p => {
+              if (p.id !== target.id) return p;
+              if (p.is_repost && p.original_comments_count !== undefined) {
+                return { ...p, original_comments_count: p.original_comments_count + 1 };
+              }
+              return { ...p, comments_count: p.comments_count + 1 };
+            }));
+            Alert.alert('Could not delete', err instanceof Error ? err.message : '');
+          }
+        },
+      },
+    ]);
+  };
+
   // Starts uploading one picked asset in the background, tracking its own
   // progress/result in composerMedia by id. Mirrors web's per-item pattern.
   const startMediaUpload = (id: string, uri: string, kind: 'image' | 'video', fileSizeBytes: number | null, durationMs: number | null) => {
@@ -1987,6 +2036,14 @@ export default function Feed() {
                             <Text style={s.commentReportText}>Report</Text>
                           </TouchableOpacity>
                         ) : null}
+                        {/* Author-gated, exactly like the server's own check.
+                            user?.id is null-checked so a missing id can't make
+                            `undefined === undefined` offer Delete on every row. */}
+                        {user?.id != null && item.user_id === user.id ? (
+                          <TouchableOpacity onPress={() => deleteCommentInModal(item.id)}>
+                            <Text style={s.commentDeleteText}>Delete</Text>
+                          </TouchableOpacity>
+                        ) : null}
                         {canMark ? (
                           <TouchableOpacity onPress={() => markBestAnswer(item.id)} hitSlop={8}>
                             <Text style={s.markBestText}>✓ Best Answer</Text>
@@ -2251,6 +2308,7 @@ const make_s = (colors: Palette) => StyleSheet.create({
   commentMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 4, flexWrap: 'wrap' },
   markBestText: { fontSize: 12, fontWeight: '600', color: '#16a34a' },
   commentActionText: { fontSize: 12, fontWeight: '600', color: colors.brand },
+  commentDeleteText: { fontSize: 12, fontWeight: '600', color: colors.danger },
   commentReportText: { fontSize: 12, fontWeight: '600', color: colors.danger },
   commentLikeBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   commentLikeCount: { fontSize: 12, fontWeight: '700', color: colors.textSecondary },
