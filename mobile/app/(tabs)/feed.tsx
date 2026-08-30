@@ -102,6 +102,7 @@ interface Comment {
   reply_count?: number;
   likes_count?: number;
   is_liked?: boolean;
+  edited_at?: string | null;
 }
 
 interface CommentReply { id: number; content: string; author_name: string; created_at: string }
@@ -542,6 +543,10 @@ export default function Feed() {
   // this modal, opened from the feed's own comment button, never did).
   const [expandedComments, setExpandedComments] = useState<Set<number>>(new Set());
   const [repliesByComment, setRepliesByComment] = useState<Record<number, CommentReply[]>>({});
+  // Inline comment editing in the comment modal. Author-only; see saveCommentEdit.
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
+  const [editCommentText, setEditCommentText] = useState('');
+  const [savingCommentEdit, setSavingCommentEdit] = useState(false);
   const [replyingToId, setReplyingToId] = useState<number | null>(null);
   const [replyText, setReplyText] = useState('');
 
@@ -1134,6 +1139,36 @@ export default function Feed() {
         },
       },
     ]);
+  };
+
+  // Edit one of YOUR OWN comments. Author-gated to match the server, whose
+  // UPDATE is scoped `WHERE id = $1 AND user_id = $2` -- a post owner or
+  // reposter cannot rewrite someone else's words even if the UI offered it.
+  //
+  // Deliberately NOT Pro-gated (post editing is): fixing a typo in your own
+  // comment is table stakes, and gating it would make it disappear for free
+  // users the day PRO_GATES_ENABLED flips.
+  const saveCommentEdit = async (commentId: number) => {
+    if (!commentsFor) return;
+    const text = editCommentText.trim();
+    if (!text) return;
+    const original = comments.find(c => c.id === commentId);
+    if (original && text === original.content) { setEditingCommentId(null); return; }
+    setSavingCommentEdit(true);
+    try {
+      const res = await apiFetch<{ comment: Comment }>(
+        `/api/posts/${commentsFor.id}/comments/${commentId}`,
+        { method: 'PATCH', body: JSON.stringify({ content: text }) });
+      setComments(cs => cs.map(c => c.id === commentId
+        ? { ...c, content: res.comment.content, edited_at: res.comment.edited_at }
+        : c));
+      setEditingCommentId(null);
+    } catch (err) {
+      // Leave the editor open with the text intact so nothing is lost.
+      Alert.alert('Could not save', err instanceof Error ? err.message : '');
+    } finally {
+      setSavingCommentEdit(false);
+    }
   };
 
   // Starts uploading one picked asset in the background, tracking its own
@@ -2009,7 +2044,34 @@ export default function Feed() {
                   return (
                     <View style={s.commentRow}>
                       <Text style={s.author}>{item.author_name}</Text>
-                      <Text style={s.content}>{item.content}</Text>
+                      {editingCommentId === item.id ? (
+                        <View style={s.commentEditBox}>
+                          <TextInput
+                            style={s.commentEditInput}
+                            value={editCommentText}
+                            onChangeText={setEditCommentText}
+                            placeholderTextColor={colors.muted}
+                            multiline
+                            autoFocus
+                            editable={!savingCommentEdit}
+                          />
+                          <View style={s.commentEditActions}>
+                            <TouchableOpacity onPress={() => setEditingCommentId(null)} disabled={savingCommentEdit}>
+                              <Text style={s.commentEditCancel}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => saveCommentEdit(item.id)} disabled={!editCommentText.trim() || savingCommentEdit}>
+                              {savingCommentEdit
+                                ? <ActivityIndicator size="small" color={colors.brand} />
+                                : <Text style={[s.commentEditSave, !editCommentText.trim() ? { opacity: 0.4 } : null]}>Save</Text>}
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      ) : (
+                        <Text style={s.content}>
+                          {item.content}
+                          {item.edited_at ? <Text style={s.commentEditedTag}>  edited</Text> : null}
+                        </Text>
+                      )}
                       {item.is_best_answer ? (
                         <View style={s.bestAnswerBadge}>
                           <Text style={s.bestAnswerBadgeText}>✓ Best Answer</Text>
@@ -2039,6 +2101,11 @@ export default function Feed() {
                         {/* Author-gated, exactly like the server's own check.
                             user?.id is null-checked so a missing id can't make
                             `undefined === undefined` offer Delete on every row. */}
+                        {user?.id != null && item.user_id === user.id && editingCommentId !== item.id ? (
+                          <TouchableOpacity onPress={() => { setEditingCommentId(item.id); setEditCommentText(item.content); }}>
+                            <Text style={s.commentActionText}>Edit</Text>
+                          </TouchableOpacity>
+                        ) : null}
                         {user?.id != null && item.user_id === user.id ? (
                           <TouchableOpacity onPress={() => deleteCommentInModal(item.id)}>
                             <Text style={s.commentDeleteText}>Delete</Text>
@@ -2309,6 +2376,16 @@ const make_s = (colors: Palette) => StyleSheet.create({
   markBestText: { fontSize: 12, fontWeight: '600', color: '#16a34a' },
   commentActionText: { fontSize: 12, fontWeight: '600', color: colors.brand },
   commentDeleteText: { fontSize: 12, fontWeight: '600', color: colors.danger },
+  commentEditedTag: { fontSize: 11, color: colors.muted },
+  commentEditBox: { marginTop: 4 },
+  commentEditInput: {
+    borderWidth: 1, borderColor: colors.border, borderRadius: 10,
+    paddingHorizontal: 10, paddingVertical: 8, color: colors.text,
+    fontSize: 14, minHeight: 48, textAlignVertical: 'top',
+  },
+  commentEditActions: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 6 },
+  commentEditCancel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
+  commentEditSave: { fontSize: 12, fontWeight: '700', color: colors.brand },
   commentReportText: { fontSize: 12, fontWeight: '600', color: colors.danger },
   commentLikeBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   commentLikeCount: { fontSize: 12, fontWeight: '700', color: colors.textSecondary },

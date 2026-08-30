@@ -461,6 +461,37 @@ async function deleteCommentHandler(req, res) {
   }
 }
 
+// Edit own comment (author only).
+//
+// Deliberately NOT Pro-gated, unlike updatePost. Editing a post after
+// publishing is sold as a Pro perk; fixing a typo in your own comment is
+// table stakes, and gating it would make comment editing vanish for free
+// users the day PRO_GATES_ENABLED flips to true. If it should become a perk
+// later, wrap this in the same isProFeatureUnlocked() check updatePost uses.
+async function updateCommentHandler(req, res) {
+  try {
+    const commentId = parseInt(req.params.commentId, 10);
+    if (!commentId) return res.status(400).json({ message: 'Invalid comment id' });
+
+    const content = (req.body.content || '').trim();
+    if (!content) {
+      return res.status(400).json({ message: 'Comment cannot be empty.' });
+    }
+
+    // Author scoping lives in the UPDATE itself, so null means "no such
+    // comment, or not yours" -- one 403 for both, leaking nothing either way.
+    const updated = await Comment.updateComment(commentId, req.user.id, content);
+    if (!updated) {
+      return res.status(403).json({ message: 'You can only edit your own comment' });
+    }
+
+    res.json({ comment: updated });
+  } catch (err) {
+    console.error('Update comment error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
 async function addComment(req, res) {
   try {
     const postId = parseInt(req.params.id, 10);
@@ -738,4 +769,4 @@ async function addReply(req, res) {
   }
 }
 
-module.exports = { createPost, getFeed, getFollowingFeed, getSinglePost, likePost, addComment, getComments, likeCommentHandler, deleteCommentHandler, deletePost, updatePost, getReplies, addReply, repostPost, unrepostPost, viewPost, voteOnPoll, getPollVotersHandler, toggleRSVP, setBestAnswer, attachMedia, getPostAnalytics };
+module.exports = { createPost, getFeed, getFollowingFeed, getSinglePost, likePost, addComment, getComments, likeCommentHandler, deleteCommentHandler, updateCommentHandler, deletePost, updatePost, getReplies, addReply, repostPost, unrepostPost, viewPost, voteOnPoll, getPollVotersHandler, toggleRSVP, setBestAnswer, attachMedia, getPostAnalytics };

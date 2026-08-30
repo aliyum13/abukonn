@@ -20,6 +20,10 @@ async function createCommentsTable() {
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_comments_post ON abukonn.comments(post_id, created_at)`);
   await pool.query(`ALTER TABLE abukonn.comments ADD COLUMN IF NOT EXISTS is_best_answer BOOLEAN DEFAULT FALSE`);
   await pool.query(`ALTER TABLE abukonn.comments ADD COLUMN IF NOT EXISTS likes_count INTEGER NOT NULL DEFAULT 0`);
+  // Set the first time a comment's text is edited; NULL means never edited.
+  // Same shape and meaning as posts.edited_at, so both render the same
+  // "edited" marker off identical data.
+  await pool.query(`ALTER TABLE abukonn.comments ADD COLUMN IF NOT EXISTS edited_at TIMESTAMP WITH TIME ZONE`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS abukonn.comment_likes (
       id SERIAL PRIMARY KEY,
@@ -64,6 +68,28 @@ async function deleteComment(commentId, userId) {
   const { rows } = await pool.query(
     'DELETE FROM abukonn.comments WHERE id = $1 AND user_id = $2 RETURNING post_id',
     [commentId, userId]
+  );
+  return rows[0] || null;
+}
+
+// Edit a comment's text -- only by its author.
+//
+// The author check is part of the UPDATE's own WHERE clause rather than a
+// separate SELECT-then-write, exactly like deleteComment. That is deliberate:
+// it makes authorisation atomic with the write (no TOCTOU window) and means
+// there is exactly one place per operation where the rule lives. A zero-row
+// result is indistinguishable from "not yours", which is what the caller
+// wants -- it maps to 403 without leaking whether the comment exists.
+//
+// Returns the updated row, or null when the comment does not exist OR is not
+// this user's. backend/test/comment-authz.test.js pins this scoping.
+async function updateComment(commentId, userId, content) {
+  const { rows } = await pool.query(
+    `UPDATE abukonn.comments
+     SET content = $3, edited_at = CURRENT_TIMESTAMP
+     WHERE id = $1 AND user_id = $2
+     RETURNING *`,
+    [commentId, userId, content]
   );
   return rows[0] || null;
 }
@@ -139,5 +165,6 @@ module.exports = {
   getCommentsByUser,
   toggleCommentLike,
   deleteComment,
+  updateComment,
   markBestAnswer,
 };

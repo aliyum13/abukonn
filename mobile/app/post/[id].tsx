@@ -42,7 +42,7 @@ interface Post {
   original_author_full_name?: string | null; original_author_photo?: string | null; original_author_id?: number | null;
   original_likes_count?: number; original_comments_count?: number; original_repost_count?: number;
 }
-interface Comment { id: number; user_id?: number; content: string; author_name: string; created_at: string; reply_count?: number; likes_count?: number; is_liked?: boolean }
+interface Comment { id: number; user_id?: number; content: string; author_name: string; created_at: string; reply_count?: number; likes_count?: number; is_liked?: boolean; edited_at?: string | null }
 interface Reply { id: number; content: string; author_name: string; created_at: string }
 
 function timeAgo(iso: string) {
@@ -73,6 +73,10 @@ export default function SinglePost() {
   // comment currently being replied to.
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [repliesByComment, setRepliesByComment] = useState<Record<number, Reply[]>>({});
+  // Inline comment editing, mirroring the feed modal's.
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
+  const [editCommentText, setEditCommentText] = useState('');
+  const [savingCommentEdit, setSavingCommentEdit] = useState(false);
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [replyText, setReplyText] = useState('');
@@ -304,6 +308,30 @@ export default function SinglePost() {
     }
   };
 
+  // Edit one of YOUR OWN comments. Author-gated to match the server, whose
+  // UPDATE is scoped `WHERE id = $1 AND user_id = $2`. Not Pro-gated (post
+  // editing is) -- fixing a typo in your own comment is table stakes.
+  const saveCommentEdit = async (commentId: number) => {
+    const text = editCommentText.trim();
+    if (!text) return;
+    const original = comments.find(c => c.id === commentId);
+    if (original && text === original.content) { setEditingCommentId(null); return; }
+    setSavingCommentEdit(true);
+    try {
+      const res = await apiFetch<{ comment: Comment }>(
+        `/api/posts/${id}/comments/${commentId}`,
+        { method: 'PATCH', body: JSON.stringify({ content: text }) });
+      setComments(cs => cs.map(c => c.id === commentId
+        ? { ...c, content: res.comment.content, edited_at: res.comment.edited_at }
+        : c));
+      setEditingCommentId(null);
+    } catch (err) {
+      Alert.alert('Could not save', err instanceof Error ? err.message : '');
+    } finally {
+      setSavingCommentEdit(false);
+    }
+  };
+
   const deleteComment = (commentId: number) => {
     Alert.alert('Delete comment', 'This cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
@@ -450,7 +478,34 @@ export default function SinglePost() {
             renderItem={({ item }) => (
               <View style={s.comment}>
                 <Text style={s.commentAuthor}>{item.author_name}</Text>
-                <PostContent content={item.content} style={s.commentText} />
+                {editingCommentId === item.id ? (
+                  <View style={s.commentEditBox}>
+                    <TextInput
+                      style={s.commentEditInput}
+                      value={editCommentText}
+                      onChangeText={setEditCommentText}
+                      placeholderTextColor={colors.muted}
+                      multiline
+                      autoFocus
+                      editable={!savingCommentEdit}
+                    />
+                    <View style={s.commentEditActions}>
+                      <TouchableOpacity onPress={() => setEditingCommentId(null)} disabled={savingCommentEdit}>
+                        <Text style={s.commentEditCancel}>Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => saveCommentEdit(item.id)} disabled={!editCommentText.trim() || savingCommentEdit}>
+                        {savingCommentEdit
+                          ? <ActivityIndicator size="small" color={colors.brand} />
+                          : <Text style={[s.commentEditSave, !editCommentText.trim() ? { opacity: 0.4 } : null]}>Save</Text>}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <>
+                    <PostContent content={item.content} style={s.commentText} />
+                    {item.edited_at ? <Text style={s.commentEditedTag}>edited</Text> : null}
+                  </>
+                )}
                 <View style={s.commentActions}>
                   <Text style={s.commentTime}>{timeAgo(item.created_at)}</Text>
                   <TouchableOpacity style={s.commentLikeBtn} onPress={() => likeComment(item.id)}>
@@ -460,6 +515,11 @@ export default function SinglePost() {
                   <TouchableOpacity onPress={() => { setReplyingTo(replyingTo === item.id ? null : item.id); setReplyText(''); }}>
                     <Text style={s.replyAction}>Reply</Text>
                   </TouchableOpacity>
+                  {item.user_id === currentUserId && editingCommentId !== item.id ? (
+                    <TouchableOpacity onPress={() => { setEditingCommentId(item.id); setEditCommentText(item.content); }}>
+                      <Text style={s.replyAction}>Edit</Text>
+                    </TouchableOpacity>
+                  ) : null}
                   {item.user_id === currentUserId ? (
                     <TouchableOpacity onPress={() => deleteComment(item.id)}>
                       <Text style={s.deleteAction}>Delete</Text>
@@ -626,6 +686,16 @@ const make_s = (colors: Palette) => StyleSheet.create({
   commentsHeading: { fontSize: 14, fontWeight: '800', color: colors.textSecondary, marginTop: 18, textTransform: 'uppercase', letterSpacing: 0.5 },
   comment: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface },
   commentAuthor: { fontSize: 14, fontWeight: '700', color: colors.text },
+  commentEditedTag: { fontSize: 11, color: colors.muted, marginTop: 2 },
+  commentEditBox: { marginTop: 4 },
+  commentEditInput: {
+    borderWidth: 1, borderColor: colors.border, borderRadius: 10,
+    paddingHorizontal: 10, paddingVertical: 8, color: colors.text,
+    fontSize: 14, minHeight: 48, textAlignVertical: 'top',
+  },
+  commentEditActions: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 6 },
+  commentEditCancel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
+  commentEditSave: { fontSize: 12, fontWeight: '700', color: colors.brand },
   commentText: { fontSize: 15, color: colors.text, marginTop: 2, lineHeight: 20 },
   commentTime: { fontSize: 12, color: colors.muted, marginTop: 4 },
   commentActions: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 4 },

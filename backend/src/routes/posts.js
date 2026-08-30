@@ -12,6 +12,7 @@ const {
   getComments,
   likeCommentHandler,
   deleteCommentHandler,
+  updateCommentHandler,
   deletePost,
   updatePost,
   getReplies,
@@ -51,5 +52,6 @@ router.post('/:id/comments/:commentId/replies', addReply);
 router.post('/:id/comments/:commentId/best-answer', setBestAnswer);
 router.post('/:id/comments/:commentId/like', likeCommentHandler);
 router.delete('/:id/comments/:commentId', deleteCommentHandler);
+router.patch('/:id/comments/:commentId', updateCommentHandler);
 
 module.exports = router;

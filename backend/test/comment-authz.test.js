@@ -1,4 +1,4 @@
-// Regression guard for comment-delete authorisation.
+// Regression guard for comment authorisation (delete AND edit).
 //
 // The bug this protects against: "let people delete comments on reposts" is
 // very easy to mis-fix by authorising on the POST OWNER (so a reposter could
@@ -6,7 +6,8 @@
 // The correct rule is author-only, and it is enforced in SQL --
 // `DELETE ... WHERE id = $1 AND user_id = $2` -- so the thing worth locking
 // down is that the author scoping is still in the statement and still fed the
-// caller's own id.
+// caller's own id. updateComment carries the identical rule for edits, so the
+// same cases run against both operations.
 //
 // Runs with the Node built-in test runner (`node --test`), no dependencies and
 // no database: `../config/db` is replaced in require.cache before the model is
@@ -40,7 +41,11 @@ require.cache[dbPath] = {
       if (/user_id\s*=\s*\$2/.test(normalised)) {
         match = match && FIXTURE.user_id === userId;
       }
-      return { rows: match ? [{ post_id: FIXTURE.post_id }] : [] };
+      if (!match) return { rows: [] };
+      // DELETE returns just post_id; UPDATE returns the whole row.
+      return /^UPDATE/i.test(normalised.trim())
+        ? { rows: [{ ...FIXTURE, content: params[2], edited_at: new Date().toISOString() }] }
+        : { rows: [{ post_id: FIXTURE.post_id }] };
     },
   },
 };
@@ -81,4 +86,36 @@ test('the post owner cannot delete someone else\'s comment either', async () => 
 test('deleting a comment that does not exist returns null', async () => {
   const result = await Comment.deleteComment(4242, FIXTURE.user_id);
   assert.equal(result, null);
+});
+
+// ── edit ────────────────────────────────────────────────────────────────────
+
+test('the comment author can edit their own comment', async () => {
+  const result = await Comment.updateComment(FIXTURE.id, FIXTURE.user_id, 'fixed a typo');
+  assert.notEqual(result, null, 'author should be allowed to edit');
+  assert.equal(result.content, 'fixed a typo');
+  assert.ok(result.edited_at, 'an edit must stamp edited_at');
+});
+
+test('the UPDATE is scoped by comment author, not by post owner', async () => {
+  await Comment.updateComment(FIXTURE.id, FIXTURE.user_id, 'x');
+  const sql = lastQuery.sql.replace(/\s+/g, ' ');
+
+  assert.match(sql, /UPDATE \S*comments/i);
+  assert.match(sql, /user_id\s*=\s*\$2/,
+    "author scoping removed: anyone could rewrite another user comment");
+  assert.match(sql, /edited_at\s*=/, 'an edit must record edited_at');
+  assert.equal(lastQuery.params[0], FIXTURE.id);
+  assert.equal(lastQuery.params[1], FIXTURE.user_id,
+    "the update must be parameterised with the CALLER id");
+});
+
+test("a reposter cannot edit another user comment on their repost", async () => {
+  const result = await Comment.updateComment(FIXTURE.id, 99, 'hijacked');
+  assert.equal(result, null, 'a non-author must not be able to edit the comment');
+});
+
+test("the post owner cannot edit another user comment either", async () => {
+  const result = await Comment.updateComment(FIXTURE.id, 55, 'hijacked');
+  assert.equal(result, null, 'owning the post is not authority over its comments');
 });
