@@ -145,9 +145,11 @@ async function createPost(req, res) {
         return res.status(400).json({ message: 'A post can have up to 3 photos/videos.' });
       }
       // Server-side duration backstop for the "increased upload limits" perk.
-      // Free = 60s, Pro = 180s. Authoritative check (a client could bypass the
-      // pre-flight one in uploadMedia). isPro already resolved above.
-      const maxVideoSeconds = isPro ? 180 : 60;
+      // Free = 180s, Pro = 360s -- must stay in step with LIMITS in BOTH
+      // web/src/lib/upload.ts and mobile/src/lib/upload.ts. Authoritative
+      // check (a client could bypass the pre-flight one in uploadMedia).
+      // isPro already resolved above.
+      const maxVideoSeconds = isPro ? 360 : 180;
       for (const item of media) {
         if (!item?.media_url || !['image', 'video'].includes(item?.media_type)) {
           return res.status(400).json({ message: 'Each media item needs a media_url and a valid media_type.' });
