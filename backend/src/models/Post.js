@@ -52,6 +52,18 @@ async function createPostsTable() {
   await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS original_author_name TEXT`);
   await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS post_subtype VARCHAR(20) DEFAULT 'post'`);
   await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS discussion_title TEXT`);
+  // Stored byte size of the uploaded media, as reported by Cloudinary. Used
+  // only by the clients' optimizedVideo(), to skip the f_auto,q_auto
+  // transform on videos above the Cloudinary plan's video TRANSFORM limit
+  // (300MB on Small PAYG) -- requesting one there errors instead of playing.
+  // NULL for everything uploaded before this column existed, which is safe:
+  // the caps then were 50MB free / 150MB Pro, all well under the limit.
+  //
+  // INTEGER, not BIGINT: node-postgres returns int8 as a STRING (to avoid
+  // precision loss), which would hand the clients a string where their types
+  // promise a number. int4 tops out at ~2GB, far above the 400MB ceiling, and
+  // matches messages.file_size.
+  await pool.query(`ALTER TABLE abukonn.post_media ADD COLUMN IF NOT EXISTS bytes INTEGER`);
   await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS poll_duration_hours INTEGER`);
   await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS poll_ends_at TIMESTAMP WITH TIME ZONE`);
   await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS event_title VARCHAR(200)`);
@@ -157,9 +169,9 @@ async function createPost({ userId, content, imageUrl = null, category = 'GENERA
     let position = 0;
     for (const item of media) {
       await pool.query(
-        `INSERT INTO abukonn.post_media (post_id, media_url, media_type, thumbnail_url, duration_seconds, position)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [post.id, item.media_url, item.media_type, item.thumbnail_url || null, item.duration_seconds || null, position]
+        `INSERT INTO abukonn.post_media (post_id, media_url, media_type, thumbnail_url, duration_seconds, position, bytes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [post.id, item.media_url, item.media_type, item.thumbnail_url || null, item.duration_seconds || null, position, item.bytes || null]
       );
       position += 1;
     }
@@ -171,7 +183,7 @@ async function createPost({ userId, content, imageUrl = null, category = 'GENERA
 // All media for one post, in composer/carousel order.
 async function getPostMedia(postId) {
   const { rows } = await pool.query(
-    `SELECT id, media_url, media_type, thumbnail_url, duration_seconds, position
+    `SELECT id, media_url, media_type, thumbnail_url, duration_seconds, position, bytes
      FROM abukonn.post_media WHERE post_id = $1 ORDER BY position ASC`,
     [postId]
   );
@@ -183,7 +195,7 @@ async function getPostMedia(postId) {
 async function getMediaForPosts(postIds) {
   if (!postIds || postIds.length === 0) return {};
   const { rows } = await pool.query(
-    `SELECT id, post_id, media_url, media_type, thumbnail_url, duration_seconds, position
+    `SELECT id, post_id, media_url, media_type, thumbnail_url, duration_seconds, position, bytes
      FROM abukonn.post_media WHERE post_id = ANY($1::int[]) ORDER BY post_id, position ASC`,
     [postIds]
   );

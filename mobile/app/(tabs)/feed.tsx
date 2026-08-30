@@ -49,7 +49,7 @@ interface Post {
   content: string;
   category?: string;
   image_url: string | null;
-  media?: Array<{ id: number; media_url: string; media_type: 'image' | 'video'; thumbnail_url: string | null; duration_seconds: number | null; position: number }>;
+  media?: Array<{ id: number; media_url: string; media_type: 'image' | 'video'; thumbnail_url: string | null; duration_seconds: number | null; position: number; bytes?: number | null }>;
   edited_at?: string | null;
   // Set by getForYouFeed: already viewed before this scroll session started.
   // Drives the "all caught up" divider row -- derived only, never stored.
@@ -477,7 +477,7 @@ export default function Feed() {
     fileSizeBytes: number | null;
     durationMs: number | null;
     progress: number;
-    uploaded: { secure_url: string; media_type: 'image' | 'video'; duration_seconds: number | null; thumbnail_url: string | null } | null;
+    uploaded: { secure_url: string; media_type: 'image' | 'video'; duration_seconds: number | null; thumbnail_url: string | null; bytes: number | null } | null;
     error: string | null;
   }>>([]);
   const [composerMode, setComposerMode] = useState<'post' | 'discussion' | 'question' | 'poll' | 'event'>('post');
@@ -1321,6 +1321,7 @@ export default function Feed() {
             media_type: m.media_type,
             thumbnail_url: m.thumbnail_url,
             duration_seconds: m.duration_seconds,
+            bytes: m.bytes,
           }))),
         } : {}),
       };

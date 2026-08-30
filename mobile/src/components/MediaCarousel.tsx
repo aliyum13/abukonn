@@ -13,6 +13,9 @@ export interface MediaItem {
   id: number;
   media_url: string;
   media_type: 'image' | 'video';
+  // Stored size, when known. Only consulted for video: over the Cloudinary
+  // plan's transform limit, optimizedVideo serves the raw URL instead.
+  bytes?: number | null;
   thumbnail_url: string | null;
   duration_seconds: number | null;
   position: number;
@@ -25,7 +28,7 @@ export interface MediaItem {
 // unconditionally at that component's top level. Doesn't autoplay (bad for
 // mobile data); shows native controls, tap to play.
 function VideoItem({ item, width }: { item: MediaItem; width: number }) {
-  const player = useVideoPlayer(optimizedVideo(item.media_url), p => {
+  const player = useVideoPlayer(optimizedVideo(item.media_url, undefined, item.bytes), p => {
     p.loop = false;
   });
   return (
