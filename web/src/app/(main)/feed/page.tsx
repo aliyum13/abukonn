@@ -2157,6 +2157,55 @@ export default function FeedPage() {
     }).catch(() => {});
   };
 
+  // Delete one of YOUR OWN comments from the feed's inline comment list.
+  //
+  // The feed offered Reply / Best Answer / View replies but never Delete, so
+  // a comment made from the feed (which is where reposts are read and
+  // commented on) could only be removed by opening the post's own page. On a
+  // repost there was no obvious route to that page at all, which is what
+  // "can't delete my comment on a repost" actually was.
+  //
+  // Authorisation is by COMMENT AUTHOR, matching the server: the endpoint
+  // deletes `WHERE id = $1 AND user_id = $2`, so a post owner (or reposter)
+  // cannot remove someone else's comment no matter what the UI offers. This
+  // button is gated the same way, so the affordance matches the permission.
+  const handleDeleteComment = async (postId: number, commentId: number) => {
+    if (!token) return;
+    if (!confirm('Delete this comment?')) return;
+    const prev = comments[postId] ?? [];
+    setComments((c) => ({ ...c, [postId]: prev.filter((x) => x.id !== commentId) }));
+    // Optimistic count decrement, repost-aware in the same way addComment's
+    // increment is: a repost card displays original_comments_count.
+    mutatePosts((ps) =>
+      ps.map((p) => {
+        if (p.id !== postId) return p;
+        if (p.is_repost && p.original_comments_count !== undefined) {
+          return { ...p, original_comments_count: Math.max(0, p.original_comments_count - 1) };
+        }
+        return { ...p, comments_count: Math.max(0, p.comments_count - 1) };
+      })
+    );
+    try {
+      const res = await fetch(`${API_URL}/api/posts/${postId}/comments/${commentId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('delete failed');
+    } catch {
+      // Put the comment and the count back if the server refused.
+      setComments((c) => ({ ...c, [postId]: prev }));
+      mutatePosts((ps) =>
+        ps.map((p) => {
+          if (p.id !== postId) return p;
+          if (p.is_repost && p.original_comments_count !== undefined) {
+            return { ...p, original_comments_count: p.original_comments_count + 1 };
+          }
+          return { ...p, comments_count: p.comments_count + 1 };
+        })
+      );
+    }
+  };
+
   const fetchComments = async (postId: number) => {
     if (!token) return;
     setCommentsLoading((prev) => ({ ...prev, [postId]: true }));
@@ -3325,6 +3374,14 @@ export default function FeedPage() {
                                             {expandedReplies.has(c.id)
                                               ? 'Hide replies'
                                               : `View ${c.reply_count > 0 ? c.reply_count : replies[c.id]?.length} ${(c.reply_count === 1 || replies[c.id]?.length === 1) ? 'reply' : 'replies'}`}
+                                          </button>
+                                        )}
+                                        {/* Author-gated, exactly like the server's own check. */}
+                                        {c.user_id === user.id && (
+                                          <button type="button"
+                                            onClick={() => handleDeleteComment(post.id, c.id)}
+                                            className="text-caption font-medium text-ink-secondary transition hover:text-red-500">
+                                            Delete
                                           </button>
                                         )}
                                       </div>
