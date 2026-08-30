@@ -5,6 +5,13 @@ import type { Palette } from '../theme';
 import { StyleSheet } from 'react-native';
 import { apiFetch } from '../lib/api';
 
+// The canonical content tokeniser. Exported so anything that needs to agree
+// with what BECOMES a link -- notably the composer's live hashtag highlight --
+// reuses this exact pattern instead of keeping a second copy that can drift.
+// Split form keeps the delimiters; test form matches a single token.
+export const CONTENT_TOKEN_RE = /(#[a-zA-Z0-9_]+|@[a-zA-Z0-9_]{2,30})/g;
+export const HASHTAG_RE = /^#[a-zA-Z0-9_]+$/;
+
 /**
  * Renders post/comment text with tappable #hashtags and @mentions, matching web.
  * - #tag  -> hashtag browse screen
@@ -28,12 +35,12 @@ export function PostContent({ content, style, numberOfLines }: { content: string
   };
 
   // Split on #tag or @mention while keeping the delimiters, same regex as web.
-  const parts = content.split(/(#[a-zA-Z0-9_]+|@[a-zA-Z0-9_]{2,30})/g);
+  const parts = content.split(CONTENT_TOKEN_RE);
 
   return (
     <Text style={style} numberOfLines={numberOfLines}>
       {parts.map((part, i) => {
-        if (/^#[a-zA-Z0-9_]+$/.test(part)) {
+        if (HASHTAG_RE.test(part)) {
           return (
             <Text key={i} style={s.link} onPress={() => openHashtag(part.slice(1))}>
               {part}

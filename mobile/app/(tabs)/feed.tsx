@@ -20,7 +20,7 @@ import { ProUpsellBanner } from '../../src/components/ProUpsellBanner';
 import { getToken } from '../../src/lib/storage';
 import { colors, radius, shadow } from '../../src/theme';
 import { StoryBar } from '../../src/components/Stories';
-import { PostContent } from '../../src/components/PostContent';
+import { PostContent, CONTENT_TOKEN_RE, HASHTAG_RE } from '../../src/components/PostContent';
 import { ShareSheet } from '../../src/components/ShareSheet';
 import { ImageLightbox } from '../../src/components/ImageLightbox';
 import { ReportModal } from '../../src/components/ReportModal';
@@ -148,6 +148,20 @@ interface PostCardProps {
   onOpenImage: (url: string) => void;
   onViewVoters: (post: Post) => void;
   maxEngagementScore: number;
+}
+
+// Renders the composer's text with #hashtags tinted, passed as CHILDREN of the
+// composer TextInput -- RN's supported way to style text inside an input.
+// Purely visual: `value`/`onChangeText` still own the text, so what gets
+// submitted is untouched. Splits on CONTENT_TOKEN_RE, the same pattern
+// PostContent uses to decide what becomes a real tag, so what lights up while
+// typing is exactly what will be a tag once posted.
+function renderComposerHighlight(text: string, brand: string) {
+  return text.split(CONTENT_TOKEN_RE).map((part, i) =>
+    HASHTAG_RE.test(part)
+      ? <Text key={i} style={{ color: brand, fontWeight: '600' }}>{part}</Text>
+      : <Text key={i}>{part}</Text>
+  );
 }
 
 const CATEGORY_CHIP: Record<string, { bg: string; fg: string; label: string }> = {
@@ -1997,7 +2011,9 @@ export default function Feed() {
                 value={newPost}
                 onChangeText={setNewPost}
                 multiline
-              />
+              >
+                {renderComposerHighlight(newPost, colors.brand)}
+              </TextInput>
 
               {/* Poll options */}
               {composerMode === 'poll' ? (
