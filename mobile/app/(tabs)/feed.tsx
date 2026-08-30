@@ -146,6 +146,7 @@ interface PostCardProps {
   onVote: (post: Post, optionId: number) => void;
   onRSVP: (post: Post) => void;
   onOpenImage: (url: string) => void;
+  onViewVoters: (post: Post) => void;
   maxEngagementScore: number;
 }
 
@@ -164,7 +165,7 @@ function formatCount(n: number): string {
   return String(n);
 }
 
-const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, onToggleLike, onOpenComments, onRepost, onShare, onMenu, onVote, onRSVP, onOpenImage, maxEngagementScore }: PostCardProps) {
+const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, onToggleLike, onOpenComments, onRepost, onShare, onMenu, onVote, onRSVP, onOpenImage, onViewVoters, maxEngagementScore }: PostCardProps) {
   const s = useThemedStyles(make_s);
   const { palette } = useTheme();
   const [expanded, setExpanded] = useState(false);
@@ -293,6 +294,18 @@ const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, on
             {post.poll_options.reduce((sum, o) => sum + o.vote_count, 0)} votes
             {post.poll_ends_at ? (new Date(post.poll_ends_at) < new Date() ? ' · ended' : ` · ends ${timeAgo(post.poll_ends_at)}`) : ''}
           </Text>
+          {/* Creator-only, matching web exactly: the poll's own author sees who
+              voted for what; everyone else sees counts only. The backend is the
+              real gate (GET /voters 403s for non-creators) -- this just stops
+              offering a tap that would only ever fail. Uses post.user_id (the
+              poll's author) rather than any repost-aware field: a repost of a
+              poll does not make the reposter its creator. */}
+          {currentUserId != null && post.user_id === currentUserId
+            && post.poll_options.reduce((sum, o) => sum + o.vote_count, 0) > 0 ? (
+            <TouchableOpacity onPress={() => onViewVoters(post)} hitSlop={8}>
+              <Text style={s.pollVotersLink}>👥 See who voted</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       ) : null}
 
@@ -463,6 +476,16 @@ export default function Feed() {
   // Post.getForYouFeed's sessionStart doc comment on the backend.
   const sessionStartRef = useRef<number | null>(null);
 
+  // Poll voters (creator-only). Mirrors web's pollVoters/openPollVoters --
+  // same endpoint, same creator gate, same "counts only for everyone else".
+  const [pollVoters, setPollVoters] = useState<{
+    postId: number;
+    options: Array<{
+      option_id: number; option_text: string;
+      voters: Array<{ user_id: number; full_name: string; profile_photo_url: string | null; department: string | null }>;
+    }>;
+  } | null>(null);
+  const [pollVotersLoading, setPollVotersLoading] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
   const [newPost, setNewPost] = useState('');
   // Multi-media (Pro feature): up to 3 photos/video, any mix. Mirrors web's
@@ -1171,6 +1194,23 @@ export default function Feed() {
     }
   };
 
+  const openPollVoters = useCallback(async (post: Post) => {
+    setPollVotersLoading(true);
+    setPollVoters({ postId: post.id, options: [] });
+    try {
+      const data = await apiFetch<{ options: NonNullable<typeof pollVoters>['options'] }>(
+        `/api/posts/${post.id}/voters`);
+      setPollVoters({ postId: post.id, options: data.options || [] });
+    } catch (err) {
+      // 403 here means the creator gate rejected us -- surface it rather than
+      // leaving an empty sheet open with no explanation.
+      setPollVoters(null);
+      Alert.alert('Could not load voters', err instanceof Error ? err.message : '');
+    } finally {
+      setPollVotersLoading(false);
+    }
+  }, []);
+
   // Starts uploading one picked asset in the background, tracking its own
   // progress/result in composerMedia by id. Mirrors web's per-item pattern.
   const startMediaUpload = (id: string, uri: string, kind: 'image' | 'video', fileSizeBytes: number | null, durationMs: number | null) => {
@@ -1747,6 +1787,7 @@ export default function Feed() {
               onVote={voteOnPoll}
               onRSVP={toggleRSVP}
               onOpenImage={setLightboxUrl}
+              onViewVoters={openPollVoters}
               maxEngagementScore={maxEngagementScore}
             />
             )
@@ -1780,6 +1821,58 @@ export default function Feed() {
           removeClippedSubviews
         />
       )}
+
+      {/* Poll voters sheet — creator only. Mirrors web's modal: per-option
+          groups, vote count, tappable voter rows through to their profile. */}
+      <Modal visible={pollVoters !== null} animationType="slide" transparent onRequestClose={() => setPollVoters(null)}>
+        <TouchableOpacity style={s.votersBackdrop} activeOpacity={1} onPress={() => setPollVoters(null)}>
+          <TouchableOpacity style={s.votersSheet} activeOpacity={1} onPress={() => {}}>
+            <View style={s.votersHeader}>
+              <Text style={s.votersTitle}>Poll results — who voted</Text>
+              <TouchableOpacity onPress={() => setPollVoters(null)} hitSlop={12}>
+                <Ionicons name="close" size={22} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            {pollVotersLoading ? (
+              <View style={s.votersLoading}><ActivityIndicator color={colors.brand} /></View>
+            ) : (
+              <ScrollView style={{ maxHeight: 420 }}>
+                {(pollVoters?.options ?? []).map(opt => (
+                  <View key={opt.option_id} style={s.votersOptBlock}>
+                    <View style={s.votersOptHead}>
+                      <Text style={s.votersOptText} numberOfLines={2}>{opt.option_text}</Text>
+                      <Text style={s.votersOptCount}>
+                        {opt.voters.length} vote{opt.voters.length !== 1 ? 's' : ''}
+                      </Text>
+                    </View>
+                    {opt.voters.length === 0 ? (
+                      <Text style={s.votersEmpty}>No votes</Text>
+                    ) : opt.voters.map(v => (
+                      <TouchableOpacity
+                        key={v.user_id}
+                        style={s.votersRow}
+                        onPress={() => { setPollVoters(null); openProfile(v.user_id); }}
+                      >
+                        {v.profile_photo_url ? (
+                          <Image source={{ uri: optimizedAvatar(v.profile_photo_url, 80) }} style={s.votersAvatar} />
+                        ) : (
+                          <View style={[s.votersAvatar, s.votersAvatarFallback]}>
+                            <Text style={s.votersInitial}>{v.full_name?.charAt(0).toUpperCase()}</Text>
+                          </View>
+                        )}
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={s.votersName} numberOfLines={1}>{v.full_name}</Text>
+                          {v.department ? <Text style={s.votersDept} numberOfLines={1}>{v.department}</Text> : null}
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Today's Highlights popup */}
       <Modal visible={showHighlights} animationType="fade" transparent onRequestClose={() => setShowHighlights(false)}>
@@ -2421,6 +2514,23 @@ const make_s = (colors: Palette) => StyleSheet.create({
   pollOptText: { fontSize: 14, color: colors.text, flex: 1, fontWeight: '500' },
   pollOptTextMine: { fontWeight: '800', color: colors.brand },
   pollPct: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginLeft: 8 },
+  votersBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  votersSheet: { backgroundColor: colors.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 18, paddingBottom: 32 },
+  votersHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  votersTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
+  votersLoading: { paddingVertical: 32, alignItems: 'center' },
+  votersOptBlock: { marginBottom: 16 },
+  votersOptHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 6 },
+  votersOptText: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.text },
+  votersOptCount: { fontSize: 12, color: colors.muted },
+  votersEmpty: { fontSize: 12, color: colors.muted },
+  votersRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
+  votersAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.surfaceSubtle },
+  votersAvatarFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brand },
+  votersInitial: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  votersName: { fontSize: 14, fontWeight: '600', color: colors.text },
+  votersDept: { fontSize: 11, color: colors.muted },
+  pollVotersLink: { fontSize: 12, fontWeight: '700', color: colors.brand, marginTop: 6 },
   pollMeta: { fontSize: 12, color: colors.muted, marginTop: 2 },
   eventWrap: {
     marginTop: 10, borderWidth: 1, borderColor: colors.brand100, borderRadius: 12,
