@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useThemedStyles } from '../../src/theme/ThemeContext';
 import type { Palette } from '../../src/theme';
 import {
@@ -13,6 +13,7 @@ import { apiFetch } from '../../src/lib/api';
 import { colors, radius, shadow } from '../../src/theme';
 import { useTabScrollToTop } from '../../src/lib/useScrollToTop';
 import { DEPARTMENTS, DEPARTMENT_GROUPS, LEVELS } from '../../src/lib/departments';
+import { useAuth } from '../../src/context/AuthContext';
 
 interface Material {
   id: number;
@@ -59,6 +60,7 @@ const TYPE_ICON: Record<string, string> = {
 export default function Library() {
   const s = useThemedStyles(make_s);
   const router = useRouter();
+  const { user } = useAuth();
   const { ref: listRef, setRefresh } = useTabScrollToTop<Material>();
   const [materials, setMaterials] = useState<Material[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,7 +69,21 @@ export default function Library() {
   const [type, setType] = useState('all');
   const [faculty, setFaculty] = useState('');
   const [department, setDepartment] = useState('');
-  const [level, setLevel] = useState('');
+  // Defaults to the viewer's own level so the first screenful is material for
+  // the year they're actually in, instead of everything ever uploaded. The
+  // filter sheet still browses every level/department -- this only seeds the
+  // initial value. Mirrors web's library page.
+  //
+  // Guarded on LEVELS membership: settings offers a 'Spill Over' level this
+  // list doesn't have, and seeding a value with no matching row would apply a
+  // filter the sheet can't show as selected. Unrecognised falls back to all.
+  const initialLevel = (lvl?: string | null) => (lvl && LEVELS.includes(lvl) ? lvl : '');
+  const [level, setLevel] = useState(() => initialLevel(user?.level));
+  // user is normally hydrated before this tab mounts, so the seed above
+  // usually lands on the first render. This covers the case where it isn't --
+  // once only, so a later user refresh can't reset a filter the person has
+  // since changed themselves (including deliberately clearing it).
+  const levelSeededRef = useRef(!!user);
   const [filterOpen, setFilterOpen] = useState(false);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -100,6 +116,14 @@ export default function Library() {
       setRefreshing(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (levelSeededRef.current || !user) return;
+    levelSeededRef.current = true;
+    const seeded = initialLevel(user.level);
+    if (seeded) setLevel(seeded); // the filter effect below re-loads from page 1
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   // Filter/search changes reset to page 1.
   useEffect(() => { load(type, search, faculty, department, level, 1); }, [type, faculty, department, level]); // eslint-disable-line react-hooks/exhaustive-deps
