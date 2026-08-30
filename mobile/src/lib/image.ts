@@ -38,6 +38,13 @@ export function optimizedAvatar(
   return url.replace('/upload/', `/upload/f_auto,q_auto,w_${size},h_${size},c_fill,g_face,dpr_auto/`);
 }
 
+// Cloudinary Small PAYG caps VIDEO TRANSFORMATIONS at 300MB. Above this we
+// must skip the transform entirely rather than request one that errors.
+// Deliberately below the 400MB Pro upload ceiling -- the two limits are set
+// by different things (our product tiers vs the Cloudinary plan) and are not
+// meant to track each other.
+export const VIDEO_TRANSFORM_MAX_BYTES = 300 * 1024 * 1024;
+
 // Same problem as images, worse in practice: a post video is served at
 // whatever resolution/bitrate the phone camera recorded it at, with zero
 // compression, so expo-video's player has to buffer the full raw file before
@@ -50,9 +57,20 @@ export function optimizedAvatar(
 export function optimizedVideo(
   url: string | null | undefined,
   width = 720,
+  bytes?: number | null,
 ): string {
   if (!url) return '';
   if (!url.includes('/upload/')) return url;
   if (url.includes('/upload/f_auto') || url.includes('/upload/q_auto')) return url;
+  // Cloudinary's Small PAYG plan refuses to TRANSFORM a video over 300MB, so
+  // asking for f_auto,q_auto on one returns an error instead of a video. Our
+  // Pro ceiling is 400MB, which leaves a 300-400MB band that would simply
+  // fail to play. Serve those raw and unoptimised -- a big file that plays
+  // beats a smaller one that doesn't.
+  //
+  // bytes is unknown (null/undefined) for anything uploaded before it was
+  // recorded. Optimising those is safe: the old caps were 50MB free / 150MB
+  // Pro, so every legacy video is comfortably under the transform limit.
+  if (bytes != null && bytes > VIDEO_TRANSFORM_MAX_BYTES) return url;
   return url.replace('/upload/', `/upload/f_auto,q_auto,w_${width},c_limit/`);
 }

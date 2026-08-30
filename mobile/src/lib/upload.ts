@@ -89,7 +89,7 @@ export async function uploadMedia(
   fileSizeBytes?: number | null,
   durationMs?: number | null,
   isPro?: boolean
-): Promise<{ secure_url: string; media_type: 'image' | 'video'; duration_seconds: number | null; thumbnail_url: string | null }> {
+): Promise<{ secure_url: string; media_type: 'image' | 'video'; duration_seconds: number | null; thumbnail_url: string | null; bytes: number | null }> {
   const type = mediaType ?? guessMediaType(uri);
   const limits = limitsFor(isPro);
 
@@ -141,7 +141,7 @@ export async function uploadMedia(
   );
   if (!upRes.ok) throw new Error(type === 'video' ? 'Video upload failed.' : 'Image upload failed.');
   const data = (await upRes.json()) as {
-    secure_url?: string; duration?: number;
+    secure_url?: string; duration?: number; bytes?: number;
   };
   if (!data.secure_url) throw new Error(type === 'video' ? 'Video upload failed.' : 'Image upload failed.');
 
@@ -156,5 +156,9 @@ export async function uploadMedia(
     media_type: type,
     duration_seconds: type === 'video' && data.duration ? Math.round(data.duration) : null,
     thumbnail_url: thumbnailUrl,
+    // Cloudinary's own figure for what it stored; falls back to the caller's
+    // measured size. Recorded so the render side can skip the transform on
+    // videos over the plan's video TRANSFORM limit (VIDEO_TRANSFORM_MAX_BYTES).
+    bytes: data.bytes ?? fileSizeBytes ?? null,
   };
 }

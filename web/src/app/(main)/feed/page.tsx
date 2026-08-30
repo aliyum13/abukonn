@@ -245,7 +245,7 @@ interface Post {
   user_id: number;
   content: string;
   image_url: string | null;
-  media: Array<{ id: number; media_url: string; media_type: 'image' | 'video'; thumbnail_url: string | null; duration_seconds: number | null; position: number }>;
+  media: Array<{ id: number; media_url: string; media_type: 'image' | 'video'; thumbnail_url: string | null; duration_seconds: number | null; position: number; bytes?: number | null }>;
   edited_at?: string | null;
   // Set by getForYouFeed: this post was already viewed before the current
   // scroll session started. Drives the "all caught up" divider (see
@@ -2113,6 +2113,7 @@ export default function FeedPage() {
           media_type: m.media_type,
           thumbnail_url: m.thumbnail_url,
           duration_seconds: m.duration_seconds,
+          bytes: m.bytes,
         }))));
       }
 

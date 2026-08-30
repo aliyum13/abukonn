@@ -50,6 +50,10 @@ export interface UploadResult {
   media_type: 'image' | 'video';
   duration_seconds: number | null;
   thumbnail_url: string | null;
+  // Cloudinary reports the stored size on its upload response. Recorded so
+  // the render side can tell whether a video is over the plan's video
+  // TRANSFORM limit -- see VIDEO_TRANSFORM_MAX_BYTES in lib/image.
+  bytes: number | null;
 }
 
 // Reads a video file's duration client-side, without uploading anything --
@@ -126,11 +130,14 @@ export async function uploadMedia(
           clearTimeout(tid);
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
-              const data = JSON.parse(xhr.responseText) as { secure_url: string; duration?: number };
+              const data = JSON.parse(xhr.responseText) as { secure_url: string; duration?: number; bytes?: number };
               resolve({
                 secure_url: data.secure_url,
                 media_type: isVideo ? 'video' : 'image',
                 duration_seconds: isVideo && data.duration ? Math.round(data.duration) : null,
+                // Prefer Cloudinary's own figure (what it actually stored);
+                // fall back to the local file size if it ever omits it.
+                bytes: data.bytes ?? file.size ?? null,
                 // Cloudinary auto-generates a JPG thumbnail for any video at
                 // a predictable URL (swap the extension) — no extra request.
                 thumbnail_url: isVideo ? data.secure_url.replace(/\.[a-zA-Z0-9]+$/, '.jpg') : null,

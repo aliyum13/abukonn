@@ -8,6 +8,9 @@ export interface MediaItem {
   id: number;
   media_url: string;
   media_type: 'image' | 'video';
+  // Stored size, when known. Only consulted for video: over the Cloudinary
+  // plan's transform limit, optimizedVideo serves the raw URL instead.
+  bytes?: number | null;
   thumbnail_url: string | null;
   duration_seconds: number | null;
   position: number;
@@ -53,7 +56,7 @@ export function MediaCarousel({
           <div key={item.id} className="w-full shrink-0 snap-center">
             {item.media_type === 'video' ? (
               <video
-                src={optimizedVideo(item.media_url)}
+                src={optimizedVideo(item.media_url, undefined, item.bytes)}
                 poster={item.thumbnail_url || undefined}
                 controls
                 className="max-h-[500px] w-full bg-black object-contain"
