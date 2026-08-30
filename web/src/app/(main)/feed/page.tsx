@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, useMemo, FormEvent } from 'react';
+import { useEffect, useState, useRef, useMemo, Fragment, FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -246,6 +246,10 @@ interface Post {
   image_url: string | null;
   media: Array<{ id: number; media_url: string; media_type: 'image' | 'video'; thumbnail_url: string | null; duration_seconds: number | null; position: number }>;
   edited_at?: string | null;
+  // Set by getForYouFeed: this post was already viewed before the current
+  // scroll session started. Drives the "all caught up" divider (see
+  // seenTailStart below) -- purely derived, nothing is stored client-side.
+  already_seen?: boolean;
   likes_count: number;
   comments_count: number;
   repost_count: number;
@@ -2858,6 +2862,29 @@ export default function FeedPage() {
   // previews — and its like button called a handler that updated the For You
   // array, so it did nothing visible. Sharing one card means the two can never
   // drift apart again.
+  // ── "All caught up" divider (derived, no extra state) ───────────────────
+  // The For You list as actually rendered (category filter applied), so the
+  // divider index below lines up with what the user sees.
+  const visibleForYouPosts = useMemo(
+    () => posts.filter(post => categoryFilter === 'ALL' || post.category === categoryFilter),
+    [posts, categoryFilter]
+  );
+  // Index where the already-seen tail begins: everything from here down has
+  // already_seen set. Anchored on the LAST unseen post rather than the first
+  // seen one — getForYouFeed demotes seen posts but doesn't hide them, so a
+  // freshly-posted-but-seen item can still outrank a stale unseen one and
+  // appear early. Taking the first already_seen index would drop the divider
+  // above posts the user genuinely hasn't seen; taking the tail boundary
+  // guarantees the claim it makes ("everything below this is old news") is
+  // actually true. -1 (no divider) until the server says the unseen pool is
+  // exhausted, and never shown on the Following tab.
+  const seenTailStart = useMemo(() => {
+    if (!feedCaughtUp || feedTab !== 'for_you') return -1;
+    let boundary = visibleForYouPosts.length;
+    while (boundary > 0 && visibleForYouPosts[boundary - 1].already_seen) boundary--;
+    return boundary < visibleForYouPosts.length ? boundary : -1;
+  }, [feedCaughtUp, feedTab, visibleForYouPosts]);
+
   const renderPostCard = (post: Post) => {
                 const isExpanded = expandedPosts.has(post.id);
                 const longContent = post.content.length > 280;
@@ -4090,15 +4117,26 @@ export default function FeedPage() {
               <PostSkeleton />
               <PostSkeleton />
             </>
-          ) : posts.filter(p => categoryFilter === 'ALL' || p.category === categoryFilter).length === 0 ? (
+          ) : visibleForYouPosts.length === 0 ? (
             <div className="px-4 py-16 text-center">
               <p className="font-medium text-ink">No posts yet</p>
               <p className="mt-1 text-[14px] text-ink-muted">Be the first to share something with the ABU community!</p>
             </div>
           ) : (
-            posts
-              .filter(post => categoryFilter === 'ALL' || post.category === categoryFilter)
-              .map((post) => renderPostCard(post))
+            visibleForYouPosts.map((post, i) => (
+              <Fragment key={post.id}>
+                {i === seenTailStart && (
+                  <div className="flex items-center gap-3 px-4 py-5">
+                    <span className="h-px flex-1 bg-border dark:bg-[#222]" />
+                    <span className="shrink-0 text-center text-caption font-semibold text-ink-muted">
+                      You&apos;re all caught up! 🎉<span className="ml-1 font-normal">Older posts below</span>
+                    </span>
+                    <span className="h-px flex-1 bg-border dark:bg-[#222]" />
+                  </div>
+                )}
+                {renderPostCard(post)}
+              </Fragment>
+            ))
           )}
           {!loading && posts.length > 0 && (
             <div ref={loadMoreSentinelRef} className="flex items-center justify-center py-6">
@@ -4111,9 +4149,13 @@ export default function FeedPage() {
                 <button type="button" onClick={loadMorePosts} className="text-body-sm font-semibold text-brand-600 hover:text-brand-700">
                   Couldn&apos;t load more — tap to retry
                 </button>
-              ) : feedCaughtUp && feedTab === 'for_you' ? (
+              ) : !feedHasMore && feedTab === 'for_you' ? (
+                /* The other end state. "Caught up" is now the inline divider
+                   above (scrolling continues past it); this is the genuine
+                   bottom of the ranked pool, where there is nothing left to
+                   load at all. */
                 <div className="px-4 text-center">
-                  <p className="text-body-sm font-semibold text-ink">You&apos;re all caught up! 🎉</p>
+                  <p className="text-body-sm font-semibold text-ink">That&apos;s everything for now</p>
                   <p className="mt-1 text-caption text-ink-muted">Follow more people on ABUkonn to see more relevant posts.</p>
                 </div>
               ) : null}

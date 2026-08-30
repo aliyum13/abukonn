@@ -51,6 +51,9 @@ interface Post {
   image_url: string | null;
   media?: Array<{ id: number; media_url: string; media_type: 'image' | 'video'; thumbnail_url: string | null; duration_seconds: number | null; position: number }>;
   edited_at?: string | null;
+  // Set by getForYouFeed: already viewed before this scroll session started.
+  // Drives the "all caught up" divider row -- derived only, never stored.
+  already_seen?: boolean;
   author_name: string;
   author_department: string | null;
   author_photo: string | null;
@@ -392,11 +395,21 @@ const POST_CATEGORIES = [
   { value: 'CAMPUS_LIFE', label: 'Campus Life' },
 ];
 
+// The For You list carries one non-post row: the "all caught up" divider. A
+// sentinel object (rather than a header/footer) is what lets it sit BETWEEN
+// posts, which is the whole point -- the seen tail keeps scrolling below it.
+// It deliberately has no `id`, so onViewableItemsChanged's `!item?.id` guard
+// skips it and no view is ever recorded for the divider.
+const CAUGHT_UP_DIVIDER = { __divider: 'caught_up' } as const;
+type CaughtUpDivider = typeof CAUGHT_UP_DIVIDER;
+type FeedRow = Post | CaughtUpDivider;
+const isDivider = (row: FeedRow): row is CaughtUpDivider => '__divider' in row;
+
 export default function Feed() {
   const s = useThemedStyles(make_s);
   const router = useRouter();
   const { deletedPostId } = useLocalSearchParams<{ deletedPostId?: string }>();
-  const { ref: listRef, setRefresh } = useTabScrollToTop<Post>();
+  const { ref: listRef, setRefresh } = useTabScrollToTop<FeedRow>();
   const openProfile = useCallback((userId: number) => router.push({ pathname: '/user/[id]', params: { id: String(userId) } }), [router]);
   const followUser = useCallback(async (id: number) => {
     // Optimistically remove from the list — matches web, which drops a suggestion
@@ -717,13 +730,38 @@ export default function Feed() {
     setFollowingPosts(prev => prev.map(applyIfMatch));
   }, []);
 
+  // ── "All caught up" divider (derived, no extra state) ───────────────────
+  // The list as actually rendered on the For You tab (category filter
+  // applied), plus a sentinel row marking where the already-seen tail
+  // begins. Anchored on the LAST unseen post rather than the first seen one:
+  // getForYouFeed demotes seen posts but doesn't hide them, so a fresh
+  // already-seen post can still outrank a stale unseen one and show up early
+  // -- splitting at the first already_seen would put the divider above posts
+  // the user genuinely hasn't seen. The tail boundary makes the divider's
+  // claim ("everything below is old news") actually true. The divider only
+  // appears once the server reports the unseen pool exhausted (caughtUp);
+  // scrolling continues straight past it, since hasMore is now purely a
+  // pagination signal.
+  const forYouRows = useMemo<FeedRow[]>(() => {
+    const list = category === 'ALL' ? posts : posts.filter(p => p.category === category);
+    if (!caughtUp || list.length === 0) return list;
+    let boundary = list.length;
+    while (boundary > 0 && list[boundary - 1].already_seen) boundary--;
+    if (boundary >= list.length) return list;
+    return [...list.slice(0, boundary), CAUGHT_UP_DIVIDER, ...list.slice(boundary)];
+  }, [posts, category, caughtUp]);
+
   // View-count tracking, mirrors web's IntersectionObserver-based approach
   // (60% visible, once per post per session) using FlatList's own
   // viewability API since RN has no DOM/IntersectionObserver.
   const viewedPostsRef = useRef<Set<number>>(new Set());
-  const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: Array<{ item: Post }> }) => {
+  const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: Array<{ item: FeedRow }> }) => {
     for (const { item } of viewableItems) {
-      if (!item?.id || viewedPostsRef.current.has(item.id)) continue;
+      // The "all caught up" divider is a row, not a post -- never record a
+      // view for it. (Kept as one always-defined callback: swapping this prop
+      // between defined and undefined is what RN refuses to tolerate.)
+      if (!item || isDivider(item)) continue;
+      if (!item.id || viewedPostsRef.current.has(item.id)) continue;
       viewedPostsRef.current.add(item.id);
       apiFetch(`/api/posts/${item.id}/view`, { method: 'POST' }).catch(() => {});
       // Same repost-aware field as displayViews above -- a repost card shows
@@ -1580,11 +1618,11 @@ export default function Feed() {
           </TouchableOpacity>
         </View>
       ) : (
-        <FlatList
+        <FlatList<FeedRow>
           key="posts-list"
           ref={listRef}
-          data={feedTab === 'following' ? followingPosts : (category === 'ALL' ? posts : posts.filter(p => p.category === category))}
-          keyExtractor={p => String(p.id)}
+          data={feedTab === 'following' ? followingPosts : forYouRows}
+          keyExtractor={row => (isDivider(row) ? 'caught-up-divider' : String(row.id))}
           ListHeaderComponent={feedTab === 'for_you' ? forYouHeader : null}
           refreshControl={
             <RefreshControl
@@ -1606,6 +1644,13 @@ export default function Feed() {
             ) : <View style={s.center}><Text style={s.muted}>No posts yet</Text></View>
           }
           renderItem={({ item }) => (
+            isDivider(item) ? (
+              <View style={s.caughtUpDivider}>
+                <View style={s.caughtUpRule} />
+                <Text style={s.caughtUpDividerText}>You&apos;re all caught up! 🎉 <Text style={s.caughtUpDividerSub}>Older posts below</Text></Text>
+                <View style={s.caughtUpRule} />
+              </View>
+            ) : (
             <PostCard
               post={item}
               currentUserId={user?.id}
@@ -1620,6 +1665,7 @@ export default function Feed() {
               onOpenImage={setLightboxUrl}
               maxEngagementScore={maxEngagementScore}
             />
+            )
           )}
           onEndReached={feedTab === 'for_you' ? loadMore : undefined}
           onEndReachedThreshold={0.5}
@@ -1633,9 +1679,12 @@ export default function Feed() {
                 <TouchableOpacity style={s.loadMoreFooter} onPress={loadMore}>
                   <Text style={s.loadMoreRetryText}>Couldn&apos;t load more — tap to retry</Text>
                 </TouchableOpacity>
-              ) : caughtUp && posts.length > 0 ? (
+              ) : !hasMore && posts.length > 0 ? (
+                /* The other end state. "Caught up" is the inline divider row
+                   above (scrolling continues past it); this is the genuine
+                   bottom of the ranked pool, with nothing left to load. */
                 <View style={s.caughtUpFooter}>
-                  <Text style={s.caughtUpTitle}>You&apos;re all caught up! 🎉</Text>
+                  <Text style={s.caughtUpTitle}>That&apos;s everything for now</Text>
                   <Text style={s.caughtUpSub}>Follow more people on ABUkonn to see more relevant posts.</Text>
                 </View>
               ) : null
@@ -2157,6 +2206,10 @@ const make_s = (colors: Palette) => StyleSheet.create({
   hlDesc: { fontSize: 14, color: '#374151', lineHeight: 20 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   loadMoreFooter: { paddingVertical: 20, alignItems: 'center', justifyContent: 'center' },
+  caughtUpDivider: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 18 },
+  caughtUpRule: { flex: 1, height: 1, backgroundColor: colors.border },
+  caughtUpDividerText: { fontSize: 12, fontWeight: '700', color: colors.muted, textAlign: 'center' },
+  caughtUpDividerSub: { fontWeight: '400' },
   caughtUpFooter: { paddingVertical: 28, paddingHorizontal: 24, alignItems: 'center' },
   caughtUpTitle: { fontSize: 15, fontWeight: '700', color: colors.text, textAlign: 'center' },
   caughtUpSub: { fontSize: 13, color: colors.muted, textAlign: 'center', marginTop: 4, lineHeight: 18 },

@@ -314,7 +314,17 @@ async function getFeed(req, res) {
     // no more unseen posts -- the client shows "you're all caught up".
     const { posts, exhausted } = await Post.getForYouFeed(req.user.id, limit, offset, Number.isFinite(sessionStart) ? sessionStart : null);
     await attachMedia(posts);
-    res.json({ posts, page, limit, hasMore: posts.length === limit && !exhausted, caughtUp: exhausted });
+    // hasMore is PURELY a pagination signal: a full page means there is very
+    // likely another one behind it. caughtUp used to be ANDed in here, which
+    // made "you've seen everything new" also mean "stop paginating" -- the
+    // feed hard-stopped the moment the unseen pool ran out, even though the
+    // ranked pool still had days of (already-seen) posts left to scroll. The
+    // two states are now independent, and the client renders them separately:
+    //   caughtUp && hasMore -> "all caught up" divider, scrolling continues
+    //   !hasMore            -> real end of feed (terminal message)
+    // getForYouFeed already sorts seen posts below unseen ones, so everything
+    // past the divider is the demoted tail -- exactly what should come next.
+    res.json({ posts, page, limit, hasMore: posts.length === limit, caughtUp: exhausted });
   } catch (err) {
     console.error('Get feed error:', err.message);
     res.status(500).json({ message: 'Server error fetching feed' });
