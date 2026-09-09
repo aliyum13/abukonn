@@ -12,6 +12,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { apiFetch } from '../../src/lib/api';
 import { uploadImage } from '../../src/lib/upload';
 import { MessageBody } from '../../src/components/MessageBody';
+import { MessageActionSheet, type MessageAction } from '../../src/components/MessageActionSheet';
 import { friendlyPreview, plainText, editableText, withEditedText } from '../../src/lib/messagePreview';
 import { getSocket } from '../../src/lib/socket';
 import type { Socket } from 'socket.io-client';
@@ -49,6 +50,11 @@ export default function Chat() {
   const [theyreTyping, setTheyreTyping] = useState(false);
   const [replyTo, setReplyTo] = useState<{ id: number; senderName: string; preview: string } | null>(null);
   const [sendingImage, setSendingImage] = useState(false);
+  // Which message's long-press menu is open. Was Alert.alert, which silently
+  // dropped everything past the third option on Android -- see
+  // MessageActionSheet's header for the full explanation.
+  const [menuMsg, setMenuMsg] = useState<Msg | null>(null);
+
   // Edit sheet state. A Modal rather than Alert.prompt — prompt is iOS-only,
   // and Edit has to work identically on Android.
   const [editMsg, setEditMsg] = useState<Msg | null>(null);
@@ -305,25 +311,30 @@ export default function Chat() {
     }
   };
 
-  const openMessageMenu = (m: Msg) => {
+  const openMessageMenu = (m: Msg) => setMenuMsg(m);
+
+  // Built fresh when the sheet renders. Order is unchanged from the old menu;
+  // what changed is that nothing past the third entry is discarded any more,
+  // so Edit and Delete are actually reachable on Android. Cancel is not in this
+  // list -- the sheet renders its own, which cannot be truncated away.
+  const messageActions = (m: Msg): MessageAction[] => {
     const mine = m.sender_id === user?.id;
-    const options: { text: string; style?: 'destructive' | 'cancel'; onPress?: () => void }[] = [
-      { text: 'Reply', onPress: () => startReply(m) },
-      { text: 'Forward', onPress: () => setForwardMsg(m) },
+    const list: MessageAction[] = [
+      { label: 'Reply', icon: 'arrow-undo-outline', onPress: () => startReply(m) },
+      { label: 'Forward', icon: 'arrow-redo-outline', onPress: () => setForwardMsg(m) },
     ];
     if (m.content) {
-      options.push({ text: 'Copy', onPress: () => Clipboard.setString(plainText(m.content)) });
+      list.push({ label: 'Copy', icon: 'copy-outline', onPress: () => Clipboard.setString(plainText(m.content)) });
     }
     // Only offer Edit where there is text of the sender's own to change:
     // shared-post cards and image-only messages have none.
     if (mine && !m.is_deleted && editableText(m.content)) {
-      options.push({ text: 'Edit', onPress: () => startEdit(m) });
+      list.push({ label: 'Edit', icon: 'create-outline', onPress: () => startEdit(m) });
     }
     if (mine) {
-      options.push({ text: 'Delete', style: 'destructive', onPress: () => deleteMessage(m) });
+      list.push({ label: 'Delete', icon: 'trash-outline', destructive: true, onPress: () => deleteMessage(m) });
     }
-    options.push({ text: 'Cancel', style: 'cancel' });
-    Alert.alert('Message', undefined, options);
+    return list;
   };
 
   // Load conversations when the forward sheet opens.
@@ -516,6 +527,14 @@ export default function Chat() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Long-press message menu */}
+      <MessageActionSheet
+        visible={menuMsg !== null}
+        title="Message"
+        actions={menuMsg ? messageActions(menuMsg) : []}
+        onClose={() => setMenuMsg(null)}
+      />
 
       {/* Edit sheet */}
       <Modal visible={editMsg !== null} animationType="slide" transparent onRequestClose={() => setEditMsg(null)}>
