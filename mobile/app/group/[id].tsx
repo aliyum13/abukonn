@@ -13,6 +13,7 @@ import { uploadImage } from '../../src/lib/upload';
 import { useAuth } from '../../src/context/AuthContext';
 import { plainText, editableText, withEditedText } from '../../src/lib/messagePreview';
 import { MessageBody } from '../../src/components/MessageBody';
+import { MessageActionSheet, type MessageAction } from '../../src/components/MessageActionSheet';
 import { colors } from '../../src/theme';
 
 interface GroupMsg {
@@ -38,6 +39,11 @@ export default function GroupChat() {
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
   const [sendingImage, setSendingImage] = useState(false);
+  // Which message's long-press menu is open. Was Alert.alert, which silently
+  // dropped everything past the third option on Android -- see
+  // MessageActionSheet's header for the full explanation.
+  const [menuMsg, setMenuMsg] = useState<GroupMsg | null>(null);
+
   // Edit sheet state, same shape as chat/[id].tsx (Modal, not Alert.prompt —
   // prompt is iOS-only). This screen polls rather than holding a socket, so
   // other members pick edits up on the next 5s reconcile, exactly as they
@@ -186,20 +192,24 @@ export default function GroupChat() {
     }
   };
 
-  const openMessageMenu = (m: GroupMsg) => {
+  const openMessageMenu = (m: GroupMsg) => setMenuMsg(m);
+
+  // Same order as before; the difference is that Delete (previously the fourth
+  // entry, and so discarded on Android) now actually renders. Cancel is not in
+  // this list -- the sheet renders its own, which cannot be truncated away.
+  const messageActions = (m: GroupMsg): MessageAction[] => {
     const mine = m.sender_id === user?.id;
-    const options: { text: string; style?: 'destructive' | 'cancel'; onPress?: () => void }[] = [
-      { text: 'Forward', onPress: () => setForwardMsg(m) },
+    const list: MessageAction[] = [
+      { label: 'Forward', icon: 'arrow-redo-outline', onPress: () => setForwardMsg(m) },
     ];
-    if (m.content) options.push({ text: 'Copy', onPress: () => Clipboard.setString(plainText(m.content)) });
+    if (m.content) list.push({ label: 'Copy', icon: 'copy-outline', onPress: () => Clipboard.setString(plainText(m.content)) });
     // Only where there is text of the sender's own to change — shared-post
     // cards and image-only messages have none.
     if (mine && !m.is_deleted && editableText(m.content)) {
-      options.push({ text: 'Edit', onPress: () => startEdit(m) });
+      list.push({ label: 'Edit', icon: 'create-outline', onPress: () => startEdit(m) });
     }
-    if (mine) options.push({ text: 'Delete', style: 'destructive', onPress: () => deleteMessage(m) });
-    options.push({ text: 'Cancel', style: 'cancel' });
-    Alert.alert('Message', undefined, options);
+    if (mine) list.push({ label: 'Delete', icon: 'trash-outline', destructive: true, onPress: () => deleteMessage(m) });
+    return list;
   };
 
   useEffect(() => {
@@ -361,6 +371,14 @@ export default function GroupChat() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Long-press message menu */}
+      <MessageActionSheet
+        visible={menuMsg !== null}
+        title="Message"
+        actions={menuMsg ? messageActions(menuMsg) : []}
+        onClose={() => setMenuMsg(null)}
+      />
 
       {/* Edit sheet */}
       <Modal visible={editMsg !== null} animationType="slide" transparent onRequestClose={() => setEditMsg(null)}>
