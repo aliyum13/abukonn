@@ -412,6 +412,252 @@ const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, on
   );
 });
 
+// -----------------------------------------------------------------------
+// CommentRow / NewCommentBar
+//
+// Root-caused report: typing in ANY text box in the comment modal (the
+// bottom "Add a comment" bar, a comment's inline Edit box, or its Reply box)
+// visibly jittered/jumped on Android, worse with more comments on screen.
+//
+// The cause: Feed() is one ~1,900-line component holding every piece of
+// state for the whole screen, and the comment modal's typed-text state
+// (editCommentText / replyText / commentText) used to live there too, right
+// alongside the comments FlatList's renderItem (defined inline, not
+// memoized). Every keystroke updated Feed()-level state, which re-rendered
+// the ENTIRE Feed() component, which recreated renderItem, which FlatList
+// treats as a genuinely new prop -- so it re-evaluated EVERY visible comment
+// row on every single character typed. More visible rows = more work per
+// keystroke, which is exactly the "worse with more comments" symptom
+// reported.
+//
+// The fix has three parts, each closing a distinct gap -- see the PR
+// description for why none of the three alone is sufficient:
+//
+// 1. The row is its OWN memoized component (React.memo), like PostCard
+//    above it. A row only re-renders when ITS OWN props change.
+// 2. The text actually being typed (edit draft, reply draft) is LOCAL state
+//    inside the row, not Feed()-level state threaded down as a prop. This is
+//    what stops Feed() itself from re-rendering on every keystroke -- while
+//    typing, only this one row instance re-renders, nothing else.
+// 3. The callbacks passed down (onLike, onDelete, onSaveEdit, ...) are all
+//    useCallback'd in Feed() with dependencies that change only on discrete
+//    actions (not keystrokes) -- see the handler block above. Without this,
+//    memo would still "fail" on every Feed()-level re-render that happens
+//    for unrelated reasons (a poll vote, a feed scroll) while the modal
+//    happens to be open, because the callback props would be new identities
+//    each time even though the actual data didn't change.
+//
+// WHICH row is being edited/replied to (editingCommentId/replyingToId) still
+// lives in Feed() -- that is genuinely cross-row state (only one row can be
+// in edit mode; other rows need to know they are NOT it), and it changes
+// only on a tap, never on a keystroke, so it does not reintroduce the bug.
+interface CommentRowProps {
+  item: Comment;
+  currentUserId?: number;
+  isEditing: boolean;
+  isReplying: boolean;
+  isExpanded: boolean;
+  replies: CommentReply[];
+  canMarkBestAnswer: boolean;
+  onStartEdit: (commentId: number) => void;
+  onCancelEdit: () => void;
+  onSaveEdit: (commentId: number, text: string) => Promise<boolean>;
+  onToggleReply: (commentId: number) => void;
+  onSendReply: (commentId: number, text: string) => Promise<boolean>;
+  onToggleReplies: (commentId: number) => void;
+  onLike: (commentId: number) => void;
+  onDelete: (commentId: number) => void;
+  onReport: (commentId: number, authorName: string) => void;
+  onMarkBestAnswer: (commentId: number) => void;
+}
+
+const CommentRow = memo(function CommentRow({
+  item, currentUserId, isEditing, isReplying, isExpanded, replies, canMarkBestAnswer,
+  onStartEdit, onCancelEdit, onSaveEdit, onToggleReply, onSendReply, onToggleReplies,
+  onLike, onDelete, onReport, onMarkBestAnswer,
+}: CommentRowProps) {
+  const s = useThemedStyles(make_s);
+
+  // Local draft for the edit box. Seeded from item.content each time this
+  // row transitions INTO edit mode -- deliberately keyed only on isEditing
+  // (item.content is excluded from the deps on purpose): if it were
+  // included, a background refetch updating item.content while this row is
+  // mid-edit would silently clobber what the user is typing.
+  const [editDraft, setEditDraft] = useState(item.content);
+  const [savingEdit, setSavingEdit] = useState(false);
+  useEffect(() => {
+    if (isEditing) setEditDraft(item.content);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditing]);
+
+  const [replyDraft, setReplyDraft] = useState('');
+  useEffect(() => {
+    if (isReplying) setReplyDraft('');
+  }, [isReplying]);
+
+  const handleSave = async () => {
+    const text = editDraft.trim();
+    if (!text || text === item.content) { onCancelEdit(); return; } // no-op guard, same as before
+    setSavingEdit(true);
+    try {
+      await onSaveEdit(item.id, text);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleSend = async () => {
+    const text = replyDraft.trim();
+    if (!text) return;
+    setReplyDraft('');
+    const ok = await onSendReply(item.id, text);
+    if (!ok) setReplyDraft(text); // don't lose what they typed
+  };
+
+  return (
+    <View style={s.commentRow}>
+      <Text style={s.author}>{item.author_name}</Text>
+      {isEditing ? (
+        <View style={s.commentEditBox}>
+          <TextInput
+            style={s.commentEditInput}
+            value={editDraft}
+            onChangeText={setEditDraft}
+            placeholderTextColor={colors.muted}
+            multiline
+            autoFocus
+            editable={!savingEdit}
+          />
+          <View style={s.commentEditActions}>
+            <TouchableOpacity onPress={onCancelEdit} disabled={savingEdit}>
+              <Text style={s.commentEditCancel}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleSave} disabled={!editDraft.trim() || savingEdit}>
+              {savingEdit
+                ? <ActivityIndicator size="small" color={colors.brand} />
+                : <Text style={[s.commentEditSave, !editDraft.trim() ? { opacity: 0.4 } : null]}>Save</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : (
+        <Text style={s.content}>
+          {item.content}
+          {item.edited_at ? <Text style={s.commentEditedTag}>  edited</Text> : null}
+        </Text>
+      )}
+      {item.is_best_answer ? (
+        <View style={s.bestAnswerBadge}>
+          <Text style={s.bestAnswerBadgeText}>✓ Best Answer</Text>
+        </View>
+      ) : null}
+      <View style={s.commentMetaRow}>
+        <Text style={s.muted}>{timeAgo(item.created_at)}</Text>
+        <TouchableOpacity style={s.commentLikeBtn} onPress={() => onLike(item.id)}>
+          <Ionicons name={item.is_liked ? 'heart' : 'heart-outline'} size={14} color={item.is_liked ? colors.danger : colors.textSecondary} />
+          {item.likes_count ? <Text style={[s.commentLikeCount, item.is_liked ? { color: colors.danger } : null]}>{item.likes_count}</Text> : null}
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => onToggleReply(item.id)}>
+          <Text style={s.commentActionText}>Reply</Text>
+        </TouchableOpacity>
+        {item.reply_count ? (
+          <TouchableOpacity onPress={() => onToggleReplies(item.id)}>
+            <Text style={s.commentActionText}>
+              {isExpanded ? 'Hide' : 'View'} {item.reply_count} {item.reply_count === 1 ? 'reply' : 'replies'}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+        {item.user_id !== currentUserId ? (
+          <TouchableOpacity onPress={() => onReport(item.id, item.author_name)}>
+            <Text style={s.commentReportText}>Report</Text>
+          </TouchableOpacity>
+        ) : null}
+        {/* Author-gated, exactly like the server's own check.
+            currentUserId is null-checked so a missing id can't make
+            `undefined === undefined` offer Delete on every row. */}
+        {currentUserId != null && item.user_id === currentUserId && !isEditing ? (
+          <TouchableOpacity onPress={() => onStartEdit(item.id)}>
+            <Text style={s.commentActionText}>Edit</Text>
+          </TouchableOpacity>
+        ) : null}
+        {currentUserId != null && item.user_id === currentUserId ? (
+          <TouchableOpacity onPress={() => onDelete(item.id)}>
+            <Text style={s.commentDeleteText}>Delete</Text>
+          </TouchableOpacity>
+        ) : null}
+        {canMarkBestAnswer ? (
+          <TouchableOpacity onPress={() => onMarkBestAnswer(item.id)} hitSlop={8}>
+            <Text style={s.markBestText}>✓ Best Answer</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+
+      {/* Reply composer for this comment */}
+      {isReplying ? (
+        <View style={s.replyBox}>
+          <TextInput
+            style={s.replyInput}
+            value={replyDraft}
+            onChangeText={setReplyDraft}
+            placeholder={`Reply to ${item.author_name}...`}
+            placeholderTextColor={colors.muted}
+            autoFocus
+            multiline
+          />
+          <TouchableOpacity style={s.replySend} onPress={handleSend} disabled={!replyDraft.trim()}>
+            <Ionicons name="send" size={16} color="#fff" />
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      {/* Nested replies */}
+      {isExpanded ? (
+        <View style={s.replyThread}>
+          {replies.map(r => (
+            <View key={r.id} style={s.replyItem}>
+              <Text style={s.author}>{r.author_name}</Text>
+              <Text style={s.content}>{r.content}</Text>
+              <Text style={s.muted}>{timeAgo(r.created_at)}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+});
+
+// The bottom "Add a comment" bar. Its own local state for the SAME reason as
+// CommentRow's drafts: this bar sits OUTSIDE the comments FlatList (a
+// sibling View below it), but its text used to live in Feed() too, so typing
+// here re-rendered Feed() (and therefore the whole comment list) exactly
+// like typing in the per-row edit/reply boxes did.
+const NewCommentBar = memo(function NewCommentBar({ onSubmit }: { onSubmit: (text: string) => Promise<boolean> }) {
+  const s = useThemedStyles(make_s);
+  const [text, setText] = useState('');
+
+  const handleSend = async () => {
+    const body = text.trim();
+    if (!body) return;
+    setText('');
+    const ok = await onSubmit(body);
+    if (!ok) setText(body); // don't lose what they typed
+  };
+
+  return (
+    <View style={s.commentBar}>
+      <TextInput
+        style={s.commentInput}
+        placeholder="Add a comment..."
+        placeholderTextColor={colors.muted}
+        value={text}
+        onChangeText={setText}
+      />
+      <TouchableOpacity onPress={handleSend} disabled={!text.trim()}>
+        <Text style={[s.post, !text.trim() ? { opacity: 0.4 } : null]}>Send</Text>
+      </TouchableOpacity>
+    </View>
+  );
+});
+
 const POST_CATEGORIES = [
   { value: 'ALL', label: 'All' },
   { value: 'GENERAL', label: 'General' },
@@ -574,18 +820,19 @@ export default function Feed() {
   const [editDraft, setEditDraft] = useState('');
   const [editSaving, setEditSaving] = useState(false);
   const [comments, setComments] = useState<Comment[]>([]);
-  const [commentText, setCommentText] = useState('');
   const [commentsLoading, setCommentsLoading] = useState(false);
   // Threaded replies, ported from post/[id].tsx (which already had this --
   // this modal, opened from the feed's own comment button, never did).
   const [expandedComments, setExpandedComments] = useState<Set<number>>(new Set());
   const [repliesByComment, setRepliesByComment] = useState<Record<number, CommentReply[]>>({});
-  // Inline comment editing in the comment modal. Author-only; see saveCommentEdit.
+  // WHICH comment is being edited/replied to. This changes only on discrete
+  // actions (tap Edit, tap Cancel, tap Reply) -- never on a keystroke. The
+  // actual TYPED TEXT for edit/reply/new-comment deliberately does NOT live
+  // here any more: see CommentRow and NewCommentBar's module comments for why
+  // keeping it here was the root cause of the reported flicker/jitter while
+  // typing in the comment modal.
   const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
-  const [editCommentText, setEditCommentText] = useState('');
-  const [savingCommentEdit, setSavingCommentEdit] = useState(false);
   const [replyingToId, setReplyingToId] = useState<number | null>(null);
-  const [replyText, setReplyText] = useState('');
 
   const load = useCallback(async () => {
     const gen = ++loadGenRef.current;
@@ -1015,11 +1262,13 @@ export default function Feed() {
     setCommentsLoading(true);
     // This modal instance is reused across posts (opened/closed repeatedly,
     // never remounted) -- without resetting these, a previous post's expanded
-    // replies/reply-composer state would leak into the next one's thread.
+    // replies state would leak into the next one's thread. The reply/edit
+    // DRAFT text no longer needs resetting here: it is CommentRow-local state
+    // now, keyed to comments this post doesn't have, so it can't leak.
     setExpandedComments(new Set());
     setRepliesByComment({});
     setReplyingToId(null);
-    setReplyText('');
+    setEditingCommentId(null);
     try {
       const data = await apiFetch<{ comments: Comment[] }>(`/api/posts/${post.id}/comments`);
       setComments(data.comments || []);
@@ -1040,40 +1289,60 @@ export default function Feed() {
     }
   }, [commentsFor]);
 
-  const toggleCommentReplies = (commentId: number) => {
+  // ---------------------------------------------------------------------
+  // Comment action handlers. Every one below is wrapped in useCallback with
+  // dependencies that change only on discrete actions (posting/editing/
+  // deleting/liking a comment, switching which post's thread is open) --
+  // NEVER on a keystroke. That is what makes CommentRow's React.memo below
+  // actually effective: a stable renderItem + stable callback props means a
+  // sibling row's props never change while you type in another row.
+  //
+  // None of these read the text actually being typed any more -- it is
+  // passed in as an argument (from CommentRow/NewCommentBar's own local
+  // state) rather than closed over from Feed()-level state. See CommentRow's
+  // module comment for why that split is what actually stops Feed() itself
+  // from re-rendering on every keystroke.
+  // ---------------------------------------------------------------------
+
+  const handleToggleReplies = useCallback((commentId: number) => {
     setExpandedComments(prev => {
       const next = new Set(prev);
       if (next.has(commentId)) { next.delete(commentId); }
       else { next.add(commentId); if (!repliesByComment[commentId]) loadCommentReplies(commentId); }
       return next;
     });
-  };
+  }, [repliesByComment, loadCommentReplies]);
 
-  const sendCommentReply = async (commentId: number) => {
-    if (!commentsFor) return;
-    const body = replyText.trim();
-    if (!body) return;
-    setReplyText('');
+  // Toggling Reply on the same comment again closes it -- same symmetry the
+  // old inline onPress had (`replyingToId === item.id ? null : item.id`).
+  const handleToggleReply = useCallback((commentId: number) => {
+    setReplyingToId(prev => (prev === commentId ? null : commentId));
+  }, []);
+
+  const handleSendReply = useCallback(async (commentId: number, text: string): Promise<boolean> => {
+    if (!commentsFor) return false;
     try {
       const res = await apiFetch<{ reply: CommentReply }>(
         `/api/posts/${commentsFor.id}/comments/${commentId}/replies`,
-        { method: 'POST', body: JSON.stringify({ content: body }) });
+        { method: 'POST', body: JSON.stringify({ content: text }) });
       if (res.reply) {
         setRepliesByComment(prev => ({ ...prev, [commentId]: [...(prev[commentId] || []), res.reply] }));
         setComments(prev => prev.map(c => c.id === commentId ? { ...c, reply_count: (c.reply_count || 0) + 1 } : c));
         setExpandedComments(prev => new Set(prev).add(commentId));
       }
       setReplyingToId(null);
+      return true;
     } catch {
-      setReplyText(body);
+      // CommentRow keeps the drafted text on a false return -- nothing lost.
+      return false;
     }
-  };
+  }, [commentsFor?.id]);
 
   // Ported from post/[id].tsx's likeComment -- same endpoint, same optimistic
   // pattern. Comment ids are already unified onto the canonical post's thread
   // server-side (addComment/getComments resolve reposts before writing/
   // reading), so no repost-aware resolution is needed here, same as there.
-  const likeCommentInModal = async (commentId: number) => {
+  const handleLikeComment = useCallback(async (commentId: number) => {
     if (!commentsFor) return;
     setComments(prev => prev.map(c => c.id === commentId
       ? { ...c, is_liked: !c.is_liked, likes_count: (c.likes_count ?? 0) + (c.is_liked ? -1 : 1) }
@@ -1085,49 +1354,52 @@ export default function Feed() {
         ? { ...c, is_liked: !c.is_liked, likes_count: (c.likes_count ?? 0) + (c.is_liked ? 1 : -1) }
         : c));
     }
-  };
+  }, [commentsFor?.id]);
 
-  const markBestAnswer = async (commentId: number) => {
+  const handleMarkBestAnswer = useCallback(async (commentId: number) => {
     if (!commentsFor) return;
+    const postId = commentsFor.id;
     // Optimistic: this comment becomes the sole best answer, matching web.
     setComments(prev => prev.map(c => ({ ...c, is_best_answer: c.id === commentId })));
     try {
-      await apiFetch(
-        `/api/posts/${commentsFor.id}/comments/${commentId}/best-answer`,
-        { method: 'POST' });
+      await apiFetch(`/api/posts/${postId}/comments/${commentId}/best-answer`, { method: 'POST' });
     } catch (err) {
       Alert.alert('Could not mark best answer', err instanceof Error ? err.message : '');
       // Revert on failure by refetching the thread.
       try {
-        const data = await apiFetch<{ comments: Comment[] }>(`/api/posts/${commentsFor.id}/comments`);
+        const data = await apiFetch<{ comments: Comment[] }>(`/api/posts/${postId}/comments`);
         setComments(data.comments || []);
       } catch { /* leave optimistic state */ }
     }
-  };
+  }, [commentsFor?.id]);
 
-  const sendComment = async () => {
-    if (!commentText.trim() || !commentsFor) return;
-    const body = commentText.trim();
-    setCommentText('');
+  const handleSubmitNewComment = useCallback(async (text: string): Promise<boolean> => {
+    if (!commentsFor) return false;
+    const postId = commentsFor.id;
     try {
       const res = await apiFetch<{ comment: Comment }>(
-        `/api/posts/${commentsFor.id}/comments`,
-        { method: 'POST', body: JSON.stringify({ content: body }) });
+        `/api/posts/${postId}/comments`,
+        { method: 'POST', body: JSON.stringify({ content: text }) });
       setComments(prev => [...prev, res.comment]);
       // Same repost-aware field selection as toggleLike -- reposts display
       // original_comments_count, not their own.
       setPosts(prev => prev.map(p => {
-        if (p.id !== commentsFor.id) return p;
+        if (p.id !== postId) return p;
         if (p.is_repost && p.original_comments_count !== undefined) {
           return { ...p, original_comments_count: p.original_comments_count + 1 };
         }
         return { ...p, comments_count: p.comments_count + 1 };
       }));
+      return true;
     } catch (err) {
       Alert.alert('Could not post comment', err instanceof Error ? err.message : '');
-      setCommentText(body); // don't lose what they typed
+      return false; // NewCommentBar restores what was typed on a false return
     }
-  };
+  }, [commentsFor?.id]);
+
+  const handleReportComment = useCallback((commentId: number, authorName: string) => {
+    setReportTarget({ type: 'comment', id: commentId, name: authorName });
+  }, []);
 
   // Delete one of YOUR OWN comments from the feed's comment modal.
   //
@@ -1141,9 +1413,9 @@ export default function Feed() {
   // deletes `WHERE id = $1 AND user_id = $2`, so a post owner (or reposter)
   // cannot remove someone else's comment regardless of what the UI offers.
   // This action is gated the same way, so affordance matches permission.
-  const deleteCommentInModal = (commentId: number) => {
+  const handleDeleteComment = useCallback((commentId: number) => {
     if (!commentsFor) return;
-    const target = commentsFor;
+    const postId = commentsFor.id;
     Alert.alert('Delete comment', 'This comment will be removed.', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -1151,21 +1423,21 @@ export default function Feed() {
         onPress: async () => {
           const prev = comments;
           setComments(cs => cs.filter(c => c.id !== commentId));
-          // Repost-aware decrement, mirroring sendComment's increment.
+          // Repost-aware decrement, mirroring handleSubmitNewComment's increment.
           setPosts(ps => ps.map(p => {
-            if (p.id !== target.id) return p;
+            if (p.id !== postId) return p;
             if (p.is_repost && p.original_comments_count !== undefined) {
               return { ...p, original_comments_count: Math.max(0, p.original_comments_count - 1) };
             }
             return { ...p, comments_count: Math.max(0, p.comments_count - 1) };
           }));
           try {
-            await apiFetch(`/api/posts/${target.id}/comments/${commentId}`, { method: 'DELETE' });
+            await apiFetch(`/api/posts/${postId}/comments/${commentId}`, { method: 'DELETE' });
           } catch (err) {
             // Put the comment and the count back if the server refused.
             setComments(prev);
             setPosts(ps => ps.map(p => {
-              if (p.id !== target.id) return p;
+              if (p.id !== postId) return p;
               if (p.is_repost && p.original_comments_count !== undefined) {
                 return { ...p, original_comments_count: p.original_comments_count + 1 };
               }
@@ -1176,7 +1448,10 @@ export default function Feed() {
         },
       },
     ]);
-  };
+  }, [commentsFor?.id, comments]);
+
+  const handleStartEdit = useCallback((commentId: number) => setEditingCommentId(commentId), []);
+  const handleCancelEdit = useCallback(() => setEditingCommentId(null), []);
 
   // Edit one of YOUR OWN comments. Author-gated to match the server, whose
   // UPDATE is scoped `WHERE id = $1 AND user_id = $2` -- a post owner or
@@ -1185,13 +1460,12 @@ export default function Feed() {
   // Deliberately NOT Pro-gated (post editing is): fixing a typo in your own
   // comment is table stakes, and gating it would make it disappear for free
   // users the day PRO_GATES_ENABLED flips.
-  const saveCommentEdit = async (commentId: number) => {
-    if (!commentsFor) return;
-    const text = editCommentText.trim();
-    if (!text) return;
-    const original = comments.find(c => c.id === commentId);
-    if (original && text === original.content) { setEditingCommentId(null); return; }
-    setSavingCommentEdit(true);
+  //
+  // No-op-save guard (unchanged text) now lives in CommentRow itself, which
+  // has `item.content` right there as a prop -- this no longer needs to
+  // search `comments` for it.
+  const handleSaveEdit = useCallback(async (commentId: number, text: string): Promise<boolean> => {
+    if (!commentsFor) return false;
     try {
       const res = await apiFetch<{ comment: Comment }>(
         `/api/posts/${commentsFor.id}/comments/${commentId}`,
@@ -1200,13 +1474,51 @@ export default function Feed() {
         ? { ...c, content: res.comment.content, edited_at: res.comment.edited_at }
         : c));
       setEditingCommentId(null);
+      return true;
     } catch (err) {
-      // Leave the editor open with the text intact so nothing is lost.
+      // CommentRow keeps its own editor open with the text intact on false.
       Alert.alert('Could not save', err instanceof Error ? err.message : '');
-    } finally {
-      setSavingCommentEdit(false);
+      return false;
     }
-  };
+  }, [commentsFor?.id]);
+
+  // The comments FlatList's renderItem, useCallback'd. Its dependencies are
+  // ALL "which row is doing what" selectors and stable callback references --
+  // none of them change on a keystroke (see CommentRow's module comment).
+  // That is what makes this identity stay stable while typing, which is what
+  // stops FlatList from re-evaluating every visible row on every character.
+  const renderCommentItem = useCallback(({ item }: { item: Comment }) => {
+    const canMark = commentsFor?.post_subtype === 'question'
+      && commentsFor?.user_id === user?.id
+      && !item.is_best_answer;
+    return (
+      <CommentRow
+        item={item}
+        currentUserId={user?.id}
+        isEditing={editingCommentId === item.id}
+        isReplying={replyingToId === item.id}
+        isExpanded={expandedComments.has(item.id)}
+        replies={repliesByComment[item.id] || []}
+        canMarkBestAnswer={canMark}
+        onStartEdit={handleStartEdit}
+        onCancelEdit={handleCancelEdit}
+        onSaveEdit={handleSaveEdit}
+        onToggleReply={handleToggleReply}
+        onSendReply={handleSendReply}
+        onToggleReplies={handleToggleReplies}
+        onLike={handleLikeComment}
+        onDelete={handleDeleteComment}
+        onReport={handleReportComment}
+        onMarkBestAnswer={handleMarkBestAnswer}
+      />
+    );
+  }, [
+    commentsFor?.post_subtype, commentsFor?.user_id, user?.id,
+    editingCommentId, replyingToId, expandedComments, repliesByComment,
+    handleStartEdit, handleCancelEdit, handleSaveEdit,
+    handleToggleReply, handleSendReply, handleToggleReplies,
+    handleLikeComment, handleDeleteComment, handleReportComment, handleMarkBestAnswer,
+  ]);
 
   const openPollVoters = useCallback(async (post: Post) => {
     setPollVotersLoading(true);
@@ -2147,135 +2459,11 @@ export default function Feed() {
                 data={comments}
                 keyExtractor={c => String(c.id)}
                 ListEmptyComponent={<View style={s.center}><Text style={s.muted}>No comments yet</Text></View>}
-                renderItem={({ item }) => {
-                  const canMark = commentsFor?.post_subtype === 'question'
-                    && commentsFor?.user_id === user?.id
-                    && !item.is_best_answer;
-                  return (
-                    <View style={s.commentRow}>
-                      <Text style={s.author}>{item.author_name}</Text>
-                      {editingCommentId === item.id ? (
-                        <View style={s.commentEditBox}>
-                          <TextInput
-                            style={s.commentEditInput}
-                            value={editCommentText}
-                            onChangeText={setEditCommentText}
-                            placeholderTextColor={colors.muted}
-                            multiline
-                            autoFocus
-                            editable={!savingCommentEdit}
-                          />
-                          <View style={s.commentEditActions}>
-                            <TouchableOpacity onPress={() => setEditingCommentId(null)} disabled={savingCommentEdit}>
-                              <Text style={s.commentEditCancel}>Cancel</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity onPress={() => saveCommentEdit(item.id)} disabled={!editCommentText.trim() || savingCommentEdit}>
-                              {savingCommentEdit
-                                ? <ActivityIndicator size="small" color={colors.brand} />
-                                : <Text style={[s.commentEditSave, !editCommentText.trim() ? { opacity: 0.4 } : null]}>Save</Text>}
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      ) : (
-                        <Text style={s.content}>
-                          {item.content}
-                          {item.edited_at ? <Text style={s.commentEditedTag}>  edited</Text> : null}
-                        </Text>
-                      )}
-                      {item.is_best_answer ? (
-                        <View style={s.bestAnswerBadge}>
-                          <Text style={s.bestAnswerBadgeText}>✓ Best Answer</Text>
-                        </View>
-                      ) : null}
-                      <View style={s.commentMetaRow}>
-                        <Text style={s.muted}>{timeAgo(item.created_at)}</Text>
-                        <TouchableOpacity style={s.commentLikeBtn} onPress={() => likeCommentInModal(item.id)}>
-                          <Ionicons name={item.is_liked ? 'heart' : 'heart-outline'} size={14} color={item.is_liked ? colors.danger : colors.textSecondary} />
-                          {item.likes_count ? <Text style={[s.commentLikeCount, item.is_liked ? { color: colors.danger } : null]}>{item.likes_count}</Text> : null}
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => { setReplyingToId(replyingToId === item.id ? null : item.id); setReplyText(''); }}>
-                          <Text style={s.commentActionText}>Reply</Text>
-                        </TouchableOpacity>
-                        {item.reply_count ? (
-                          <TouchableOpacity onPress={() => toggleCommentReplies(item.id)}>
-                            <Text style={s.commentActionText}>
-                              {expandedComments.has(item.id) ? 'Hide' : 'View'} {item.reply_count} {item.reply_count === 1 ? 'reply' : 'replies'}
-                            </Text>
-                          </TouchableOpacity>
-                        ) : null}
-                        {item.user_id !== user?.id ? (
-                          <TouchableOpacity onPress={() => setReportTarget({ type: 'comment', id: item.id, name: item.author_name })}>
-                            <Text style={s.commentReportText}>Report</Text>
-                          </TouchableOpacity>
-                        ) : null}
-                        {/* Author-gated, exactly like the server's own check.
-                            user?.id is null-checked so a missing id can't make
-                            `undefined === undefined` offer Delete on every row. */}
-                        {user?.id != null && item.user_id === user.id && editingCommentId !== item.id ? (
-                          <TouchableOpacity onPress={() => { setEditingCommentId(item.id); setEditCommentText(item.content); }}>
-                            <Text style={s.commentActionText}>Edit</Text>
-                          </TouchableOpacity>
-                        ) : null}
-                        {user?.id != null && item.user_id === user.id ? (
-                          <TouchableOpacity onPress={() => deleteCommentInModal(item.id)}>
-                            <Text style={s.commentDeleteText}>Delete</Text>
-                          </TouchableOpacity>
-                        ) : null}
-                        {canMark ? (
-                          <TouchableOpacity onPress={() => markBestAnswer(item.id)} hitSlop={8}>
-                            <Text style={s.markBestText}>✓ Best Answer</Text>
-                          </TouchableOpacity>
-                        ) : null}
-                      </View>
-
-                      {/* Reply composer for this comment */}
-                      {replyingToId === item.id ? (
-                        <View style={s.replyBox}>
-                          <TextInput
-                            style={s.replyInput}
-                            value={replyText}
-                            onChangeText={setReplyText}
-                            placeholder={`Reply to ${item.author_name}...`}
-                            placeholderTextColor={colors.muted}
-                            autoFocus
-                            multiline
-                          />
-                          <TouchableOpacity style={s.replySend} onPress={() => sendCommentReply(item.id)} disabled={!replyText.trim()}>
-                            <Ionicons name="send" size={16} color="#fff" />
-                          </TouchableOpacity>
-                        </View>
-                      ) : null}
-
-                      {/* Nested replies */}
-                      {expandedComments.has(item.id) ? (
-                        <View style={s.replyThread}>
-                          {(repliesByComment[item.id] || []).map(r => (
-                            <View key={r.id} style={s.replyItem}>
-                              <Text style={s.author}>{r.author_name}</Text>
-                              <Text style={s.content}>{r.content}</Text>
-                              <Text style={s.muted}>{timeAgo(r.created_at)}</Text>
-                            </View>
-                          ))}
-                        </View>
-                      ) : null}
-                    </View>
-                  );
-                }}
+                renderItem={renderCommentItem}
               />
             )}
 
-            <View style={s.commentBar}>
-              <TextInput
-                style={s.commentInput}
-                placeholder="Add a comment..."
-                placeholderTextColor={colors.muted}
-                value={commentText}
-                onChangeText={setCommentText}
-              />
-              <TouchableOpacity onPress={sendComment} disabled={!commentText.trim()}>
-                <Text style={[s.post, !commentText.trim() ? { opacity: 0.4 } : null]}>Send</Text>
-              </TouchableOpacity>
-            </View>
+            <NewCommentBar onSubmit={handleSubmitNewComment} />
           </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
