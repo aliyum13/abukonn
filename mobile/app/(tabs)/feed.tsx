@@ -150,18 +150,30 @@ interface PostCardProps {
   maxEngagementScore: number;
 }
 
-// Renders the composer's text with #hashtags tinted, passed as CHILDREN of the
-// composer TextInput -- RN's supported way to style text inside an input.
-// Purely visual: `value`/`onChangeText` still own the text, so what gets
-// submitted is untouched. Splits on CONTENT_TOKEN_RE, the same pattern
-// PostContent uses to decide what becomes a real tag, so what lights up while
-// typing is exactly what will be a tag once posted.
-function renderComposerHighlight(text: string, brand: string) {
-  return text.split(CONTENT_TOKEN_RE).map((part, i) =>
-    HASHTAG_RE.test(part)
-      ? <Text key={i} style={{ color: brand, fontWeight: '600' }}>{part}</Text>
-      : <Text key={i}>{part}</Text>
-  );
+// Extracts the unique #hashtags recognised in the composer's text, in the
+// order they first appear. Splits on CONTENT_TOKEN_RE, the same pattern
+// PostContent uses to decide what actually becomes a link, so a tag shown
+// here is exactly a tag that will exist once posted.
+//
+// This used to instead render the SAME text with tinted runs, passed as
+// CHILDREN of the composer TextInput -- RN's documented way to style text
+// inside an input. On Android that is fatal: TextInput.js's Android branch
+// has `invariant(!(props.value != null && childCount), 'Cannot specify both
+// value and children.')`, and childCount was never 0 -- ''.split(RE) is
+// ['' ], one element, so even an EMPTY composer produced a one-item children
+// array. The composer crashed the instant it rendered on Android, not only
+// once a hashtag appeared; iOS's TextInput never reads props.children at all,
+// so there the same code was merely inert (nothing tinted, nothing crashed) --
+// which is why this shipped past typecheck and past not being able to run the
+// app locally. A recognised-tags row is the zero-risk fallback: it reads
+// `newPost` but never touches the TextInput's own props, so value/children can
+// never collide again regardless of what this list renders.
+function recognizedHashtags(text: string): string[] {
+  const seen = new Set<string>();
+  for (const part of text.split(CONTENT_TOKEN_RE)) {
+    if (HASHTAG_RE.test(part)) seen.add(part);
+  }
+  return [...seen];
 }
 
 const CATEGORY_CHIP: Record<string, { bg: string; fg: string; label: string }> = {
@@ -2324,9 +2336,22 @@ export default function Feed() {
                 value={newPost}
                 onChangeText={setNewPost}
                 multiline
-              >
-                {renderComposerHighlight(newPost, colors.brand)}
-              </TextInput>
+              />
+              {/* Confirms a tag is recognised before posting -- the point of #4 --
+                  without touching the TextInput above. See recognizedHashtags'
+                  comment for why rendering this INSIDE the input crashed Android. */}
+              {(() => {
+                const tags = recognizedHashtags(newPost);
+                return tags.length > 0 ? (
+                  <View style={s.composerTagsRow}>
+                    {tags.map(tag => (
+                      <View key={tag} style={s.composerTagChip}>
+                        <Text style={s.composerTagText}>{tag}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null;
+              })()}
 
               {/* Poll options */}
               {composerMode === 'poll' ? (
@@ -2736,6 +2761,9 @@ const make_s = (colors: Palette) => StyleSheet.create({
   votersName: { fontSize: 14, fontWeight: '600', color: colors.text },
   votersDept: { fontSize: 11, color: colors.muted },
   pollVotersLink: { fontSize: 12, fontWeight: '700', color: colors.brand, marginTop: 6 },
+  composerTagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  composerTagChip: { backgroundColor: colors.brand100, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  composerTagText: { fontSize: 12, fontWeight: '700', color: colors.brand },
   pollMeta: { fontSize: 12, color: colors.muted, marginTop: 2 },
   eventWrap: {
     marginTop: 10, borderWidth: 1, borderColor: colors.brand100, borderRadius: 12,
