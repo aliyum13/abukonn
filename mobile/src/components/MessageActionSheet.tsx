@@ -1,6 +1,7 @@
+import { useEffect } from 'react';
 import { useThemedStyles } from '../theme/ThemeContext';
 import type { Palette } from '../theme';
-import { Modal, View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { Modal, View, Text, StyleSheet, TouchableOpacity, ScrollView, BackHandler } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import { colors } from '../theme';
@@ -41,6 +42,25 @@ export function MessageActionSheet({ visible, title, actions, onClose }: {
   onClose: () => void;
 }) {
   const s = useThemedStyles(make_s);
+
+  // Explicit hardware-back handling, alongside the Modal's own onRequestClose
+  // below. onRequestClose is RN's documented Android back-button hook for a
+  // Modal and should already close this sheet on its own -- but the reported
+  // behaviour was that back did NOT dismiss it, only tapping an option did.
+  // This listener is added only while visible, so on Android's LIFO dispatch
+  // it is called before any other registered listener and its `return true`
+  // consumes the event -- back closes the sheet instead of also popping the
+  // screen behind it. Costs nothing to keep alongside onRequestClose: onClose
+  // is idempotent (setMenuMsg(null) when it's already null is a no-op), so
+  // having both fire is harmless if onRequestClose turns out fine after all.
+  useEffect(() => {
+    if (!visible) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      onClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [visible, onClose]);
 
   // Dismiss first, then run. Presenting another Modal (the edit sheet, the
   // forward sheet) while this one is still on screen is unreliable on iOS --
