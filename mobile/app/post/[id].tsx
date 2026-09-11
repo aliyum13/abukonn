@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, memo } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity, Image, FlatList,
   ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Linking, Modal,
@@ -53,6 +53,212 @@ function timeAgo(iso: string) {
   return `${Math.floor(d / 86400)}d`;
 }
 
+// -----------------------------------------------------------------------
+// CommentRow / NewCommentBar -- identical fix, identical root cause, as
+// feed.tsx's comment modal (see that file's module comment for the full
+// story). This screen has the SAME architecture: SinglePost() is one big
+// component holding all its own state, and the comment-edit/reply/new-
+// comment TEXT used to live there too, right next to the comments
+// FlatList's inline (non-memoized) renderItem -- so every keystroke
+// re-rendered the whole screen and forced the FlatList to re-evaluate every
+// visible comment row. Same three-part fix: memoized row component, local
+// draft state for the text actually being typed, useCallback'd action
+// handlers so memo stays effective.
+interface CommentRowProps {
+  item: Comment;
+  currentUserId?: number;
+  isEditing: boolean;
+  isReplying: boolean;
+  isExpanded: boolean;
+  replies: Reply[];
+  onStartEdit: (commentId: number) => void;
+  onCancelEdit: () => void;
+  onSaveEdit: (commentId: number, text: string) => Promise<boolean>;
+  onToggleReply: (commentId: number) => void;
+  onSendReply: (commentId: number, text: string) => Promise<boolean>;
+  onToggleReplies: (commentId: number) => void;
+  onLike: (commentId: number) => void;
+  onDelete: (commentId: number) => void;
+  onReport: (commentId: number, authorName: string) => void;
+}
+
+const CommentRow = memo(function CommentRow({
+  item, currentUserId, isEditing, isReplying, isExpanded, replies,
+  onStartEdit, onCancelEdit, onSaveEdit, onToggleReply, onSendReply, onToggleReplies,
+  onLike, onDelete, onReport,
+}: CommentRowProps) {
+  const s = useThemedStyles(make_s);
+
+  // Seeded from item.content only when transitioning INTO edit mode --
+  // item.content is deliberately excluded from the effect's deps so a
+  // background refetch mid-edit can't clobber what the user is typing.
+  const [editDraft, setEditDraft] = useState(item.content);
+  const [savingEdit, setSavingEdit] = useState(false);
+  useEffect(() => {
+    if (isEditing) setEditDraft(item.content);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditing]);
+
+  const [replyDraft, setReplyDraft] = useState('');
+  useEffect(() => {
+    if (isReplying) setReplyDraft('');
+  }, [isReplying]);
+
+  const handleSave = async () => {
+    const text = editDraft.trim();
+    if (!text || text === item.content) { onCancelEdit(); return; } // no-op guard, same as before
+    setSavingEdit(true);
+    try {
+      await onSaveEdit(item.id, text);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleSend = async () => {
+    const text = replyDraft.trim();
+    if (!text) return;
+    setReplyDraft('');
+    const ok = await onSendReply(item.id, text);
+    if (!ok) setReplyDraft(text); // don't lose what they typed
+  };
+
+  return (
+    <View style={s.comment}>
+      <Text style={s.commentAuthor}>{item.author_name}</Text>
+      {isEditing ? (
+        <View style={s.commentEditBox}>
+          <TextInput
+            style={s.commentEditInput}
+            value={editDraft}
+            onChangeText={setEditDraft}
+            placeholderTextColor={colors.muted}
+            multiline
+            autoFocus
+            editable={!savingEdit}
+          />
+          <View style={s.commentEditActions}>
+            <TouchableOpacity onPress={onCancelEdit} disabled={savingEdit}>
+              <Text style={s.commentEditCancel}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleSave} disabled={!editDraft.trim() || savingEdit}>
+              {savingEdit
+                ? <ActivityIndicator size="small" color={colors.brand} />
+                : <Text style={[s.commentEditSave, !editDraft.trim() ? { opacity: 0.4 } : null]}>Save</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : (
+        <>
+          <PostContent content={item.content} style={s.commentText} />
+          {item.edited_at ? <Text style={s.commentEditedTag}>edited</Text> : null}
+        </>
+      )}
+      <View style={s.commentActions}>
+        <Text style={s.commentTime}>{timeAgo(item.created_at)}</Text>
+        <TouchableOpacity style={s.commentLikeBtn} onPress={() => onLike(item.id)}>
+          <Ionicons name={item.is_liked ? 'heart' : 'heart-outline'} size={14} color={item.is_liked ? colors.danger : colors.textSecondary} />
+          {item.likes_count ? <Text style={[s.commentLikeCount, item.is_liked ? { color: colors.danger } : null]}>{item.likes_count}</Text> : null}
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => onToggleReply(item.id)}>
+          <Text style={s.replyAction}>Reply</Text>
+        </TouchableOpacity>
+        {item.user_id === currentUserId && !isEditing ? (
+          <TouchableOpacity onPress={() => onStartEdit(item.id)}>
+            <Text style={s.replyAction}>Edit</Text>
+          </TouchableOpacity>
+        ) : null}
+        {item.user_id === currentUserId ? (
+          <TouchableOpacity onPress={() => onDelete(item.id)}>
+            <Text style={s.deleteAction}>Delete</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity onPress={() => onReport(item.id, item.author_name)}>
+            <Text style={s.deleteAction}>Report</Text>
+          </TouchableOpacity>
+        )}
+        {item.reply_count ? (
+          <TouchableOpacity onPress={() => onToggleReplies(item.id)}>
+            <Text style={s.replyAction}>
+              {isExpanded ? 'Hide' : 'View'} {item.reply_count} {item.reply_count === 1 ? 'reply' : 'replies'}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+
+      {/* Reply composer for this comment */}
+      {isReplying ? (
+        <View style={s.replyBox}>
+          <TextInput
+            style={s.replyInput}
+            value={replyDraft}
+            onChangeText={setReplyDraft}
+            placeholder={`Reply to ${item.author_name}...`}
+            placeholderTextColor={colors.muted}
+            autoFocus
+            multiline
+          />
+          <TouchableOpacity style={s.replySend} onPress={handleSend} disabled={!replyDraft.trim()}>
+            <Ionicons name="send" size={16} color="#fff" />
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      {/* Nested replies */}
+      {isExpanded ? (
+        <View style={s.replyThread}>
+          {replies.map(r => (
+            <View key={r.id} style={s.reply}>
+              <Text style={s.commentAuthor}>{r.author_name}</Text>
+              <Text style={s.commentText}>{r.content}</Text>
+              <Text style={s.commentTime}>{timeAgo(r.created_at)}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+});
+
+// The bottom "Add a comment" bar. Own local state for the same reason as
+// CommentRow's drafts -- it sits outside the FlatList, but its text used to
+// live in SinglePost() too, so typing here re-rendered the whole screen
+// (and therefore the whole comment list) exactly like the per-row boxes did.
+const NewCommentBar = memo(function NewCommentBar({ onSubmit }: { onSubmit: (text: string) => Promise<boolean> }) {
+  const s = useThemedStyles(make_s);
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+
+  const handleSend = async () => {
+    const body = text.trim();
+    if (!body) return;
+    setText('');
+    setSending(true);
+    try {
+      const ok = await onSubmit(body);
+      if (!ok) setText(body); // don't lose what they typed
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <View style={s.inputBar}>
+      <TextInput
+        style={s.input}
+        value={text}
+        onChangeText={setText}
+        placeholder="Add a comment..."
+        placeholderTextColor={colors.muted}
+        multiline
+      />
+      <TouchableOpacity style={s.sendBtn} onPress={handleSend} disabled={sending || !text.trim()}>
+        {sending ? <ActivityIndicator color="#fff" size="small" /> : <Ionicons name="send" size={18} color="#fff" />}
+      </TouchableOpacity>
+    </View>
+  );
+});
+
 export default function SinglePost() {
   const s = useThemedStyles(make_s);
   const router = useRouter();
@@ -67,19 +273,17 @@ export default function SinglePost() {
   const [editSaving, setEditSaving] = useState(false);
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [text, setText] = useState('');
-  const [sending, setSending] = useState(false);
+  // "Add a comment" bar text/sending state lives in NewCommentBar now.
   // Threaded replies: which comment is expanded, its loaded replies, and the
   // comment currently being replied to.
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [repliesByComment, setRepliesByComment] = useState<Record<number, Reply[]>>({});
-  // Inline comment editing, mirroring the feed modal's.
+  // WHICH comment is being edited/replied to -- changes only on a tap, never
+  // a keystroke. The actual typed text lives in CommentRow's own local state
+  // now; see its module comment (mirrors feed.tsx's fix for the identical bug).
   const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
-  const [editCommentText, setEditCommentText] = useState('');
-  const [savingCommentEdit, setSavingCommentEdit] = useState(false);
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
-  const [replyText, setReplyText] = useState('');
   const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
 
   const loadReplies = useCallback(async (commentId: number) => {
@@ -91,22 +295,24 @@ export default function SinglePost() {
     }
   }, [id]);
 
-  const toggleReplies = (commentId: number) => {
+  const handleToggleReplies = useCallback((commentId: number) => {
     setExpanded(prev => {
       const next = new Set(prev);
       if (next.has(commentId)) { next.delete(commentId); }
       else { next.add(commentId); if (!repliesByComment[commentId]) loadReplies(commentId); }
       return next;
     });
-  };
+  }, [repliesByComment, loadReplies]);
 
-  const sendReply = async (commentId: number) => {
-    const body = replyText.trim();
-    if (!body) return;
-    setReplyText('');
+  // Toggling Reply on the same comment again closes it, same as before.
+  const handleToggleReply = useCallback((commentId: number) => {
+    setReplyingTo(prev => (prev === commentId ? null : commentId));
+  }, []);
+
+  const handleSendReply = useCallback(async (commentId: number, text: string): Promise<boolean> => {
     try {
       const res = await apiFetch<{ reply: Reply }>(`/api/posts/${id}/comments/${commentId}/replies`, {
-        method: 'POST', body: JSON.stringify({ content: body }),
+        method: 'POST', body: JSON.stringify({ content: text }),
       });
       if (res.reply) {
         setRepliesByComment(prev => ({ ...prev, [commentId]: [...(prev[commentId] || []), res.reply] }));
@@ -114,10 +320,11 @@ export default function SinglePost() {
         setExpanded(prev => new Set(prev).add(commentId));
       }
       setReplyingTo(null);
+      return true;
     } catch {
-      setReplyText(body);
+      return false; // CommentRow keeps the drafted text -- nothing lost.
     }
-  };
+  }, [id]);
 
   const load = useCallback(async () => {
     try {
@@ -295,7 +502,7 @@ export default function SinglePost() {
     );
   };
 
-  const likeComment = async (commentId: number) => {
+  const handleLikeComment = useCallback(async (commentId: number) => {
     setComments(prev => prev.map(c => c.id === commentId
       ? { ...c, is_liked: !c.is_liked, likes_count: (c.likes_count ?? 0) + (c.is_liked ? -1 : 1) }
       : c));
@@ -306,17 +513,22 @@ export default function SinglePost() {
         ? { ...c, is_liked: !c.is_liked, likes_count: (c.likes_count ?? 0) + (c.is_liked ? 1 : -1) }
         : c));
     }
-  };
+  }, [id]);
+
+  const handleReportComment = useCallback((commentId: number, authorName: string) => {
+    setReportTarget({ type: 'comment', id: commentId, name: authorName });
+  }, []);
+
+  const handleStartEdit = useCallback((commentId: number) => setEditingCommentId(commentId), []);
+  const handleCancelEdit = useCallback(() => setEditingCommentId(null), []);
 
   // Edit one of YOUR OWN comments. Author-gated to match the server, whose
   // UPDATE is scoped `WHERE id = $1 AND user_id = $2`. Not Pro-gated (post
   // editing is) -- fixing a typo in your own comment is table stakes.
-  const saveCommentEdit = async (commentId: number) => {
-    const text = editCommentText.trim();
-    if (!text) return;
-    const original = comments.find(c => c.id === commentId);
-    if (original && text === original.content) { setEditingCommentId(null); return; }
-    setSavingCommentEdit(true);
+  //
+  // No-op-save guard (unchanged text) now lives in CommentRow itself, which
+  // has `item.content` right there as a prop -- no need to search `comments`.
+  const handleSaveEdit = useCallback(async (commentId: number, text: string): Promise<boolean> => {
     try {
       const res = await apiFetch<{ comment: Comment }>(
         `/api/posts/${id}/comments/${commentId}`,
@@ -325,14 +537,14 @@ export default function SinglePost() {
         ? { ...c, content: res.comment.content, edited_at: res.comment.edited_at }
         : c));
       setEditingCommentId(null);
+      return true;
     } catch (err) {
       Alert.alert('Could not save', err instanceof Error ? err.message : '');
-    } finally {
-      setSavingCommentEdit(false);
+      return false; // CommentRow keeps its own editor open with the text intact.
     }
-  };
+  }, [id]);
 
-  const deleteComment = (commentId: number) => {
+  const handleDeleteComment = useCallback((commentId: number) => {
     Alert.alert('Delete comment', 'This cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -354,16 +566,13 @@ export default function SinglePost() {
         },
       },
     ]);
-  };
+  }, [id, load]);
 
-  const addComment = async () => {
-    const body = text.trim();
-    if (!body || !post) return;
-    setText('');
-    setSending(true);
+  const handleSubmitNewComment = useCallback(async (text: string): Promise<boolean> => {
+    if (!post) return false;
     try {
       const res = await apiFetch<{ comment: Comment }>(`/api/posts/${post.id}/comments`, {
-        method: 'POST', body: JSON.stringify({ content: body }),
+        method: 'POST', body: JSON.stringify({ content: text }),
       });
       if (res.comment) setComments(prev => [...prev, res.comment]);
       setPost(p => {
@@ -373,12 +582,40 @@ export default function SinglePost() {
         }
         return { ...p, comments_count: p.comments_count + 1 };
       });
+      return true;
     } catch {
-      setText(body);
-    } finally {
-      setSending(false);
+      return false; // NewCommentBar restores what was typed.
     }
-  };
+  }, [post?.id]);
+
+  // The comments FlatList's renderItem, useCallback'd. Dependencies are all
+  // "which row is doing what" selectors and stable callback refs -- none
+  // change on a keystroke, which is what keeps this identity stable while
+  // typing (see CommentRow's module comment for the full story).
+  const renderCommentItem = useCallback(({ item }: { item: Comment }) => (
+    <CommentRow
+      item={item}
+      currentUserId={currentUserId}
+      isEditing={editingCommentId === item.id}
+      isReplying={replyingTo === item.id}
+      isExpanded={expanded.has(item.id)}
+      replies={repliesByComment[item.id] || []}
+      onStartEdit={handleStartEdit}
+      onCancelEdit={handleCancelEdit}
+      onSaveEdit={handleSaveEdit}
+      onToggleReply={handleToggleReply}
+      onSendReply={handleSendReply}
+      onToggleReplies={handleToggleReplies}
+      onLike={handleLikeComment}
+      onDelete={handleDeleteComment}
+      onReport={handleReportComment}
+    />
+  ), [
+    currentUserId, editingCommentId, replyingTo, expanded, repliesByComment,
+    handleStartEdit, handleCancelEdit, handleSaveEdit,
+    handleToggleReply, handleSendReply, handleToggleReplies,
+    handleLikeComment, handleDeleteComment, handleReportComment,
+  ]);
 
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
@@ -475,115 +712,9 @@ export default function SinglePost() {
               </View>
             }
             ListEmptyComponent={<View style={s.center}><Text style={s.muted}>No comments yet</Text></View>}
-            renderItem={({ item }) => (
-              <View style={s.comment}>
-                <Text style={s.commentAuthor}>{item.author_name}</Text>
-                {editingCommentId === item.id ? (
-                  <View style={s.commentEditBox}>
-                    <TextInput
-                      style={s.commentEditInput}
-                      value={editCommentText}
-                      onChangeText={setEditCommentText}
-                      placeholderTextColor={colors.muted}
-                      multiline
-                      autoFocus
-                      editable={!savingCommentEdit}
-                    />
-                    <View style={s.commentEditActions}>
-                      <TouchableOpacity onPress={() => setEditingCommentId(null)} disabled={savingCommentEdit}>
-                        <Text style={s.commentEditCancel}>Cancel</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => saveCommentEdit(item.id)} disabled={!editCommentText.trim() || savingCommentEdit}>
-                        {savingCommentEdit
-                          ? <ActivityIndicator size="small" color={colors.brand} />
-                          : <Text style={[s.commentEditSave, !editCommentText.trim() ? { opacity: 0.4 } : null]}>Save</Text>}
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ) : (
-                  <>
-                    <PostContent content={item.content} style={s.commentText} />
-                    {item.edited_at ? <Text style={s.commentEditedTag}>edited</Text> : null}
-                  </>
-                )}
-                <View style={s.commentActions}>
-                  <Text style={s.commentTime}>{timeAgo(item.created_at)}</Text>
-                  <TouchableOpacity style={s.commentLikeBtn} onPress={() => likeComment(item.id)}>
-                    <Ionicons name={item.is_liked ? 'heart' : 'heart-outline'} size={14} color={item.is_liked ? colors.danger : colors.textSecondary} />
-                    {item.likes_count ? <Text style={[s.commentLikeCount, item.is_liked ? { color: colors.danger } : null]}>{item.likes_count}</Text> : null}
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => { setReplyingTo(replyingTo === item.id ? null : item.id); setReplyText(''); }}>
-                    <Text style={s.replyAction}>Reply</Text>
-                  </TouchableOpacity>
-                  {item.user_id === currentUserId && editingCommentId !== item.id ? (
-                    <TouchableOpacity onPress={() => { setEditingCommentId(item.id); setEditCommentText(item.content); }}>
-                      <Text style={s.replyAction}>Edit</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                  {item.user_id === currentUserId ? (
-                    <TouchableOpacity onPress={() => deleteComment(item.id)}>
-                      <Text style={s.deleteAction}>Delete</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity onPress={() => setReportTarget({ type: 'comment', id: item.id, name: item.author_name })}>
-                      <Text style={s.deleteAction}>Report</Text>
-                    </TouchableOpacity>
-                  )}
-                  {item.reply_count ? (
-                    <TouchableOpacity onPress={() => toggleReplies(item.id)}>
-                      <Text style={s.replyAction}>
-                        {expanded.has(item.id) ? 'Hide' : 'View'} {item.reply_count} {item.reply_count === 1 ? 'reply' : 'replies'}
-                      </Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-
-                {/* Reply composer for this comment */}
-                {replyingTo === item.id ? (
-                  <View style={s.replyBox}>
-                    <TextInput
-                      style={s.replyInput}
-                      value={replyText}
-                      onChangeText={setReplyText}
-                      placeholder={`Reply to ${item.author_name}...`}
-                      placeholderTextColor={colors.muted}
-                      autoFocus
-                      multiline
-                    />
-                    <TouchableOpacity style={s.replySend} onPress={() => sendReply(item.id)} disabled={!replyText.trim()}>
-                      <Ionicons name="send" size={16} color="#fff" />
-                    </TouchableOpacity>
-                  </View>
-                ) : null}
-
-                {/* Nested replies */}
-                {expanded.has(item.id) ? (
-                  <View style={s.replyThread}>
-                    {(repliesByComment[item.id] || []).map(r => (
-                      <View key={r.id} style={s.reply}>
-                        <Text style={s.commentAuthor}>{r.author_name}</Text>
-                        <Text style={s.commentText}>{r.content}</Text>
-                        <Text style={s.commentTime}>{timeAgo(r.created_at)}</Text>
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
-              </View>
-            )}
+            renderItem={renderCommentItem}
           />
-          <View style={s.inputBar}>
-            <TextInput
-              style={s.input}
-              value={text}
-              onChangeText={setText}
-              placeholder="Add a comment..."
-              placeholderTextColor={colors.muted}
-              multiline
-            />
-            <TouchableOpacity style={s.sendBtn} onPress={addComment} disabled={sending || !text.trim()}>
-              {sending ? <ActivityIndicator color="#fff" size="small" /> : <Ionicons name="send" size={18} color="#fff" />}
-            </TouchableOpacity>
-          </View>
+          <NewCommentBar onSubmit={handleSubmitNewComment} />
         </KeyboardAvoidingView>
       )}
       {post ? (
