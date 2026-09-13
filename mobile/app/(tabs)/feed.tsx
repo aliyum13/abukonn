@@ -490,6 +490,14 @@ const CommentRow = memo(function CommentRow({
 }: CommentRowProps) {
   const s = useThemedStyles(make_s);
 
+  // TEMP DIAGNOSTIC -- remove once the mount-vs-render question is settled.
+  // eslint-disable-next-line no-console
+  console.log('[CommentRow] RENDER', item.id, { isEditing, isReplying });
+  useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log('[CommentRow] MOUNT', item.id);
+  }, []);
+
   // Local draft for the edit box. Seeded from item.content each time this
   // row transitions INTO edit mode -- deliberately keyed only on isEditing
   // (item.content is excluded from the deps on purpose): if it were

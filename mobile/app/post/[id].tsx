@@ -89,6 +89,14 @@ const CommentRow = memo(function CommentRow({
 }: CommentRowProps) {
   const s = useThemedStyles(make_s);
 
+  // TEMP DIAGNOSTIC -- remove once the mount-vs-render question is settled.
+  // eslint-disable-next-line no-console
+  console.log('[CommentRow] RENDER', item.id, { isEditing, isReplying });
+  useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log('[CommentRow] MOUNT', item.id);
+  }, []);
+
   // Seeded from item.content only when transitioning INTO edit mode --
   // item.content is deliberately excluded from the effect's deps so a
   // background refetch mid-edit can't clobber what the user is typing.
