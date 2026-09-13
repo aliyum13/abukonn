@@ -19,6 +19,8 @@ interface NewsArticle {
   image_url: string | null;
   author_name: string | null;
   created_at: string;
+  likes_count: number;
+  is_liked: boolean;
 }
 
 const CATEGORIES = ['all', 'admission', 'examination', 'faculty', 'sports', 'events', 'general'] as const;
@@ -64,13 +66,26 @@ function NewsItemSkeleton() {
 }
 
 // ── Individual news item ──────────────────────────────────────────────────────
-function NewsItem({ article }: { article: NewsArticle }) {
+// Likes used to be entirely local -- handleLike just flipped a useState with
+// no network call, so the count/heart reset on every reload (see the PR that
+// added persistence for the full story: no news_likes table, no endpoint,
+// existed at all before this). `liked`/`likeCount` are now seeded from the
+// article and kept in sync via the effect below rather than a plain
+// useState() initializer, so a refetch (pull-to-refresh, revisiting the tab)
+// picks up the real server value instead of freezing at whatever the FIRST
+// mount happened to see.
+function NewsItem({ article, token }: { article: NewsArticle; token: string | null }) {
   const [expanded, setExpanded] = useState(false);
-  const [liked, setLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(0);
+  const [liked, setLiked] = useState(article.is_liked);
+  const [likeCount, setLikeCount] = useState(article.likes_count);
   const [copied, setCopied] = useState(false);
   const PREVIEW_CHARS = 200;
   const isLong = article.content.length > PREVIEW_CHARS;
+
+  useEffect(() => {
+    setLiked(article.is_liked);
+    setLikeCount(article.likes_count);
+  }, [article.is_liked, article.likes_count]);
 
   const initials = (article.author_name || 'ABUkonn News')
     .split(' ')
@@ -81,9 +96,23 @@ function NewsItem({ article }: { article: NewsArticle }) {
 
   const pillClass = CATEGORY_PILL[article.category?.toLowerCase()] || CATEGORY_PILL.general;
 
-  function handleLike() {
-    setLiked((v) => !v);
-    setLikeCount((n) => (liked ? n - 1 : n + 1));
+  // Optimistic toggle against the new POST /api/news/:id/like endpoint,
+  // mirroring how post likes already work elsewhere in the app. Reverts to
+  // the pre-tap values on failure rather than trusting the optimistic guess.
+  async function handleLike() {
+    const wasLiked = liked;
+    setLiked(!wasLiked);
+    setLikeCount((n) => n + (wasLiked ? -1 : 1));
+    try {
+      const res = await fetch(`${API_URL}/api/news/${article.id}/like`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error('like failed');
+    } catch {
+      setLiked(wasLiked);
+      setLikeCount(article.likes_count);
+    }
   }
 
   function handleShare() {
@@ -210,7 +239,7 @@ function NewsItem({ article }: { article: NewsArticle }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function NewsPage() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [news, setNews] = useState<NewsArticle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -223,14 +252,22 @@ export default function NewsPage() {
       'there'
     : 'there';
 
+  // Sends the token now (didn't before) so is_liked reflects the signed-in
+  // user -- the endpoint itself stays reachable without one (optionalAuth on
+  // the backend), so this is additive, not a new login requirement. token
+  // starts null until AuthContext hydrates, so this can fire once
+  // anonymously and once more when the real token arrives; harmless, and
+  // the same shape as this page's other auth-dependent values (e.g. greeting).
   const loadNews = useCallback(() => {
     setLoading(true);
-    fetch(`${API_URL}/api/news`)
+    fetch(`${API_URL}/api/news`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
       .then((res) => res.json())
       .then((data) => setNews(data.news || []))
       .catch(() => setError('Failed to load news'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [token]);
 
   useEffect(() => { loadNews(); }, [loadNews]);
 
@@ -343,7 +380,7 @@ export default function NewsPage() {
       ) : (
         <div>
           {filtered.map((article) => (
-            <NewsItem key={article.id} article={article} />
+            <NewsItem key={article.id} article={article} token={token} />
           ))}
         </div>
       )}
