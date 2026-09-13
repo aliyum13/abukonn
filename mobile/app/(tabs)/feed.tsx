@@ -425,57 +425,67 @@ const PostCard = memo(function PostCard({ post, currentUserId, onOpenProfile, on
 });
 
 // -----------------------------------------------------------------------
-// CommentRow / NewCommentBar
+// CommentRow / EditCommentSheet / NewCommentBar
 //
-// Root-caused report: typing in ANY text box in the comment modal (the
-// bottom "Add a comment" bar, a comment's inline Edit box, or its Reply box)
-// visibly jittered/jumped on Android, worse with more comments on screen.
+// REGRESSION HISTORY, for whoever reads this next:
 //
-// The cause: Feed() is one ~1,900-line component holding every piece of
-// state for the whole screen, and the comment modal's typed-text state
-// (editCommentText / replyText / commentText) used to live there too, right
-// alongside the comments FlatList's renderItem (defined inline, not
-// memoized). Every keystroke updated Feed()-level state, which re-rendered
-// the ENTIRE Feed() component, which recreated renderItem, which FlatList
-// treats as a genuinely new prop -- so it re-evaluated EVERY visible comment
-// row on every single character typed. More visible rows = more work per
-// keystroke, which is exactly the "worse with more comments" symptom
-// reported.
+// v1 (the original bug): typed-text state for edit/reply/new-comment lived
+// in Feed() itself, right alongside the comments FlatList's inline (never
+// memoized) renderItem. Every keystroke re-rendered ALL of Feed(), recreated
+// renderItem, and FlatList re-evaluated every visible row -- flicker/jitter
+// while typing, worse with more comments on screen.
 //
-// The fix has three parts, each closing a distinct gap -- see the PR
-// description for why none of the three alone is sufficient:
+// v2 (PR #13's fix, WHICH ITSELF REGRESSED): moved the typed text into local
+// state INSIDE a memoized CommentRow, with autoFocus TextInputs rendered
+// inline for edit/reply. That correctly stopped Feed() from re-rendering on
+// every keystroke -- but introduced a WORSE bug: autoFocus on a TextInput
+// mounted inside a virtualized FlatList row. Tapping Edit/Reply made the row
+// change shape (Text -> TextInput, taller), which is exactly the moment
+// Android's view recycling reflows that row -- and it drops the just-granted
+// keyboard focus doing it. Confirmed on-device: keyboard flashes open then
+// closes immediately, every time, on a never-before-edited comment,
+// Android-only (iOS is unaffected: this is specifically a Paper/virtualized-
+// list-recycling interaction). The SAME row-shape-change is also what made
+// the surrounding rows reflow/jump -- so the "worse flicker" and the
+// "can't edit" reports share this one root cause, not two.
 //
-// 1. The row is its OWN memoized component (React.memo), like PostCard
-//    above it. A row only re-renders when ITS OWN props change.
-// 2. The text actually being typed (edit draft, reply draft) is LOCAL state
-//    inside the row, not Feed()-level state threaded down as a prop. This is
-//    what stops Feed() itself from re-rendering on every keystroke -- while
-//    typing, only this one row instance re-renders, nothing else.
-// 3. The callbacks passed down (onLike, onDelete, onSaveEdit, ...) are all
-//    useCallback'd in Feed() with dependencies that change only on discrete
-//    actions (not keystrokes) -- see the handler block above. Without this,
-//    memo would still "fail" on every Feed()-level re-render that happens
-//    for unrelated reasons (a poll vote, a feed scroll) while the modal
-//    happens to be open, because the callback props would be new identities
-//    each time even though the actual data didn't change.
+// v3 (this fix): stop putting an autoFocus input inside a recycled FlatList
+// row AT ALL, rather than trying to out-manage Android's recycling from
+// inside it. This mirrors two patterns already proven safe elsewhere in
+// THIS SAME FILE and app:
+//   - Edit -> a single shared Modal (EditCommentSheet, below), copying this
+//     screen's own "Edit post" sheet (editBackdrop/editSheet/editInput
+//     styles, already in make_s) almost verbatim. A Modal's children don't
+//     exist at all while hidden (RN's Modal renders null outright), so
+//     autoFocus reliably refires on every real open -- there is no FlatList
+//     virtualization here to race against.
+//   - Reply -> extends the already-safe, already-outside-the-list
+//     NewCommentBar with a "Replying to X" mode, matching the DM screens'
+//     reply-preview-above-a-stable-input-bar pattern. Since this bar is
+//     ALWAYS mounted (not conditionally, unlike the Modal), autoFocus alone
+//     won't refire when the reply target changes -- so an imperative
+//     inputRef.focus() replaces it. This is NOT the same risky technique as
+//     "fight recycling with a ref" (that was the rejected option): it's an
+//     ordinary ref-focus call on a stable, non-virtualized component, safe
+//     for exactly the reason FlatList rows are not.
 //
-// WHICH row is being edited/replied to (editingCommentId/replyingToId) still
-// lives in Feed() -- that is genuinely cross-row state (only one row can be
-// in edit mode; other rows need to know they are NOT it), and it changes
-// only on a tap, never on a keystroke, so it does not reintroduce the bug.
+// CommentRow keeps the two things PR #13 got right and that this fix does
+// NOT touch: it's still memoized (a row only re-renders when ITS OWN props
+// change), and Feed()'s action callbacks are still useCallback'd with
+// dependencies that never change on a keystroke. Only the two focus-fragile
+// in-row TextInputs are gone -- CommentRow is simpler now than either v1 or
+// v2, not more complex. WHICH comment is being edited/replied to
+// (editingCommentId/replyingToId) still lives in Feed(), same as before --
+// but CommentRow no longer needs to know either one at all, since it no
+// longer renders any input itself.
 interface CommentRowProps {
   item: Comment;
   currentUserId?: number;
-  isEditing: boolean;
-  isReplying: boolean;
   isExpanded: boolean;
   replies: CommentReply[];
   canMarkBestAnswer: boolean;
   onStartEdit: (commentId: number) => void;
-  onCancelEdit: () => void;
-  onSaveEdit: (commentId: number, text: string) => Promise<boolean>;
-  onToggleReply: (commentId: number) => void;
-  onSendReply: (commentId: number, text: string) => Promise<boolean>;
+  onStartReply: (commentId: number) => void;
   onToggleReplies: (commentId: number) => void;
   onLike: (commentId: number) => void;
   onDelete: (commentId: number) => void;
@@ -484,79 +494,19 @@ interface CommentRowProps {
 }
 
 const CommentRow = memo(function CommentRow({
-  item, currentUserId, isEditing, isReplying, isExpanded, replies, canMarkBestAnswer,
-  onStartEdit, onCancelEdit, onSaveEdit, onToggleReply, onSendReply, onToggleReplies,
+  item, currentUserId, isExpanded, replies, canMarkBestAnswer,
+  onStartEdit, onStartReply, onToggleReplies,
   onLike, onDelete, onReport, onMarkBestAnswer,
 }: CommentRowProps) {
   const s = useThemedStyles(make_s);
 
-  // Local draft for the edit box. Seeded from item.content each time this
-  // row transitions INTO edit mode -- deliberately keyed only on isEditing
-  // (item.content is excluded from the deps on purpose): if it were
-  // included, a background refetch updating item.content while this row is
-  // mid-edit would silently clobber what the user is typing.
-  const [editDraft, setEditDraft] = useState(item.content);
-  const [savingEdit, setSavingEdit] = useState(false);
-  useEffect(() => {
-    if (isEditing) setEditDraft(item.content);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEditing]);
-
-  const [replyDraft, setReplyDraft] = useState('');
-  useEffect(() => {
-    if (isReplying) setReplyDraft('');
-  }, [isReplying]);
-
-  const handleSave = async () => {
-    const text = editDraft.trim();
-    if (!text || text === item.content) { onCancelEdit(); return; } // no-op guard, same as before
-    setSavingEdit(true);
-    try {
-      await onSaveEdit(item.id, text);
-    } finally {
-      setSavingEdit(false);
-    }
-  };
-
-  const handleSend = async () => {
-    const text = replyDraft.trim();
-    if (!text) return;
-    setReplyDraft('');
-    const ok = await onSendReply(item.id, text);
-    if (!ok) setReplyDraft(text); // don't lose what they typed
-  };
-
   return (
     <View style={s.commentRow}>
       <Text style={s.author}>{item.author_name}</Text>
-      {isEditing ? (
-        <View style={s.commentEditBox}>
-          <TextInput
-            style={s.commentEditInput}
-            value={editDraft}
-            onChangeText={setEditDraft}
-            placeholderTextColor={colors.muted}
-            multiline
-            autoFocus
-            editable={!savingEdit}
-          />
-          <View style={s.commentEditActions}>
-            <TouchableOpacity onPress={onCancelEdit} disabled={savingEdit}>
-              <Text style={s.commentEditCancel}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleSave} disabled={!editDraft.trim() || savingEdit}>
-              {savingEdit
-                ? <ActivityIndicator size="small" color={colors.brand} />
-                : <Text style={[s.commentEditSave, !editDraft.trim() ? { opacity: 0.4 } : null]}>Save</Text>}
-            </TouchableOpacity>
-          </View>
-        </View>
-      ) : (
-        <Text style={s.content}>
-          {item.content}
-          {item.edited_at ? <Text style={s.commentEditedTag}>  edited</Text> : null}
-        </Text>
-      )}
+      <Text style={s.content}>
+        {item.content}
+        {item.edited_at ? <Text style={s.commentEditedTag}>  edited</Text> : null}
+      </Text>
       {item.is_best_answer ? (
         <View style={s.bestAnswerBadge}>
           <Text style={s.bestAnswerBadgeText}>✓ Best Answer</Text>
@@ -568,7 +518,7 @@ const CommentRow = memo(function CommentRow({
           <Ionicons name={item.is_liked ? 'heart' : 'heart-outline'} size={14} color={item.is_liked ? colors.danger : colors.textSecondary} />
           {item.likes_count ? <Text style={[s.commentLikeCount, item.is_liked ? { color: colors.danger } : null]}>{item.likes_count}</Text> : null}
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => onToggleReply(item.id)}>
+        <TouchableOpacity onPress={() => onStartReply(item.id)}>
           <Text style={s.commentActionText}>Reply</Text>
         </TouchableOpacity>
         {item.reply_count ? (
@@ -586,7 +536,7 @@ const CommentRow = memo(function CommentRow({
         {/* Author-gated, exactly like the server's own check.
             currentUserId is null-checked so a missing id can't make
             `undefined === undefined` offer Delete on every row. */}
-        {currentUserId != null && item.user_id === currentUserId && !isEditing ? (
+        {currentUserId != null && item.user_id === currentUserId ? (
           <TouchableOpacity onPress={() => onStartEdit(item.id)}>
             <Text style={s.commentActionText}>Edit</Text>
           </TouchableOpacity>
@@ -602,24 +552,6 @@ const CommentRow = memo(function CommentRow({
           </TouchableOpacity>
         ) : null}
       </View>
-
-      {/* Reply composer for this comment */}
-      {isReplying ? (
-        <View style={s.replyBox}>
-          <TextInput
-            style={s.replyInput}
-            value={replyDraft}
-            onChangeText={setReplyDraft}
-            placeholder={`Reply to ${item.author_name}...`}
-            placeholderTextColor={colors.muted}
-            autoFocus
-            multiline
-          />
-          <TouchableOpacity style={s.replySend} onPress={handleSend} disabled={!replyDraft.trim()}>
-            <Ionicons name="send" size={16} color="#fff" />
-          </TouchableOpacity>
-        </View>
-      ) : null}
 
       {/* Nested replies */}
       {isExpanded ? (
@@ -637,14 +569,105 @@ const CommentRow = memo(function CommentRow({
   );
 });
 
-// The bottom "Add a comment" bar. Its own local state for the SAME reason as
-// CommentRow's drafts: this bar sits OUTSIDE the comments FlatList (a
-// sibling View below it), but its text used to live in Feed() too, so typing
-// here re-rendered Feed() (and therefore the whole comment list) exactly
-// like typing in the per-row edit/reply boxes did.
-const NewCommentBar = memo(function NewCommentBar({ onSubmit }: { onSubmit: (text: string) => Promise<boolean> }) {
+// A single, shared edit-comment sheet, rendered ONCE outside the comments
+// FlatList -- see the module comment above for why this is what actually
+// fixes the focus-drop bug. Deliberately copies this screen's own "Edit
+// post" Modal (below, in Feed()'s JSX) almost verbatim, reusing its
+// editBackdrop/editSheet/editHeader/editCancel/editTitle/editSave/
+// editSaveDisabled/editInput styles: that modal has never had this problem,
+// for the same reason this one won't -- it's not inside a FlatList.
+const EditCommentSheet = memo(function EditCommentSheet({ comment, onCancel, onSave }: {
+  comment: Comment | null;
+  onCancel: () => void;
+  onSave: (commentId: number, text: string) => Promise<boolean>;
+}) {
   const s = useThemedStyles(make_s);
   const [text, setText] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // Reseed whenever a DIFFERENT comment opens for editing (keyed on id, not
+  // the comment object, so re-opening the SAME comment after Cancel still
+  // resets correctly). item.content is intentionally not a dependency here
+  // either, for the same reason as before: only the transition matters.
+  useEffect(() => {
+    if (comment) setText(comment.content);
+  }, [comment?.id]);
+
+  const handleSave = async () => {
+    if (!comment) return;
+    const trimmed = text.trim();
+    if (!trimmed || trimmed === comment.content) { onCancel(); return; } // no-op guard
+    setSaving(true);
+    try {
+      await onSave(comment.id, trimmed);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal visible={comment !== null} transparent animationType="slide" onRequestClose={onCancel}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.editBackdrop}>
+        <View style={s.editSheet}>
+          <View style={s.editHeader}>
+            <TouchableOpacity onPress={onCancel} disabled={saving}>
+              <Text style={s.editCancel}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={s.editTitle}>Edit comment</Text>
+            <TouchableOpacity onPress={handleSave} disabled={saving || !text.trim()}>
+              <Text style={[s.editSave, (saving || !text.trim()) && s.editSaveDisabled]}>
+                {saving ? 'Saving…' : 'Save'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <TextInput
+            style={s.editInput}
+            value={text}
+            onChangeText={setText}
+            multiline
+            autoFocus
+            editable={!saving}
+            placeholderTextColor={colors.textSecondary}
+          />
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+});
+
+// The bottom "Add a comment" bar -- now doubling as the reply composer too.
+// Own local state for the text actually being typed, for the same reason as
+// before: this bar sits OUTSIDE the FlatList (a sibling View below it), so
+// it was never part of the recycling bug and stays that way with reply mode
+// folded in. When replyingTo is set, a small "Replying to X" strip appears
+// above the input and Send routes to the reply instead of a new comment --
+// the PARENT decides that routing (see handleComposerSubmit in Feed()); this
+// component stays unaware of "modes" beyond what to display.
+//
+// autoFocus does NOT work here for reply mode the way it does in
+// EditCommentSheet: this bar is always mounted, never remounted, so
+// autoFocus (a mount-time-only behavior) would not refire when replyingTo
+// changes. inputRef.current.focus() replaces it -- an ordinary imperative
+// focus call, safe specifically because this component is NOT a FlatList
+// row and there is no recycling for it to race against.
+const NewCommentBar = memo(function NewCommentBar({ onSubmit, replyingTo, onCancelReply }: {
+  onSubmit: (text: string) => Promise<boolean>;
+  replyingTo: { id: number; authorName: string } | null;
+  onCancelReply: () => void;
+}) {
+  const s = useThemedStyles(make_s);
+  const [text, setText] = useState('');
+  const inputRef = useRef<TextInput>(null);
+
+  // Fires only when the reply TARGET actually changes (opening a reply, or
+  // switching to a different comment) -- not on every render, and not when
+  // merely typing. Clears any leftover draft and grabs focus fresh.
+  useEffect(() => {
+    if (replyingTo) {
+      setText('');
+      inputRef.current?.focus();
+    }
+  }, [replyingTo?.id]);
 
   const handleSend = async () => {
     const body = text.trim();
@@ -655,17 +678,28 @@ const NewCommentBar = memo(function NewCommentBar({ onSubmit }: { onSubmit: (tex
   };
 
   return (
-    <View style={s.commentBar}>
-      <TextInput
-        style={s.commentInput}
-        placeholder="Add a comment..."
-        placeholderTextColor={colors.muted}
-        value={text}
-        onChangeText={setText}
-      />
-      <TouchableOpacity onPress={handleSend} disabled={!text.trim()}>
-        <Text style={[s.post, !text.trim() ? { opacity: 0.4 } : null]}>Send</Text>
-      </TouchableOpacity>
+    <View>
+      {replyingTo ? (
+        <View style={s.replyingToStrip}>
+          <Text style={s.replyingToText} numberOfLines={1}>Replying to {replyingTo.authorName}</Text>
+          <TouchableOpacity onPress={onCancelReply} hitSlop={8}>
+            <Ionicons name="close" size={16} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+      ) : null}
+      <View style={s.commentBar}>
+        <TextInput
+          ref={inputRef}
+          style={s.commentInput}
+          placeholder={replyingTo ? `Reply to ${replyingTo.authorName}...` : 'Add a comment...'}
+          placeholderTextColor={colors.muted}
+          value={text}
+          onChangeText={setText}
+        />
+        <TouchableOpacity onPress={handleSend} disabled={!text.trim()}>
+          <Text style={[s.post, !text.trim() ? { opacity: 0.4 } : null]}>Send</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 });
@@ -1345,10 +1379,12 @@ export default function Feed() {
       setReplyingToId(null);
       return true;
     } catch {
-      // CommentRow keeps the drafted text on a false return -- nothing lost.
+      // NewCommentBar keeps the drafted text on a false return -- nothing lost.
       return false;
     }
   }, [commentsFor?.id]);
+
+  const handleCancelReply = useCallback(() => setReplyingToId(null), []);
 
   // Ported from post/[id].tsx's likeComment -- same endpoint, same optimistic
   // pattern. Comment ids are already unified onto the canonical post's thread
@@ -1408,6 +1444,14 @@ export default function Feed() {
       return false; // NewCommentBar restores what was typed on a false return
     }
   }, [commentsFor?.id]);
+
+  // NewCommentBar has one onSubmit -- this decides, on the parent's side,
+  // whether "Send" posts a new top-level comment or a reply, so the bar
+  // itself stays unaware of "modes".
+  const handleComposerSubmit = useCallback(async (text: string): Promise<boolean> => {
+    if (replyingToId != null) return handleSendReply(replyingToId, text);
+    return handleSubmitNewComment(text);
+  }, [replyingToId, handleSendReply, handleSubmitNewComment]);
 
   const handleReportComment = useCallback((commentId: number, authorName: string) => {
     setReportTarget({ type: 'comment', id: commentId, name: authorName });
@@ -1494,11 +1538,15 @@ export default function Feed() {
     }
   }, [commentsFor?.id]);
 
-  // The comments FlatList's renderItem, useCallback'd. Its dependencies are
-  // ALL "which row is doing what" selectors and stable callback references --
-  // none of them change on a keystroke (see CommentRow's module comment).
-  // That is what makes this identity stay stable while typing, which is what
-  // stops FlatList from re-evaluating every visible row on every character.
+  // The comments FlatList's renderItem, useCallback'd. Its dependencies no
+  // longer include editingCommentId/replyingToId at all -- CommentRow doesn't
+  // render any input any more, so it has no need to know which comment (if
+  // any) is being edited/replied to. That makes this identity even MORE
+  // stable than before: it only changes on genuine data events (liking,
+  // deleting, expanding replies), never on tapping Edit/Reply either, which
+  // means tapping those no longer causes the FlatList to re-invoke renderItem
+  // for every visible row at all -- removing the row-reflow that used to
+  // coincide with (and, per the investigation, cause) the focus drop.
   const renderCommentItem = useCallback(({ item }: { item: Comment }) => {
     const canMark = commentsFor?.post_subtype === 'question'
       && commentsFor?.user_id === user?.id
@@ -1507,16 +1555,11 @@ export default function Feed() {
       <CommentRow
         item={item}
         currentUserId={user?.id}
-        isEditing={editingCommentId === item.id}
-        isReplying={replyingToId === item.id}
         isExpanded={expandedComments.has(item.id)}
         replies={repliesByComment[item.id] || []}
         canMarkBestAnswer={canMark}
         onStartEdit={handleStartEdit}
-        onCancelEdit={handleCancelEdit}
-        onSaveEdit={handleSaveEdit}
-        onToggleReply={handleToggleReply}
-        onSendReply={handleSendReply}
+        onStartReply={handleToggleReply}
         onToggleReplies={handleToggleReplies}
         onLike={handleLikeComment}
         onDelete={handleDeleteComment}
@@ -1526,11 +1569,25 @@ export default function Feed() {
     );
   }, [
     commentsFor?.post_subtype, commentsFor?.user_id, user?.id,
-    editingCommentId, replyingToId, expandedComments, repliesByComment,
-    handleStartEdit, handleCancelEdit, handleSaveEdit,
-    handleToggleReply, handleSendReply, handleToggleReplies,
+    expandedComments, repliesByComment,
+    handleStartEdit, handleToggleReply, handleToggleReplies,
     handleLikeComment, handleDeleteComment, handleReportComment, handleMarkBestAnswer,
   ]);
+
+  // Resolved once per render for EditCommentSheet/NewCommentBar -- cheap
+  // linear finds over a comments array that's at most a couple dozen items,
+  // and only actually re-run when Feed() re-renders for a reason unrelated
+  // to typing (editingCommentId/replyingToId change on a tap, not a
+  // keystroke, exactly like everything else in this file post-fix).
+  const editingComment = editingCommentId != null
+    ? comments.find(c => c.id === editingCommentId) ?? null
+    : null;
+  const replyingToComment = replyingToId != null
+    ? comments.find(c => c.id === replyingToId) ?? null
+    : null;
+  const replyingToInfo = replyingToComment
+    ? { id: replyingToComment.id, authorName: replyingToComment.author_name }
+    : null;
 
   const openPollVoters = useCallback(async (post: Post) => {
     setPollVotersLoading(true);
@@ -2488,10 +2545,12 @@ export default function Feed() {
               />
             )}
 
-            <NewCommentBar onSubmit={handleSubmitNewComment} />
+            <NewCommentBar onSubmit={handleComposerSubmit} replyingTo={replyingToInfo} onCancelReply={handleCancelReply} />
           </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
+
+      <EditCommentSheet comment={editingComment} onCancel={handleCancelEdit} onSave={handleSaveEdit} />
     </SafeAreaView>
   );
 }
@@ -2700,24 +2759,20 @@ const make_s = (colors: Palette) => StyleSheet.create({
   commentActionText: { fontSize: 12, fontWeight: '600', color: colors.brand },
   commentDeleteText: { fontSize: 12, fontWeight: '600', color: colors.danger },
   commentEditedTag: { fontSize: 11, color: colors.muted },
-  commentEditBox: { marginTop: 4 },
-  commentEditInput: {
-    borderWidth: 1, borderColor: colors.border, borderRadius: 10,
-    paddingHorizontal: 10, paddingVertical: 8, color: colors.text,
-    fontSize: 14, minHeight: 48, textAlignVertical: 'top',
-  },
-  commentEditActions: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 6 },
-  commentEditCancel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
-  commentEditSave: { fontSize: 12, fontWeight: '700', color: colors.brand },
+  // commentEditBox/commentEditInput/commentEditActions/commentEditCancel/
+  // commentEditSave and replyBox/replyInput/replySend (the in-row edit/reply
+  // TextInputs) are gone -- moved to EditCommentSheet and NewCommentBar. See
+  // this file's CommentRow module comment for why: an autoFocus TextInput
+  // inside a virtualized FlatList row was the actual cause of the "keyboard
+  // closes immediately, can't edit/reply" regression.
   commentReportText: { fontSize: 12, fontWeight: '600', color: colors.danger },
   commentLikeBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   commentLikeCount: { fontSize: 12, fontWeight: '700', color: colors.textSecondary },
-  replyBox: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 8 },
-  replyInput: {
-    flex: 1, fontSize: 14, color: colors.text, backgroundColor: colors.surfaceSubtle,
-    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, maxHeight: 90,
+  replyingToStrip: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4,
   },
-  replySend: { backgroundColor: colors.brand, borderRadius: 16, width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  replyingToText: { flex: 1, fontSize: 12, color: colors.textSecondary, fontWeight: '600' },
   replyThread: { marginTop: 8, paddingLeft: 14, borderLeftWidth: 2, borderLeftColor: colors.border, gap: 10 },
   replyItem: { gap: 2 },
   hotBadgeText: { fontSize: 11, fontWeight: '700', color: '#dc2626' },
