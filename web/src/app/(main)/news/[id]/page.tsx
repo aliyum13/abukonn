@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { optimizedImage } from '@/lib/image';
+import { useAuth } from '@/context/AuthContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -15,6 +16,8 @@ interface NewsArticle {
   image_url: string | null;
   author_name: string | null;
   created_at: string;
+  likes_count: number;
+  is_liked: boolean;
 }
 
 const CATEGORY_STYLES: Record<string, string> = {
@@ -34,23 +37,57 @@ function formatDate(dateString: string) {
 }
 
 export default function NewsDetailPage() {
+  const { token } = useAuth();
   const params = useParams();
   const router = useRouter();
   const [article, setArticle] = useState<NewsArticle | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  // Own liked/likeCount state, same reason as the list page's NewsItem: an
+  // optimistic toggle needs somewhere to live that isn't overwritten by the
+  // article object until the next real fetch.
+  const [liked, setLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/news/${params.id}`)
+    // Sends the token when there is one so is_liked reflects the signed-in
+    // user; the endpoint stays reachable without it (optionalAuth backend
+    // side), so this never blocks an anonymous reader from seeing the article.
+    fetch(`${API_URL}/api/news/${params.id}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
       .then((res) => {
         if (!res.ok) throw new Error('Not found');
         return res.json();
       })
-      .then((data) => setArticle(data.article))
+      .then((data) => {
+        setArticle(data.article);
+        setLiked(!!data.article?.is_liked);
+        setLikeCount(data.article?.likes_count ?? 0);
+      })
       .catch(() => setError('Article not found'))
       .finally(() => setLoading(false));
-  }, [params.id]);
+  }, [params.id, token]);
+
+  // This detail page never had a like button at all -- only the list card
+  // did. Adding it here closes that gap while persistence is being added.
+  async function handleLike() {
+    if (!article) return;
+    const wasLiked = liked;
+    setLiked(!wasLiked);
+    setLikeCount((n) => n + (wasLiked ? -1 : 1));
+    try {
+      const res = await fetch(`${API_URL}/api/news/${article.id}/like`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error('like failed');
+    } catch {
+      setLiked(wasLiked);
+      setLikeCount(article.likes_count);
+    }
+  }
 
   if (loading) {
     return <div className="flex items-center justify-center min-h-[60vh] text-gray-400">Loading...</div>;
@@ -102,6 +139,22 @@ export default function NewsDetailPage() {
 
           <div className="mt-6 text-gray-700 leading-relaxed whitespace-pre-wrap">
             {article.content}
+          </div>
+
+          {/* Like -- the list card has had this all along; the detail page never
+              did. Same heart glyph as the card, for visual consistency. */}
+          <div className="mt-6 flex items-center border-t border-gray-100 dark:border-[#222] pt-4">
+            <button
+              onClick={handleLike}
+              className={`flex items-center gap-1.5 text-[13px] font-medium transition ${
+                liked ? 'text-red-500' : 'text-gray-400 hover:text-red-400'
+              }`}
+            >
+              <svg className="h-5 w-5" fill={liked ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
+              </svg>
+              {likeCount > 0 ? <span>{likeCount}</span> : <span>Like</span>}
+            </button>
           </div>
         </div>
       </article>
