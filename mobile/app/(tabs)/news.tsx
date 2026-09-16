@@ -21,6 +21,8 @@ interface Article {
   image_url: string | null;
   author_name: string | null;
   created_at: string;
+  likes_count: number;
+  is_liked: boolean;
 }
 
 // Same set the web News page uses.
@@ -63,21 +65,27 @@ function initials(name: string | null) {
 const PREVIEW_CHARS = 200;
 
 // Extracted (rather than inlined in renderItem) so each card can hold its
-// own liked/expanded state via hooks, same reason feed.tsx's PostCard is its
-// own memoized component. Structure mirrors web's NewsItem in order: author
-// row -> title -> expandable preview -> image -> category pill + actions.
+// own expanded state via hooks, same reason feed.tsx's PostCard is its own
+// memoized component. Structure mirrors web's NewsItem in order: author row
+// -> title -> expandable preview -> image -> category pill + actions.
+//
+// liked/likeCount are no longer local state here -- they read straight off
+// `item` now that likes are persisted (news_likes table + POST /:id/like).
+// The News() component owns the actual news array and the optimistic
+// toggle (toggleNewsLike below), the same split PostCard/Feed() already use
+// for post likes, so this card and the detail modal both reflect the SAME
+// underlying state instead of drifting apart.
 const NewsCard = memo(function NewsCard({
-  item, onOpen, onShare, onOpenImage, s,
+  item, onOpen, onShare, onOpenImage, onLike, s,
 }: {
   item: Article;
   onOpen: (a: Article) => void;
   onShare: (a: Article) => void;
   onOpenImage: (url: string) => void;
+  onLike: (a: Article) => void;
   s: ReturnType<typeof make_s>;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [liked, setLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(0);
   const isLong = item.content.length > PREVIEW_CHARS;
   const pill = CATEGORY_PILL[item.category?.toLowerCase()] || { bg: colors.surfaceSubtle, fg: colors.textSecondary };
 
@@ -116,14 +124,9 @@ const NewsCard = memo(function NewsCard({
           <Text style={[s.pillText, { color: pill.fg }]}>{item.category || 'general'}</Text>
         </View>
         <View style={s.actionsRow}>
-          {/* Local-only, mirrors web exactly -- news likes aren't persisted
-              server-side there either, so nothing to call here. */}
-          <TouchableOpacity
-            style={s.actionBtn}
-            onPress={() => { setLiked(v => !v); setLikeCount(n => (liked ? n - 1 : n + 1)); }}
-          >
-            <Ionicons name={liked ? 'heart' : 'heart-outline'} size={17} color={liked ? '#ef4444' : colors.textSecondary} />
-            {likeCount > 0 ? <Text style={s.actionCount}>{likeCount}</Text> : null}
+          <TouchableOpacity style={s.actionBtn} onPress={() => onLike(item)}>
+            <Ionicons name={item.is_liked ? 'heart' : 'heart-outline'} size={17} color={item.is_liked ? '#ef4444' : colors.textSecondary} />
+            {item.likes_count > 0 ? <Text style={s.actionCount}>{item.likes_count}</Text> : null}
           </TouchableOpacity>
           <TouchableOpacity style={s.actionBtn} onPress={() => onOpen(item)}>
             <Ionicons name="chatbubble-outline" size={16} color={colors.textSecondary} />
@@ -150,7 +153,12 @@ export default function News() {
 
   const load = useCallback(async () => {
     try {
-      const data = await apiFetch<{ news: Article[] }>('/api/news', {}, false);
+      // Sends the token now (withAuth defaults to true; this used to
+      // explicitly opt OUT with `false`) so is_liked reflects the signed-in
+      // user. The endpoint itself is still reachable without one
+      // (optionalAuth on the backend) -- this is additive, not a new login
+      // requirement for the News tab.
+      const data = await apiFetch<{ news: Article[] }>('/api/news');
       setNews(data.news || []);
     } catch {
       setNews([]);
@@ -161,6 +169,29 @@ export default function News() {
   }, []);
 
   useEffect(() => { load(); setRefresh(load); }, [load, setRefresh]);
+
+  // Optimistic like/unlike against POST /api/news/:id/like, mirroring
+  // feed.tsx's post-like pattern. Updates the LIST item and the currently-
+  // open detail modal (if it's the same article) together -- `open` holds
+  // its own object reference, not a lookup into `news`, so liking from
+  // either surface would otherwise leave the other one stale until the next
+  // full reload.
+  const toggleNewsLike = useCallback((article: Article) => {
+    const wasLiked = article.is_liked;
+    const apply = (a: Article): Article => (a.id === article.id
+      ? { ...a, is_liked: !wasLiked, likes_count: Math.max(0, a.likes_count + (wasLiked ? -1 : 1)) }
+      : a);
+    setNews(prev => prev.map(apply));
+    setOpen(prev => (prev ? apply(prev) : prev));
+
+    apiFetch(`/api/news/${article.id}/like`, { method: 'POST' }).catch(() => {
+      const revert = (a: Article): Article => (a.id === article.id
+        ? { ...a, is_liked: wasLiked, likes_count: article.likes_count }
+        : a);
+      setNews(prev => prev.map(revert));
+      setOpen(prev => (prev ? revert(prev) : prev));
+    });
+  }, []);
 
   const filtered = cat === 'all' ? news : news.filter(n => n.category === cat);
 
@@ -213,7 +244,7 @@ export default function News() {
             <View style={s.center}><Text style={s.muted}>No news yet</Text></View>
           }
           renderItem={({ item }) => (
-            <NewsCard item={item} onOpen={setOpen} onShare={shareArticle} onOpenImage={setLightboxUrl} s={s} />
+            <NewsCard item={item} onOpen={setOpen} onShare={shareArticle} onOpenImage={setLightboxUrl} onLike={toggleNewsLike} s={s} />
           )}
         />
       )}
@@ -242,6 +273,14 @@ export default function News() {
               <Text style={s.meta}>
                 {open.author_name ? `${open.author_name} · ` : ''}{timeAgo(open.created_at)}
               </Text>
+              {/* The detail modal never had a like button at all -- only the
+                  card did. Closes that gap while persistence is being added;
+                  toggleNewsLike keeps this and the list card's own row in
+                  sync since both read off the same underlying state. */}
+              <TouchableOpacity style={s.detailLikeBtn} onPress={() => toggleNewsLike(open)} hitSlop={6}>
+                <Ionicons name={open.is_liked ? 'heart' : 'heart-outline'} size={18} color={open.is_liked ? '#ef4444' : colors.textSecondary} />
+                <Text style={s.detailLikeText}>{open.likes_count > 0 ? open.likes_count : 'Like'}</Text>
+              </TouchableOpacity>
               <Text style={s.fullBody}>{open.content}</Text>
             </ScrollView>
           ) : null}
@@ -291,6 +330,11 @@ const make_s = (colors: Palette) => StyleSheet.create({
   // list-card redesign.
   cat: { fontSize: 11, fontWeight: '800', color: colors.brand, letterSpacing: 0.5 },
   meta: { fontSize: 12, color: colors.muted, marginTop: 8 },
+  detailLikeBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 14,
+    paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border, alignSelf: 'flex-start',
+  },
+  detailLikeText: { fontSize: 13, fontWeight: '600', color: colors.textSecondary },
   modalHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border,

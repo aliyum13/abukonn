@@ -49,4 +49,28 @@ function auth(req, res, next) {
   }
 }
 
+// Decodes a bearer token WHEN PRESENT, but never rejects the request for a
+// missing or invalid one. For routes that must stay reachable without login
+// (news is public campus content -- neither client sends a token on these
+// GETs today) but can personalise their response (e.g. is_liked) when the
+// caller happens to be authenticated. `auth` above is still what enforces
+// real authentication everywhere that requires it; this is deliberately
+// weaker and should only gate routes that are meant to work anonymously too.
+function optionalAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      req.user = decoded;
+      if (decoded?.id) stampLastActive(decoded.id);
+    } catch {
+      // Invalid/expired token on an optional route -- proceed anonymously
+      // rather than rejecting; req.user simply stays unset.
+    }
+  }
+  next();
+}
+
 module.exports = auth;
+module.exports.optionalAuth = optionalAuth;
