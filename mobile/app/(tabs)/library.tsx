@@ -148,11 +148,19 @@ export default function Library() {
     // let the OS treat document URLs as downloads (esp. on Android, where they
     // went to the download manager instead of opening). WebBrowser renders the
     // page in-app: Office files (Word/PPT/Excel) go through Microsoft's web
-    // viewer (which displays them), PDFs/images open inline in the browser.
+    // viewer (which displays them). PDFs go through our own self-hosted
+    // PDF.js viewer (web/src/app/pdf-viewer) rather than the raw file URL --
+    // handing the browser sheet a raw application/pdf response as the
+    // top-level navigation is what triggers the OS/browser's native PDF
+    // handling, which on some devices renders the file inline and then also
+    // drops a copy into Downloads. The viewer page is HTML, so that native
+    // handling never fires; the PDF bytes are fetched client-side instead.
     const OFFICE = new Set(['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx']);
     const ext = ((m.file_name || m.title).split('.').pop() || '').toLowerCase();
     const url = OFFICE.has(ext)
       ? `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(m.file_url)}`
+      : ext === 'pdf'
+      ? `https://abukonn.com/pdf-viewer?file=${encodeURIComponent(m.file_url)}`
       : m.file_url;
     try {
       await WebBrowser.openBrowserAsync(url, { presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN });
