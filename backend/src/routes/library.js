@@ -8,7 +8,7 @@ const router = express.Router();
 
 router.get('/', auth, browse);
 router.get('/admin/all', adminAuth, adminList);
-router.post('/admin/upload', adminAuth, uploadAny.single('file'), upload);
+router.post('/admin/upload', adminAuth, uploadAny.single('file'), uploadAny.handleUploadError, upload);
 router.delete('/admin/:id', adminAuth, deleteMaterial);
 router.get('/:id', auth, getMaterial);
 

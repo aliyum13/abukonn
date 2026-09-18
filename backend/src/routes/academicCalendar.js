@@ -17,7 +17,7 @@ router.post('/admin/entry', adminAuth, addEntry);
 router.put('/admin/entry/:id', adminAuth, updateEntry);
 router.delete('/admin/entry/:id', adminAuth, deleteEntry);
 router.delete('/admin/session/:session', adminAuth, deleteSession);
-router.post('/admin/preview', adminAuth, uploadAny.single('csv'), previewCSV);
-router.post('/admin/upload', adminAuth, uploadAny.single('csv'), uploadCSV);
+router.post('/admin/preview', adminAuth, uploadAny.single('csv'), uploadAny.handleUploadError, previewCSV);
+router.post('/admin/upload', adminAuth, uploadAny.single('csv'), uploadAny.handleUploadError, uploadCSV);
 
 module.exports = router;
