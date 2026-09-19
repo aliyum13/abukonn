@@ -16,8 +16,8 @@ router.get('/week', auth, getWeekClasses);
 
 // Admin routes BEFORE dynamic route
 router.get('/admin/uploads', adminAuth, getUploads);
-router.post('/admin/upload', adminAuth, uploadAny.single('csv'), uploadTimetable);
-router.post('/admin/preview', adminAuth, uploadAny.single('csv'), previewCSV);
+router.post('/admin/upload', adminAuth, uploadAny.single('csv'), uploadAny.handleUploadError, uploadTimetable);
+router.post('/admin/preview', adminAuth, uploadAny.single('csv'), uploadAny.handleUploadError, previewCSV);
 router.delete('/admin/:department/:level', adminAuth, deleteTimetable);
 
 // Bulk status update: cancel every class across a date range + scope in one

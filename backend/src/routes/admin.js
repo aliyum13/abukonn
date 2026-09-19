@@ -51,7 +51,7 @@ router.delete('/news/:id', adminDeleteNews);
 
 // Whitelist
 router.get('/whitelist', getWhitelist);
-router.post('/whitelist/upload', uploadAny.single('csv'), uploadWhitelist);
+router.post('/whitelist/upload', uploadAny.single('csv'), uploadAny.handleUploadError, uploadWhitelist);
 router.delete('/whitelist', clearWhitelist);
 
 // PRE-LAUNCH: wipe all test content (posts, stories, messages, groups, etc.)

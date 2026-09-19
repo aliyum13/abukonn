@@ -6,6 +6,11 @@ import { cn } from '@/lib/utils';
 import { DepartmentOptions, LEVELS, DEPARTMENT_GROUPS } from '@/lib/departments';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+// Must match backend/src/middleware/uploadAny.js's MAX_FILE_SIZE exactly --
+// otherwise this check either blocks files the server would accept, or lets
+// through files the server rejects (which is what happened before: this
+// label said 20MB while the real enforced cap was 10MB).
+const MAX_FILE_SIZE = 25 * 1024 * 1024;
 const TYPES = ['past_question','lecture_note','textbook','other'];
 const TYPE_LABELS: Record<string,string> = { past_question:'Past Question', lecture_note:'Lecture Note', textbook:'Textbook', other:'Other' };
 const TYPE_COLORS: Record<string,string> = { past_question:'bg-red-100 text-red-700', lecture_note:'bg-blue-100 text-blue-700', textbook:'bg-purple-100 text-purple-700', other:'bg-gray-100 text-gray-700' };
@@ -49,6 +54,7 @@ export default function AdminLibraryPage() {
 
   const handleUpload = async () => {
     if(!title||!type||!file){ showToast('Title, type and file are required',true); return; }
+    if(file.size>MAX_FILE_SIZE){ showToast(`File exceeds the ${MAX_FILE_SIZE/(1024*1024)}MB limit`,true); return; }
     setUploading(true);
     try {
       const fd = new FormData();
@@ -126,8 +132,8 @@ export default function AdminLibraryPage() {
             <div><label className="mb-1.5 block text-label text-ink-secondary">Course Title</label><input value={courseTitle} onChange={e=>setCourseTitle(e.target.value)} placeholder="e.g. Data Structures" className={inputCls}/></div>
             <div className="sm:col-span-2"><label className="mb-1.5 block text-label text-ink-secondary">Description</label><textarea value={description} onChange={e=>setDescription(e.target.value)} placeholder="Brief description of the material..." rows={2} className={`${inputCls} resize-none`}/></div>
             <div className="sm:col-span-2">
-              <label className="mb-1.5 block text-label text-ink-secondary">PDF File * (max 20MB)</label>
-              <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.ppt,.pptx" onChange={e=>setFile(e.target.files?.[0]||null)} className="hidden"/>
+              <label className="mb-1.5 block text-label text-ink-secondary">File * (max 25MB)</label>
+              <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx" onChange={e=>setFile(e.target.files?.[0]||null)} className="hidden"/>
               {file ? (
                 <div className="flex items-center gap-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3">
                   <p className="flex-1 truncate text-body-sm font-medium text-brand-700">{file.name}</p>
@@ -136,7 +142,7 @@ export default function AdminLibraryPage() {
               ) : (
                 <button onClick={()=>fileRef.current?.click()} className="flex h-20 w-full flex-col items-center justify-center rounded-xl border-2 border-dashed border-border text-ink-muted hover:border-brand-400 hover:text-brand-600 transition">
                   <p className="text-body-sm font-medium">Click to select file</p>
-                  <p className="text-caption mt-0.5">PDF, DOC, DOCX, PPT, PPTX</p>
+                  <p className="text-caption mt-0.5">PDF, DOC, DOCX, PPT, PPTX, XLS, XLSX</p>
                 </button>
               )}
             </div>
