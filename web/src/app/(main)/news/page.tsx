@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { timeAgo } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -15,36 +15,12 @@ interface NewsArticle {
   id: number;
   title: string;
   content: string;
-  category: string;
   image_url: string | null;
   author_name: string | null;
   created_at: string;
   likes_count: number;
   is_liked: boolean;
 }
-
-const CATEGORIES = ['all', 'admission', 'examination', 'faculty', 'sports', 'events', 'general'] as const;
-type Category = (typeof CATEGORIES)[number];
-
-const CATEGORY_LABELS: Record<Category, string> = {
-  all: 'All',
-  admission: 'Admission',
-  examination: 'Examination',
-  faculty: 'Faculty',
-  sports: 'Sports',
-  events: 'Events',
-  general: 'General',
-};
-
-const CATEGORY_PILL: Record<string, string> = {
-  admission: 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950 dark:text-blue-400 dark:border-blue-900',
-  examination: 'bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-950 dark:text-orange-400 dark:border-orange-900',
-  faculty: 'bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-950 dark:text-purple-400 dark:border-purple-900',
-  sports: 'bg-yellow-50 text-yellow-800 border border-yellow-200 dark:bg-yellow-950 dark:text-yellow-400 dark:border-yellow-900',
-  events: 'bg-pink-50 text-pink-700 border border-pink-200 dark:bg-pink-950 dark:text-pink-400 dark:border-pink-900',
-  general: 'bg-gray-100 text-gray-700 border border-gray-200 dark:bg-[#1a1a1a] dark:text-gray-400 dark:border-[#333]',
-  academic: 'bg-brand-50 text-brand-700 border border-brand-200 dark:bg-brand-950 dark:text-brand-400 dark:border-brand-900',
-};
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
 function NewsItemSkeleton() {
@@ -93,8 +69,6 @@ function NewsItem({ article, token }: { article: NewsArticle; token: string | nu
     .map((w) => w[0])
     .join('')
     .toUpperCase();
-
-  const pillClass = CATEGORY_PILL[article.category?.toLowerCase()] || CATEGORY_PILL.general;
 
   // Optimistic toggle against the new POST /api/news/:id/like endpoint,
   // mirroring how post likes already work elsewhere in the app. Reverts to
@@ -182,12 +156,8 @@ function NewsItem({ article, token }: { article: NewsArticle; token: string | nu
         </Link>
       )}
 
-      {/* Category tag + actions */}
-      <div className="flex items-center justify-between mt-3">
-        <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium capitalize', pillClass)}>
-          {article.category || 'general'}
-        </span>
-
+      {/* Actions */}
+      <div className="flex items-center justify-end mt-3">
         <div className="flex items-center gap-4">
           {/* Like */}
           <button
@@ -243,8 +213,6 @@ export default function NewsPage() {
   const [news, setNews] = useState<NewsArticle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [activeCategory, setActiveCategory] = useState<Category>('all');
-  const tabsRef = useRef<HTMLDivElement>(null);
 
   const greeting = user
     ? (user as { username?: string; full_name?: string }).username ||
@@ -260,6 +228,13 @@ export default function NewsPage() {
   // the same shape as this page's other auth-dependent values (e.g. greeting).
   const loadNews = useCallback(() => {
     setLoading(true);
+    // Opening (or refreshing) News clears the unread badge. Fired alongside the
+    // list request rather than after it, so the only article that could be
+    // marked seen without being shown is one published in the few milliseconds
+    // between the two reaching the server.
+    if (token) {
+      fetch(`${API_URL}/api/news/seen`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+    }
     fetch(`${API_URL}/api/news`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
@@ -273,13 +248,6 @@ export default function NewsPage() {
 
   // Tapping the News tab while already on News re-fetches.
   usePageRefresh(() => { loadNews(); }, '/news');
-
-  const filtered = useMemo(() => {
-    if (activeCategory === 'all') return news;
-    return news.filter(
-      (a) => (a.category || 'general').toLowerCase() === activeCategory
-    );
-  }, [news, activeCategory]);
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -315,36 +283,9 @@ export default function NewsPage() {
         </div>
       </div>
 
-      {/* ── Sticky category tabs ─────────────────────────────────────── */}
-      <div
-        className="sticky top-14 z-20 bg-white/95 dark:bg-[#0a0a0a]/95 backdrop-blur-sm border-b border-gray-100 dark:border-[#222] px-4 py-2.5"
-        ref={tabsRef}
-      >
-        <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-hide">
-          {CATEGORIES.map((cat) => {
-            const active = activeCategory === cat;
-            return (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setActiveCategory(cat)}
-                className={cn(
-                  'shrink-0 inline-flex items-center gap-1 rounded-full border px-3 py-1 text-[12px] font-medium transition',
-                  active
-                    ? 'border-brand-600 bg-brand-50 text-brand-700'
-                    : 'border-gray-200 dark:border-[#333] bg-white dark:bg-[#111] text-gray-500 dark:text-[#666] hover:border-brand-300 hover:text-brand-600'
-                )}
-              >
-                {active && (
-                  <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                  </svg>
-                )}
-                {CATEGORY_LABELS[cat]}
-              </button>
-            );
-          })}
-        </div>
+      {/* ── Section label ────────────────────────────────────────────── */}
+      <div className="sticky top-14 z-20 bg-white/95 dark:bg-[#0a0a0a]/95 backdrop-blur-sm border-b border-gray-100 dark:border-[#222] px-4 py-2.5">
+        <h2 className="text-[15px] font-bold text-gray-900 dark:text-[#f5f5f5]">News</h2>
       </div>
 
       {/* ── Error banner ──────────────────────────────────────────────── */}
@@ -361,25 +302,19 @@ export default function NewsPage() {
           <NewsItemSkeleton />
           <NewsItemSkeleton />
         </div>
-      ) : filtered.length === 0 ? (
+      ) : news.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-gray-100 dark:bg-[#1a1a1a]">
             <svg className="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 01-2.25 2.25M16.5 7.5V18a2.25 2.25 0 002.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 002.25 2.25h13.5M6 7.5h3v3H6v-3z" />
             </svg>
           </div>
-          <p className="text-[15px] font-semibold text-gray-700">
-            No {activeCategory === 'all' ? '' : CATEGORY_LABELS[activeCategory] + ' '}news yet
-          </p>
-          <p className="mt-1 text-[13px] text-gray-400">
-            {activeCategory === 'all'
-              ? 'Check back soon for campus updates.'
-              : `No ${CATEGORY_LABELS[activeCategory].toLowerCase()} articles have been posted.`}
-          </p>
+          <p className="text-[15px] font-semibold text-gray-700">No news yet</p>
+          <p className="mt-1 text-[13px] text-gray-400">Check back soon for campus updates.</p>
         </div>
       ) : (
         <div>
-          {filtered.map((article) => (
+          {news.map((article) => (
             <NewsItem key={article.id} article={article} token={token} />
           ))}
         </div>

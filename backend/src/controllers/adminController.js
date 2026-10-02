@@ -4,6 +4,7 @@ const News = require('../models/News');
 const Whitelist = require('../models/Whitelist');
 const { updateRole, setVerified, setContentCreator } = require('../models/User');
 const ClassRep = require('../models/ClassRep');
+const { announceNews } = require('../lib/newsPublish');
 const { VALID_ROLE_TYPES, getRolesForUser, grantRole, revokeRole } = require('../models/UserRole');
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
@@ -206,15 +207,13 @@ async function adminGetAllNews(req, res) {
 
 async function adminCreateNews(req, res) {
   try {
-    const { title, content, category } = req.body;
+    // Media Team gating happens in the route (requireMediaTeam), before the
+    // image upload middleware runs. Categories are gone from News, so any
+    // `category` an older client still sends is ignored.
+    const { title, content } = req.body;
 
-    if (!title || !content || !category) {
-      return res.status(400).json({ message: 'Title, content, and category are required' });
-    }
-
-    const validCategories = ['academic', 'sports', 'events', 'general'];
-    if (!validCategories.includes(category)) {
-      return res.status(400).json({ message: 'Invalid category' });
+    if (!title || !content) {
+      return res.status(400).json({ message: 'Title and content are required' });
     }
 
     let imageUrl = null;
@@ -230,12 +229,14 @@ async function adminCreateNews(req, res) {
     const article = await News.createNews({
       title,
       content,
-      category,
       imageUrl,
       createdBy: req.user.id,
     });
 
     res.status(201).json({ message: 'News created', article });
+    // After the response, so the publish never waits on (or fails because of)
+    // the push. announceNews claims the article atomically: once only.
+    announceNews(article);
   } catch (err) {
     console.error('Admin create news error:', err.message);
     res.status(500).json({ message: 'Server error creating news' });

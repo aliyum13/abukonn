@@ -31,6 +31,9 @@ async function createNewsTable() {
   // migration in this file: existing articles get likes_count = 0.
   await pool.query(`ALTER TABLE abukonn.news ADD COLUMN IF NOT EXISTS likes_count INTEGER NOT NULL DEFAULT 0`);
   await pool.query(CREATE_NEWS_LIKES_TABLE);
+  // Set the first (and only) time a publish push is claimed for the article, so
+  // the campus-wide notification can never go out twice for one article.
+  await pool.query(`ALTER TABLE abukonn.news ADD COLUMN IF NOT EXISTS notified_at TIMESTAMPTZ`);
   console.log('News table ready');
 }
 
@@ -92,7 +95,9 @@ async function toggleLike(newsId, userId) {
   return { likes_count: rows[0]?.likes_count ?? 0, is_liked: !alreadyLiked };
 }
 
-async function createNews({ title, content, category, imageUrl, createdBy }) {
+// News no longer has user-facing categories, but the column is NOT NULL with a
+// CHECK, so every article is stored as 'general'.
+async function createNews({ title, content, category = 'general', imageUrl, createdBy }) {
   const result = await pool.query(
     `INSERT INTO abukonn.news (title, content, category, image_url, created_by)
      VALUES ($1, $2, $3, $4, $5)
@@ -100,6 +105,39 @@ async function createNews({ title, content, category, imageUrl, createdBy }) {
     [title, content, category, imageUrl || null, createdBy]
   );
   return result.rows[0];
+}
+
+// Articles published after the user last opened News, not counting their own
+// (an author shouldn't see a badge for what they just posted). A NULL
+// last_seen_news_at -- or no such user -- means "never seen": everything counts.
+async function getUnreadCount(userId) {
+  const { rows } = await pool.query(
+    `SELECT COUNT(*)::int AS count
+     FROM abukonn.news n
+     WHERE n.created_by IS DISTINCT FROM $1
+       AND n.created_at > COALESCE(
+         (SELECT last_seen_news_at FROM abukonn.users WHERE id = $1),
+         '-infinity'::timestamptz
+       )`,
+    [userId]
+  );
+  return rows[0].count;
+}
+
+async function markSeen(userId) {
+  await pool.query(`UPDATE abukonn.users SET last_seen_news_at = NOW() WHERE id = $1`, [userId]);
+}
+
+// Atomically claims the right to announce an article. Exactly one caller ever
+// gets true, however many times this is invoked for the same id.
+async function claimNotification(newsId) {
+  const { rows } = await pool.query(
+    `UPDATE abukonn.news SET notified_at = NOW()
+     WHERE id = $1 AND notified_at IS NULL
+     RETURNING id`,
+    [newsId]
+  );
+  return rows.length > 0;
 }
 
 module.exports = {
@@ -110,4 +148,7 @@ module.exports = {
   getNewsById,
   createNews,
   toggleLike,
+  getUnreadCount,
+  markSeen,
+  claimNotification,
 };

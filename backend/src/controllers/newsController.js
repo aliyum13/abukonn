@@ -1,4 +1,5 @@
 const News = require('../models/News');
+const { announceNews } = require('../lib/newsPublish');
 
 async function getNews(req, res) {
   try {
@@ -49,30 +50,49 @@ async function likeNewsHandler(req, res) {
 
 async function createNews(req, res) {
   try {
-    const { title, content, category, image_url } = req.body;
+    // Media Team gating happens in the route (requireMediaTeam). Categories are
+    // gone from News, so any `category` an older client sends is ignored.
+    const { title, content, image_url } = req.body;
 
-    if (!title || !content || !category) {
-      return res.status(400).json({ message: 'Title, content, and category are required' });
-    }
-
-    const validCategories = ['academic', 'sports', 'events', 'general'];
-    if (!validCategories.includes(category)) {
-      return res.status(400).json({ message: 'Invalid category' });
+    if (!title || !content) {
+      return res.status(400).json({ message: 'Title and content are required' });
     }
 
     const article = await News.createNews({
       title,
       content,
-      category,
       imageUrl: image_url,
       createdBy: req.user?.id || null,
     });
 
     res.status(201).json({ message: 'News created', article });
+    // After the response; claims the article atomically so it's announced once.
+    announceNews(article);
   } catch (err) {
     console.error('Create news error:', err.message);
     res.status(500).json({ message: 'Server error creating news' });
   }
 }
 
-module.exports = { getNews, getNewsById, createNews, likeNewsHandler };
+// Badge count: articles published since this user last opened News.
+async function getUnreadNewsCount(req, res) {
+  try {
+    res.json({ count: await News.getUnreadCount(req.user.id) });
+  } catch (err) {
+    console.error('Unread news count error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// Called when a client opens the News screen: clears the badge.
+async function markNewsSeen(req, res) {
+  try {
+    await News.markSeen(req.user.id);
+    res.json({ count: 0 });
+  } catch (err) {
+    console.error('Mark news seen error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+module.exports = { getNews, getNewsById, createNews, likeNewsHandler, getUnreadNewsCount, markNewsSeen };

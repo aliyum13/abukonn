@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, memo } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { useThemedStyles } from '../../src/theme/ThemeContext';
 import type { Palette } from '../../src/theme';
 import {
@@ -12,29 +13,18 @@ import { optimizedImage } from '../../src/lib/image';
 import { ImageLightbox } from '../../src/components/ImageLightbox';
 import { colors, radius, shadow } from '../../src/theme';
 import { useTabScrollToTop } from '../../src/lib/useScrollToTop';
+import { markNewsSeen, setViewingNews } from '../../src/lib/newsUnread';
 
 interface Article {
   id: number;
   title: string;
   content: string;
-  category: string;
   image_url: string | null;
   author_name: string | null;
   created_at: string;
   likes_count: number;
   is_liked: boolean;
 }
-
-// Same set the web News page uses.
-const CATEGORIES = [
-  { key: 'all', label: 'All' },
-  { key: 'admission', label: 'Admission' },
-  { key: 'examination', label: 'Examination' },
-  { key: 'faculty', label: 'Faculty' },
-  { key: 'sports', label: 'Sports' },
-  { key: 'events', label: 'Events' },
-  { key: 'general', label: 'General' },
-];
 
 function timeAgo(iso: string) {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -43,19 +33,6 @@ function timeAgo(iso: string) {
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   return `${Math.floor(s / 86400)}d ago`;
 }
-
-// Same category -> color associations as web's CATEGORY_PILL, using the same
-// rgba-background/solid-foreground technique feed.tsx's own CATEGORY_CHIP
-// already uses elsewhere in this app (adapts reasonably across light/dark
-// since the alpha-blended background sits on whatever the card provides).
-const CATEGORY_PILL: Record<string, { bg: string; fg: string }> = {
-  admission:   { bg: 'rgba(59,130,246,0.12)',  fg: '#2563eb' },
-  examination: { bg: 'rgba(249,115,22,0.12)',  fg: '#ea580c' },
-  faculty:     { bg: 'rgba(168,85,247,0.12)',  fg: '#9333ea' },
-  sports:      { bg: 'rgba(234,179,8,0.14)',   fg: '#a16207' },
-  events:      { bg: 'rgba(219,39,119,0.12)',  fg: '#db2777' },
-  academic:    { bg: 'rgba(22,163,74,0.12)',   fg: '#16a34a' },
-};
 
 function initials(name: string | null) {
   return (name || 'ABUkonn News')
@@ -67,7 +44,7 @@ const PREVIEW_CHARS = 200;
 // Extracted (rather than inlined in renderItem) so each card can hold its
 // own expanded state via hooks, same reason feed.tsx's PostCard is its own
 // memoized component. Structure mirrors web's NewsItem in order: author row
-// -> title -> expandable preview -> image -> category pill + actions.
+// -> title -> expandable preview -> image -> actions.
 //
 // liked/likeCount are no longer local state here -- they read straight off
 // `item` now that likes are persisted (news_likes table + POST /:id/like).
@@ -87,7 +64,6 @@ const NewsCard = memo(function NewsCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const isLong = item.content.length > PREVIEW_CHARS;
-  const pill = CATEGORY_PILL[item.category?.toLowerCase()] || { bg: colors.surfaceSubtle, fg: colors.textSecondary };
 
   return (
     <View style={s.card}>
@@ -120,9 +96,6 @@ const NewsCard = memo(function NewsCard({
       ) : null}
 
       <View style={s.footerRow}>
-        <View style={[s.pill, { backgroundColor: pill.bg }]}>
-          <Text style={[s.pillText, { color: pill.fg }]}>{item.category || 'general'}</Text>
-        </View>
         <View style={s.actionsRow}>
           <TouchableOpacity style={s.actionBtn} onPress={() => onLike(item)}>
             <Ionicons name={item.is_liked ? 'heart' : 'heart-outline'} size={17} color={item.is_liked ? '#ef4444' : colors.textSecondary} />
@@ -147,7 +120,6 @@ export default function News() {
   const [news, setNews] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [cat, setCat] = useState('all');
   const [open, setOpen] = useState<Article | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
@@ -168,7 +140,18 @@ export default function News() {
     }
   }, []);
 
-  useEffect(() => { load(); setRefresh(load); }, [load, setRefresh]);
+  useEffect(() => { setRefresh(load); }, [load, setRefresh]);
+
+  // Every time the News tab comes into focus: clear the unread badge and
+  // refetch the list. The refetch matters -- the tab stays mounted between
+  // visits, so without it tapping a "1 new" badge would clear the badge while
+  // still showing the old list without the new article.
+  useFocusEffect(useCallback(() => {
+    setViewingNews(true);
+    markNewsSeen();
+    load();
+    return () => setViewingNews(false);
+  }, [load]));
 
   // Optimistic like/unlike against POST /api/news/:id/like, mirroring
   // feed.tsx's post-like pattern. Updates the LIST item and the currently-
@@ -193,8 +176,6 @@ export default function News() {
     });
   }, []);
 
-  const filtered = cat === 'all' ? news : news.filter(n => n.category === cat);
-
   const shareArticle = async (article: Article) => {
     try {
       await Share.share({
@@ -210,30 +191,12 @@ export default function News() {
     <SafeAreaView style={s.safe} edges={['top']}>
       <View style={s.header}><Text style={s.title}>News</Text></View>
 
-      <View style={s.filterRow}>
-        <FlatList
-          data={CATEGORIES}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          keyExtractor={c => c.key}
-          contentContainerStyle={{ paddingHorizontal: 12, gap: 8 }}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={[s.chip, cat === item.key ? s.chipOn : null]}
-              onPress={() => setCat(item.key)}
-            >
-              <Text style={cat === item.key ? s.chipTextOn : s.chipText}>{item.label}</Text>
-            </TouchableOpacity>
-          )}
-        />
-      </View>
-
       {loading ? (
         <View style={s.center}><ActivityIndicator size="large" color={colors.brand} /></View>
       ) : (
         <FlatList
           ref={listRef}
-          data={filtered}
+          data={news}
           keyExtractor={n => String(n.id)}
           refreshControl={
             <RefreshControl refreshing={refreshing}
@@ -268,7 +231,6 @@ export default function News() {
                   <Image source={{ uri: optimizedImage(open.image_url) }} style={s.fullImg} resizeMode="contain" />
                 </TouchableOpacity>
               ) : null}
-              <Text style={s.cat}>{open.category.toUpperCase()}</Text>
               <Text style={s.fullTitle}>{open.title}</Text>
               <Text style={s.meta}>
                 {open.author_name ? `${open.author_name} · ` : ''}{timeAgo(open.created_at)}
@@ -295,11 +257,6 @@ const make_s = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, backgroundColor: colors.surface },
   title: { fontSize: 20, fontWeight: '800', color: colors.text },
-  filterRow: { marginBottom: 8 },
-  chip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 18, borderWidth: 1, borderColor: colors.border },
-  chipOn: { backgroundColor: colors.brand, borderColor: colors.brand },
-  chipText: { fontSize: 13, color: colors.muted, fontWeight: '600' },
-  chipTextOn: { fontSize: 13, color: '#fff', fontWeight: '700' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   muted: { color: colors.muted, fontSize: 15 },
   card: {
@@ -319,16 +276,11 @@ const make_s = (colors: Palette) => StyleSheet.create({
   preview: { fontSize: 14, color: colors.textSecondary, lineHeight: 20 },
   showMore: { fontSize: 13, fontWeight: '700', color: colors.brand, marginTop: 4 },
   footerRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 12,
   },
-  pill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
-  pillText: { fontSize: 11, fontWeight: '700', textTransform: 'capitalize' },
   actionsRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   actionCount: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
-  // Still used by the full-article modal below, which wasn't part of this
-  // list-card redesign.
-  cat: { fontSize: 11, fontWeight: '800', color: colors.brand, letterSpacing: 0.5 },
   meta: { fontSize: 12, color: colors.muted, marginTop: 8 },
   detailLikeBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 14,

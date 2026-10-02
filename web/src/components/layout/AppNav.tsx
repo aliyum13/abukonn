@@ -148,6 +148,41 @@ export function AppNav() {
     return () => clearInterval(id);
   }, [token, fetchMsgUnreadCount]);
 
+  // Unread News badge: articles published since this user last opened News.
+  // The News page itself reports "seen" when it opens, so here we only read the
+  // count -- and hold it at 0 while the list is on screen.
+  const [newsUnread, setNewsUnread] = useState(0);
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
+
+  const fetchNewsUnread = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_URL}/api/news/unread-count`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      // A request that was already in flight when News was opened must not put
+      // the badge back on the screen that just cleared it.
+      if (pathnameRef.current === '/news') return;
+      setNewsUnread(data.count ?? 0);
+    } catch {
+      // silent
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    if (pathname === '/news') {
+      setNewsUnread(0);
+      return;
+    }
+    fetchNewsUnread();
+    const id = setInterval(fetchNewsUnread, 30_000);
+    return () => clearInterval(id);
+  }, [token, fetchNewsUnread, pathname]);
+
   const handleLogout = () => {
     logout();
     router.push('/login');
@@ -345,6 +380,11 @@ export function AppNav() {
                   >
                     <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
                     <span>{link.label}</span>
+                    {link.href === '/news' && newsUnread > 0 && (
+                      <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                        {newsUnread > 9 ? '9+' : newsUnread}
+                      </span>
+                    )}
                   </Link>
                 );
               })}
@@ -382,6 +422,14 @@ export function AppNav() {
                 }`}
               >
                 {link.label}
+                {link.href === '/news' && newsUnread > 0 && (
+                  <span
+                    aria-label={`${newsUnread} unread news`}
+                    className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white"
+                  >
+                    {newsUnread > 9 ? '9+' : newsUnread}
+                  </span>
+                )}
               </Link>
             ))}
           </div>
@@ -601,6 +649,14 @@ export function AppNav() {
               strokeWidth={isActive(link.href) ? 2.5 : 1.75}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
             </svg>
+          )}
+          {link.href === '/news' && newsUnread > 0 && (
+            <span
+              aria-label={`${newsUnread} unread news`}
+              className="absolute left-1/2 top-1.5 ml-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white"
+            >
+              {newsUnread > 9 ? '9+' : newsUnread}
+            </span>
           )}
           {link.href === '/news' && (
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"
