@@ -38,11 +38,15 @@ router.get('/stats', getStats);
 router.get('/users', getUsers);
 router.get('/users/recent', getRecentUsers);
 router.delete('/users/:id', deleteUser);
-router.patch('/users/:id/toggle-admin', toggleAdmin);
-router.patch('/users/:id/role', setUserRole);
-router.get('/users/:id/roles', getUserRoles);
-router.post('/users/:id/roles', grantUserRole);
-router.delete('/users/:id/roles/:role_type', revokeUserRole);
+// Authority-granting endpoints: full admins only (role === 'admin'), not the
+// scoped editor / class_coordinator roles that also carry is_admin. Everything
+// else on this router stays on the looser adminAuth those roles rely on.
+const { requireFullAdmin } = adminAuth;
+router.patch('/users/:id/toggle-admin', requireFullAdmin, toggleAdmin);
+router.patch('/users/:id/role', requireFullAdmin, setUserRole);
+router.get('/users/:id/roles', requireFullAdmin, getUserRoles);
+router.post('/users/:id/roles', requireFullAdmin, grantUserRole);
+router.delete('/users/:id/roles/:role_type', requireFullAdmin, revokeUserRole);
 router.patch('/users/:id/verified', setUserVerified);
 router.patch('/users/:id/content-creator', setUserContentCreator);
 router.get('/class-reps', listClassReps);

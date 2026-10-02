@@ -4,8 +4,10 @@
 // line. Only the database is faked: config/db is replaced in require.cache
 // with a small in-memory interpreter for the handful of statements involved.
 //
-// Users: 1 = admin, 2 = ordinary student, 5 = ordinary student (role target).
-// Anything else does not exist.
+// Users (see freshUsers): 1 = full admin, 2 and 5 = ordinary students,
+// 3 = editor and 4 = class_coordinator (both carry is_admin, as setUserRole
+// sets it for the scoped admin-panel roles), 6 = is_admin with role 'user'
+// (a legacy / toggle-admin account). Anything else does not exist.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -18,18 +20,42 @@ process.env.CLOUDINARY_API_KEY ||= 'x';
 process.env.CLOUDINARY_API_SECRET ||= 'x';
 
 const ADMIN_ID = 1;
-const KNOWN_USERS = new Set([1, 2, 5]);
+const EDITOR_ID = 3;
+const COORDINATOR_ID = 4;
+const LEGACY_ADMIN_ID = 6;
+const freshUsers = () => ({
+  1: { is_admin: true, role: 'admin' },
+  2: { is_admin: false, role: 'user' },
+  3: { is_admin: true, role: 'editor' },
+  4: { is_admin: true, role: 'class_coordinator' },
+  5: { is_admin: false, role: 'user' },
+  6: { is_admin: true, role: 'user' },
+});
+let USERS = freshUsers();
 const roleRows = []; // { user_id, role_type, granted_by }
 const listQueries = []; // captured getUsers statements
+const userWrites = []; // every UPDATE against abukonn.users
 
 const fakePool = {
   async query(sql, params = []) {
     const s = sql.replace(/\s+/g, ' ').trim();
     if (/^SELECT is_admin FROM abukonn\.users/.test(s)) {
-      return { rows: KNOWN_USERS.has(params[0]) ? [{ is_admin: params[0] === ADMIN_ID }] : [] };
+      return { rows: USERS[params[0]] ? [{ is_admin: USERS[params[0]].is_admin }] : [] };
+    }
+    if (/^SELECT role FROM abukonn\.users/.test(s)) {
+      return { rows: USERS[params[0]] ? [{ role: USERS[params[0]].role }] : [] };
     }
     if (/^SELECT 1 FROM abukonn\.users WHERE id/.test(s)) {
-      return { rows: KNOWN_USERS.has(params[0]) ? [{}] : [] };
+      return { rows: USERS[params[0]] ? [{}] : [] };
+    }
+    if (/^UPDATE abukonn\.users/.test(s)) {
+      userWrites.push({ sql: s, params });
+      const u = USERS[params[0]];
+      if (!u) return { rows: [] };
+      if (/SET role = \$2/.test(s)) u.role = params[1];
+      else if (/SET is_admin = NOT is_admin/.test(s)) u.is_admin = !u.is_admin;
+      else if (/SET is_admin = \$2/.test(s)) u.is_admin = params[1];
+      return { rows: [{ id: params[0], full_name: 'Test User', role: u.role, is_admin: u.is_admin }] };
     }
     if (/^INSERT INTO abukonn\.user_roles/.test(s)) {
       const [user_id, role_type, granted_by] = params;
@@ -73,7 +99,12 @@ test.before(async () => {
   base = `http://127.0.0.1:${server.address().port}/api/admin`;
 });
 test.after(() => server.close());
-test.beforeEach(() => { roleRows.length = 0; listQueries.length = 0; });
+test.beforeEach(() => {
+  roleRows.length = 0;
+  listQueries.length = 0;
+  userWrites.length = 0;
+  USERS = freshUsers();
+});
 
 const tokenFor = id => jwt.sign({ id }, process.env.JWT_SECRET);
 async function call(method, url, { token, body } = {}) {
@@ -168,4 +199,51 @@ test('user list: holds_role filter combines with search and numbers params corre
   const plain = listQueries.find(q => /GROUP BY/.test(q.sql));
   assert.match(plain.sql, /LIMIT \$1 OFFSET \$2/);
   assert.deepEqual(plain.params, [20, 0]);
+});
+
+// ── Scoped admin-panel roles must not reach authority-granting endpoints ─────
+
+// Every endpoint that grants authority. Editors and class coordinators carry
+// is_admin (so they pass adminAuth) but must be refused on all of these.
+const AUTHORITY_ENDPOINTS = [
+  ['PATCH', '/users/5/role', { role: 'admin' }],
+  ['PATCH', '/users/5/toggle-admin', undefined],
+  ...ENDPOINTS,
+];
+
+for (const [label, id] of [['editor', EDITOR_ID], ['class_coordinator', COORDINATOR_ID], ['is_admin with role "user"', LEGACY_ADMIN_ID]]) {
+  test(`${label} (is_admin=true) is refused 403 on every authority-granting endpoint, nothing written`, async () => {
+    const token = tokenFor(id);
+    for (const [method, url, body] of AUTHORITY_ENDPOINTS) {
+      const r = await call(method, url, { token, body });
+      assert.equal(r.status, 403, `${method} ${url}`);
+      assert.match(r.json.message, /Full admin role required/);
+    }
+    assert.equal(roleRows.length, 0);
+    assert.equal(userWrites.length, 0);
+  });
+}
+
+test('the escalation itself: an editor cannot promote themselves to admin', async () => {
+  const r = await call('PATCH', `/users/${EDITOR_ID}/role`, { token: tokenFor(EDITOR_ID), body: { role: 'admin' } });
+  assert.equal(r.status, 403);
+  assert.equal(USERS[EDITOR_ID].role, 'editor');
+  assert.equal(userWrites.length, 0);
+});
+
+test('a full admin (role "admin") still passes every authority-granting endpoint', async () => {
+  const token = tokenFor(ADMIN_ID);
+  assert.equal((await call('PATCH', '/users/5/role', { token, body: { role: 'editor' } })).status, 200);
+  assert.equal(USERS[5].role, 'editor');
+  assert.equal(USERS[5].is_admin, true); // editor is an admin-panel role, so setUserRole syncs is_admin on
+  assert.equal((await call('PATCH', '/users/2/toggle-admin', { token })).status, 200);
+  assert.equal((await call('POST', '/users/5/roles', { token, body: { role_type: 'media_team' } })).status, 200);
+  assert.equal((await call('GET', '/users/5/roles', { token })).status, 200);
+  assert.equal((await call('DELETE', '/users/5/roles/media_team', { token })).status, 200);
+});
+
+test('scoped roles keep the looser adminAuth access they rely on (not locked out of the panel)', async () => {
+  for (const id of [EDITOR_ID, COORDINATOR_ID]) {
+    assert.equal((await call('GET', '/users', { token: tokenFor(id) })).status, 200, `role of user ${id}`);
+  }
 });
