@@ -367,6 +367,7 @@ createUsersTable()
   .then(() => require('./models/TimetableOverride').createTimetableOverridesTable())
   .then(() => createSupportTable())
   .then(() => createLibraryTable())
+  .then(() => require('./models/UserRole').createUserRolesTable())
   .then(() => createReportBlockTables())
   .then(() => require('./models/AcademicCalendar').createAcademicCalendarTable())
   .then(() => {
