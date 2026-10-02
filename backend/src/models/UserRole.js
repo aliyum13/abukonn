@@ -59,6 +59,15 @@ async function hasRole(userId, roleType) {
   return rows.length > 0;
 }
 
+// All capability roles a user currently holds, as role_type strings.
+async function getRolesForUser(userId) {
+  const { rows } = await pool.query(
+    `SELECT role_type FROM abukonn.user_roles WHERE user_id = $1 ORDER BY role_type`,
+    [userId]
+  );
+  return rows.map(r => r.role_type);
+}
+
 // Returns the new row, or null if the user already held the role.
 async function grantRole(userId, roleType, grantedBy = null) {
   assertValidRole(roleType);
@@ -88,6 +97,7 @@ module.exports = {
   CREATE_USER_ROLES_TABLE,
   createUserRolesTable,
   hasRole,
+  getRolesForUser,
   grantRole,
   revokeRole,
 };
