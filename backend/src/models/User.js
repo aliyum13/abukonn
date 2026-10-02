@@ -32,6 +32,12 @@ ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS is_content_creator BOOLEAN NO
 -- requests (throttled). Powers true DAU/MAU on the admin dashboard, replacing the
 -- old "distinct posters in 24h" proxy which undercounted actual usage ~10x.
 ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS last_active TIMESTAMPTZ;
+-- Unread News badge: when this user last opened the News screen. Adding the
+-- column WITH a default stamps every existing user with the migration time (so
+-- the badge starts at 0 on deploy instead of flagging the whole back catalogue
+-- as unread) and gives new accounts their creation time. A NULL is read as
+-- "never seen" and counts every article as unread.
+ALTER TABLE abukonn.users ADD COLUMN IF NOT EXISTS last_seen_news_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
 CREATE INDEX IF NOT EXISTS idx_users_last_active ON abukonn.users(last_active);
 
 -- Pro subscription. is_pro is the fast flag; pro_expires_at is when it lapses.

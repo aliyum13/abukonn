@@ -1,6 +1,8 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/theme/ThemeContext';
+import { useAuth } from '../../src/context/AuthContext';
+import { useNewsUnreadCount, useNewsUnreadPolling } from '../../src/lib/newsUnread';
 
 // Tabs mirror the web bottom nav: Feed, News, Library, Profile. Real vector
 // icons (Ionicons) rather than emoji — outline when inactive, filled when
@@ -15,6 +17,9 @@ function tabIcon(active: IoniconName, inactive: IoniconName) {
 
 export default function TabsLayout() {
   const { palette } = useTheme();
+  const { user } = useAuth();
+  const newsUnread = useNewsUnreadCount();
+  useNewsUnreadPolling(!!user);
   return (
     <Tabs
       screenOptions={{
@@ -28,7 +33,14 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen name="feed" options={{ title: 'Feed', tabBarIcon: tabIcon('home', 'home-outline') }} />
-      <Tabs.Screen name="news" options={{ title: 'News', tabBarIcon: tabIcon('newspaper', 'newspaper-outline') }} />
+      <Tabs.Screen
+        name="news"
+        options={{
+          title: 'News',
+          tabBarIcon: tabIcon('newspaper', 'newspaper-outline'),
+          tabBarBadge: newsUnread > 0 ? (newsUnread > 9 ? '9+' : newsUnread) : undefined,
+        }}
+      />
       <Tabs.Screen name="library" options={{ title: 'Library', tabBarIcon: tabIcon('library', 'library-outline') }} />
       <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: tabIcon('person', 'person-outline') }} />
 

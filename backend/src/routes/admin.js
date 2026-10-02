@@ -3,6 +3,7 @@ const adminAuth = require('../middleware/adminAuth');
 const upload = require('../middleware/upload');
 const uploadAny = require('../middleware/uploadAny');
 const { verifyFileSignature } = require('../middleware/verifyFileSignature');
+const requireMediaTeam = require('../middleware/requireMediaTeam');
 const {
   getStats,
   getUsers,
@@ -55,7 +56,9 @@ router.delete('/class-reps/:id', removeClassRep);
 
 // News
 router.get('/news', adminGetAllNews);
-router.post('/news', upload.single('image'), verifyFileSignature, adminCreateNews);
+// Publishing is Media Team only (checked before the image upload runs).
+// Editing and deleting stay on adminAuth.
+router.post('/news', requireMediaTeam, upload.single('image'), verifyFileSignature, adminCreateNews);
 router.put('/news/:id', upload.single('image'), verifyFileSignature, adminUpdateNews);
 router.delete('/news/:id', adminDeleteNews);
 

@@ -5,25 +5,14 @@ import { useAuth } from '@/context/AuthContext';
 import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { optimizedImage } from '@/lib/image';
-import { Avatar, Badge, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Input, Select, Skeleton } from '@/components/ui';
+import { Avatar, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Input, Skeleton } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-
-const CATEGORIES = ['academic', 'sports', 'events', 'general'] as const;
-type Category = (typeof CATEGORIES)[number];
-
-const CATEGORY_VARIANT: Record<Category, 'brand' | 'warning' | 'success' | 'outline'> = {
-  academic: 'brand',
-  sports: 'warning',
-  events: 'success',
-  general: 'outline',
-};
 
 interface NewsArticle {
   id: number;
   title: string;
   content: string;
-  category: Category;
   image_url: string | null;
   author_name: string | null;
   created_at: string;
@@ -32,10 +21,9 @@ interface NewsArticle {
 interface FormState {
   title: string;
   content: string;
-  category: Category | '';
 }
 
-const EMPTY_FORM: FormState = { title: '', content: '', category: '' };
+const EMPTY_FORM: FormState = { title: '', content: '' };
 
 function ArticleSkeleton() {
   return (
@@ -101,7 +89,7 @@ export default function AdminNewsPage() {
 
   const openEdit = (article: NewsArticle) => {
     setEditingId(article.id);
-    setForm({ title: article.title, content: article.content, category: article.category });
+    setForm({ title: article.title, content: article.content });
     setImageFile(null);
     setImagePreview(article.image_url);
     setFormError('');
@@ -129,8 +117,8 @@ export default function AdminNewsPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!token) return;
-    if (!form.title.trim() || !form.content.trim() || !form.category) {
-      setFormError('Title, content, and category are required');
+    if (!form.title.trim() || !form.content.trim()) {
+      setFormError('Title and content are required');
       return;
     }
 
@@ -141,7 +129,6 @@ export default function AdminNewsPage() {
       const fd = new FormData();
       fd.append('title', form.title.trim());
       fd.append('content', form.content.trim());
-      fd.append('category', form.category);
       if (imageFile) fd.append('image', imageFile);
 
       const url = editingId
@@ -235,18 +222,6 @@ export default function AdminNewsPage() {
                 placeholder="Article headline..."
                 required
               />
-
-              <Select
-                label="Category"
-                value={form.category}
-                onChange={(e) => setForm({ ...form, category: e.target.value as Category | '' })}
-                required
-              >
-                <option value="">Select category</option>
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c} className="capitalize">{c.charAt(0).toUpperCase() + c.slice(1)}</option>
-                ))}
-              </Select>
 
               <div>
                 <label className="mb-1.5 block text-label text-ink-secondary">Content</label>
@@ -359,9 +334,6 @@ export default function AdminNewsPage() {
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold text-ink line-clamp-1">{article.title}</p>
                     <div className="mt-1 flex flex-wrap items-center gap-2">
-                      <Badge variant={CATEGORY_VARIANT[article.category]} className="capitalize">
-                        {article.category}
-                      </Badge>
                       <span className="text-caption text-ink-muted">
                         {formatDate(article.created_at)}
                       </span>

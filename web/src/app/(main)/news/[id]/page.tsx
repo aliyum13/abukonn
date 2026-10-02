@@ -12,20 +12,12 @@ interface NewsArticle {
   id: number;
   title: string;
   content: string;
-  category: string;
   image_url: string | null;
   author_name: string | null;
   created_at: string;
   likes_count: number;
   is_liked: boolean;
 }
-
-const CATEGORY_STYLES: Record<string, string> = {
-  academic: 'bg-blue-100 text-blue-700',
-  sports: 'bg-orange-100 text-orange-700',
-  events: 'bg-purple-100 text-purple-700',
-  general: 'bg-gray-100 dark:bg-[#1a1a1a] text-gray-700 dark:text-gray-400',
-};
 
 function formatDate(dateString: string) {
   return new Date(dateString).toLocaleDateString('en-NG', {
@@ -126,9 +118,6 @@ export default function NewsDetailPage() {
 
         <div className="p-6">
           <div className="flex items-center gap-2 mb-3">
-            <span className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize ${CATEGORY_STYLES[article.category] || CATEGORY_STYLES.general}`}>
-              {article.category}
-            </span>
             <span className="text-xs text-gray-400">{formatDate(article.created_at)}</span>
             {article.author_name && (
               <span className="text-xs text-gray-400">· {article.author_name}</span>
