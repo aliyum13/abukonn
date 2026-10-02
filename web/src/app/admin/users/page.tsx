@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { Avatar, Badge, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Input, Skeleton, RoleBadge, VerifiedBadge, ContentCreatorBadge } from '@/components/ui';
+import { Avatar, Badge, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Input, Skeleton, RoleBadge, VerifiedBadge, ContentCreatorBadge, Toggle } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 const PAGE_LIMIT = 20;
@@ -20,9 +20,18 @@ interface AdminUser {
   role?: string;
   is_verified?: boolean;
   is_content_creator?: boolean;
+  roles?: string[];
   post_count: string;
   created_at: string;
 }
+
+// Capability roles: separate from the single-choice Role dropdown above and
+// from each other. A user can hold neither, either, or both, so each one is
+// its own on/off switch.
+const CAPABILITY_ROLES = [
+  { value: 'media_team', label: 'Media Team' },
+  { value: 'library_contributor', label: 'Library Contributor' },
+];
 
 const ROLE_OPTIONS = [
   { value: 'user', label: 'User' },
@@ -55,6 +64,10 @@ export default function AdminUsersPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<number | null>(null);
+  const [holdsRole, setHoldsRole] = useState('');
+  // "userId:roleType" keys with a request in flight, so each switch locks
+  // itself independently (the other role's switch on the same row stays live).
+  const [pendingRoles, setPendingRoles] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState('');
   const [toastIsError, setToastIsError] = useState(false);
 
@@ -72,6 +85,7 @@ export default function AdminUsersPage() {
         page: String(page),
         limit: String(PAGE_LIMIT),
         ...(debouncedSearch ? { search: debouncedSearch } : {}),
+        ...(holdsRole ? { holds_role: holdsRole } : {}),
       });
       const res = await fetch(`${API_URL}/api/admin/users?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -82,7 +96,7 @@ export default function AdminUsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, page, debouncedSearch]);
+  }, [token, page, debouncedSearch, holdsRole]);
 
   useEffect(() => {
     fetchUsers();
@@ -90,7 +104,7 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch]);
+  }, [debouncedSearch, holdsRole]);
 
   const showToast = (msg: string, isError = false) => {
     setToast(msg);
@@ -206,6 +220,59 @@ export default function AdminUsersPage() {
     }
   };
 
+  const setRoleLocally = (userId: number, roleType: string, on: boolean) => {
+    setUsers(prev => prev.map(u => {
+      if (u.id !== userId) return u;
+      const rest = (u.roles || []).filter(r => r !== roleType);
+      return { ...u, roles: on ? [...rest, roleType] : rest };
+    }));
+  };
+
+  // Optimistic like the other toggles on this page, but the server's reply
+  // (the user's full role list) is applied on success, so what's shown is what
+  // was actually saved, and a failure reverts only the switch that was flipped.
+  const handleToggleCapability = async (u: AdminUser, roleType: string, grant: boolean) => {
+    if (!token) return;
+    const key = `${u.id}:${roleType}`;
+    const label = CAPABILITY_ROLES.find(r => r.value === roleType)?.label ?? roleType;
+    setRoleLocally(u.id, roleType, grant);
+    setPendingRoles(prev => new Set(prev).add(key));
+    try {
+      const res = await fetch(
+        grant
+          ? `${API_URL}/api/admin/users/${u.id}/roles`
+          : `${API_URL}/api/admin/users/${u.id}/roles/${roleType}`,
+        {
+          method: grant ? 'POST' : 'DELETE',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            ...(grant ? { 'Content-Type': 'application/json' } : {}),
+          },
+          ...(grant ? { body: JSON.stringify({ role_type: roleType }) } : {}),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setRoleLocally(u.id, roleType, !grant);
+        showToast(data.message || `Failed to update ${label}`, true);
+        return;
+      }
+      if (Array.isArray(data.roles)) {
+        setUsers(prev => prev.map(x => x.id === u.id ? { ...x, roles: data.roles } : x));
+      }
+      showToast(grant ? `✓ ${label} granted to ${u.full_name}` : `${label} removed from ${u.full_name}`);
+    } catch {
+      setRoleLocally(u.id, roleType, !grant);
+      showToast(`Network error — ${label} not saved`, true);
+    } finally {
+      setPendingRoles(prev => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
+  };
+
   const totalPages = Math.ceil(total / PAGE_LIMIT);
 
   return (
@@ -214,7 +281,9 @@ export default function AdminUsersPage() {
         <div>
           <h1 className="text-display-sm text-ink">Users</h1>
           <p className="mt-1 text-body-sm text-ink-secondary">
-            {total} registered student{total !== 1 ? 's' : ''}
+            {holdsRole
+              ? `${total} user${total !== 1 ? 's' : ''} with ${CAPABILITY_ROLES.find(r => r.value === holdsRole)?.label}`
+              : `${total} registered student${total !== 1 ? 's' : ''}`}
           </p>
         </div>
       </div>
@@ -245,6 +314,17 @@ export default function AdminUsersPage() {
                 Clear
               </Button>
             )}
+            <select
+              value={holdsRole}
+              onChange={e => setHoldsRole(e.target.value)}
+              aria-label="Filter by permission"
+              className="rounded-lg border border-border bg-white dark:bg-[#111] dark:border-[#333] px-2.5 py-2 text-[13px] text-ink focus:outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer"
+            >
+              <option value="">All users</option>
+              {CAPABILITY_ROLES.map(r => (
+                <option key={r.value} value={r.value}>Holds: {r.label}</option>
+              ))}
+            </select>
           </div>
         </CardHeader>
         <CardContent className="p-0 pt-4">
@@ -256,6 +336,7 @@ export default function AdminUsersPage() {
                   <th className="hidden px-4 py-3 font-semibold text-ink md:table-cell">Department</th>
                   <th className="hidden px-4 py-3 font-semibold text-ink lg:table-cell">Posts</th>
                   <th className="hidden px-4 py-3 font-semibold text-ink sm:table-cell">Role</th>
+                  <th className="px-4 py-3 font-semibold text-ink">Permissions</th>
                   <th className="px-4 py-3 font-semibold text-ink">Actions</th>
                 </tr>
               </thead>
@@ -308,6 +389,21 @@ export default function AdminUsersPage() {
                             <option key={o.value} value={o.value}>{o.label}</option>
                           ))}
                         </select>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col gap-2">
+                          {CAPABILITY_ROLES.map(r => (
+                            <label key={r.value} className="flex items-center gap-2 text-[13px] text-ink whitespace-nowrap cursor-pointer">
+                              <Toggle
+                                checked={(u.roles || []).includes(r.value)}
+                                disabled={pendingRoles.has(`${u.id}:${r.value}`)}
+                                onChange={on => handleToggleCapability(u, r.value, on)}
+                                label={`${r.label} for ${u.full_name}`}
+                              />
+                              {r.label}
+                            </label>
+                          ))}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">

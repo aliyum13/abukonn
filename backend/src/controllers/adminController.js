@@ -4,6 +4,7 @@ const News = require('../models/News');
 const Whitelist = require('../models/Whitelist');
 const { updateRole, setVerified, setContentCreator } = require('../models/User');
 const ClassRep = require('../models/ClassRep');
+const { VALID_ROLE_TYPES, getRolesForUser, grantRole, revokeRole } = require('../models/UserRole');
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
 
@@ -54,17 +55,33 @@ async function getStats(req, res) {
 
 async function getUsers(req, res) {
   try {
-    const { search = '', page = '1', limit = '20' } = req.query;
+    const { search = '', page = '1', limit = '20', holds_role = '' } = req.query;
     const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
 
-    const where = search
-      ? `WHERE u.full_name ILIKE $1 OR u.email ILIKE $1`
-      : '';
-    const params = search ? [`%${search}%`, parseInt(limit, 10), offset] : [parseInt(limit, 10), offset];
+    // Filters are collected as (condition, param) pairs so search and the
+    // capability-role filter can combine; the limit/offset placeholders are
+    // numbered after however many filter params there ended up being.
+    const conditions = [];
+    const filterParams = [];
+    if (search) {
+      filterParams.push(`%${search}%`);
+      conditions.push(`(u.full_name ILIKE $${filterParams.length} OR u.email ILIKE $${filterParams.length})`);
+    }
+    if (holds_role) {
+      if (!VALID_ROLE_TYPES.includes(holds_role)) {
+        return res.status(400).json({ message: `Invalid holds_role. Use one of: ${VALID_ROLE_TYPES.join(', ')}` });
+      }
+      filterParams.push(holds_role);
+      conditions.push(
+        `EXISTS (SELECT 1 FROM abukonn.user_roles ur WHERE ur.user_id = u.id AND ur.role_type = $${filterParams.length})`
+      );
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const n = filterParams.length;
 
     const countResult = await pool.query(
       `SELECT COUNT(*) FROM abukonn.users u ${where}`,
-      search ? [`%${search}%`] : []
+      filterParams
     );
 
     const usersResult = await pool.query(
@@ -72,6 +89,11 @@ async function getUsers(req, res) {
               u.profile_photo_url, u.is_admin, COALESCE(u.role, 'user') AS role,
               COALESCE(u.is_verified, FALSE) AS is_verified,
               COALESCE(u.is_content_creator, FALSE) AS is_content_creator,
+              COALESCE(
+                (SELECT array_agg(ur.role_type ORDER BY ur.role_type)
+                 FROM abukonn.user_roles ur WHERE ur.user_id = u.id),
+                '{}'
+              ) AS roles,
               u.created_at,
               COUNT(p.id) AS post_count
        FROM abukonn.users u
@@ -79,8 +101,8 @@ async function getUsers(req, res) {
        ${where}
        GROUP BY u.id
        ORDER BY u.created_at DESC
-       LIMIT $${search ? 2 : 1} OFFSET $${search ? 3 : 2}`,
-      params
+       LIMIT $${n + 1} OFFSET $${n + 2}`,
+      [...filterParams, parseInt(limit, 10), offset]
     );
 
     res.json({
@@ -376,6 +398,79 @@ async function setUserRole(req, res) {
   }
 }
 
+// ─── Capability roles (media_team / library_contributor) ─────────────────────
+// Independent of users.role above: these are separate capabilities a user can
+// hold in any combination. All three handlers sit behind router.use(adminAuth).
+
+// Resolves :id and confirms the user exists, so a bad id is a clean 400/404
+// rather than an FK-violation 500 on grant. Sends the error response itself
+// and returns null when the request can't proceed.
+async function resolveRoleTarget(req, res) {
+  const userId = parseInt(req.params.id, 10);
+  if (!Number.isInteger(userId)) {
+    res.status(400).json({ message: 'Invalid user id' });
+    return null;
+  }
+  const { rows } = await pool.query('SELECT 1 FROM abukonn.users WHERE id = $1', [userId]);
+  if (rows.length === 0) {
+    res.status(404).json({ message: 'User not found' });
+    return null;
+  }
+  return userId;
+}
+
+function roleTypeError(roleType) {
+  return `Invalid role_type "${roleType}". Use one of: ${VALID_ROLE_TYPES.join(', ')}`;
+}
+
+async function getUserRoles(req, res) {
+  try {
+    const userId = await resolveRoleTarget(req, res);
+    if (userId === null) return;
+    return res.json({ roles: await getRolesForUser(userId) });
+  } catch (err) {
+    console.error('getUserRoles:', err.message);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// Idempotent: granting a role the user already holds succeeds and changes
+// nothing. The response carries the user's full role list so the client can
+// sync to server truth instead of trusting its own local toggle state.
+async function grantUserRole(req, res) {
+  try {
+    const { role_type: roleType } = req.body || {};
+    if (!VALID_ROLE_TYPES.includes(roleType)) {
+      return res.status(400).json({ message: roleTypeError(roleType) });
+    }
+    const userId = await resolveRoleTarget(req, res);
+    if (userId === null) return;
+    // req.user.id is the acting admin (set by adminAuth), recorded as granted_by.
+    await grantRole(userId, roleType, req.user.id);
+    return res.json({ message: 'Role granted', roles: await getRolesForUser(userId) });
+  } catch (err) {
+    console.error('grantUserRole:', err.message);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// Idempotent, same as grant.
+async function revokeUserRole(req, res) {
+  try {
+    const roleType = req.params.role_type;
+    if (!VALID_ROLE_TYPES.includes(roleType)) {
+      return res.status(400).json({ message: roleTypeError(roleType) });
+    }
+    const userId = await resolveRoleTarget(req, res);
+    if (userId === null) return;
+    await revokeRole(userId, roleType);
+    return res.json({ message: 'Role revoked', roles: await getRolesForUser(userId) });
+  } catch (err) {
+    console.error('revokeUserRole:', err.message);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
 // Toggle the verified badge on a user (independent of their role).
 async function setUserVerified(req, res) {
   try {
@@ -447,6 +542,9 @@ module.exports = {
   deleteUser,
   toggleAdmin,
   setUserRole,
+  getUserRoles,
+  grantUserRole,
+  revokeUserRole,
   setUserVerified,
   setUserContentCreator,
   adminGetAllNews,

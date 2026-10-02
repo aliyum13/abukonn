@@ -10,6 +10,9 @@ const {
   deleteUser,
   toggleAdmin,
   setUserRole,
+  getUserRoles,
+  grantUserRole,
+  revokeUserRole,
   setUserVerified,
   setUserContentCreator,
   listClassReps,
@@ -37,6 +40,9 @@ router.get('/users/recent', getRecentUsers);
 router.delete('/users/:id', deleteUser);
 router.patch('/users/:id/toggle-admin', toggleAdmin);
 router.patch('/users/:id/role', setUserRole);
+router.get('/users/:id/roles', getUserRoles);
+router.post('/users/:id/roles', grantUserRole);
+router.delete('/users/:id/roles/:role_type', revokeUserRole);
 router.patch('/users/:id/verified', setUserVerified);
 router.patch('/users/:id/content-creator', setUserContentCreator);
 router.get('/class-reps', listClassReps);
