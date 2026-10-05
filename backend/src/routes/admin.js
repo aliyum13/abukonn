@@ -32,17 +32,21 @@ const router = express.Router();
 
 router.use(adminAuth);
 
+// Second gate for endpoints with no legitimate use by the scoped admin-panel
+// roles (editor, class_coordinator), who also carry is_admin and so pass
+// adminAuth. requireFullAdmin needs role === 'admin' exactly. Declared up here
+// because routes above the users block use it. Everything not marked with it
+// stays on the looser adminAuth those scoped roles rely on.
+const { requireFullAdmin } = adminAuth;
+
 // Stats
 router.get('/stats', getStats);
 
 // Users
 router.get('/users', getUsers);
 router.get('/users/recent', getRecentUsers);
-router.delete('/users/:id', deleteUser);
-// Authority-granting endpoints: full admins only (role === 'admin'), not the
-// scoped editor / class_coordinator roles that also carry is_admin. Everything
-// else on this router stays on the looser adminAuth those roles rely on.
-const { requireFullAdmin } = adminAuth;
+router.delete('/users/:id', requireFullAdmin, deleteUser);
+// Authority-granting endpoints: role assignment and admin toggling.
 router.patch('/users/:id/toggle-admin', requireFullAdmin, toggleAdmin);
 router.patch('/users/:id/role', requireFullAdmin, setUserRole);
 router.get('/users/:id/roles', requireFullAdmin, getUserRoles);
@@ -50,9 +54,11 @@ router.post('/users/:id/roles', requireFullAdmin, grantUserRole);
 router.delete('/users/:id/roles/:role_type', requireFullAdmin, revokeUserRole);
 router.patch('/users/:id/verified', setUserVerified);
 router.patch('/users/:id/content-creator', setUserContentCreator);
-router.get('/class-reps', listClassReps);
-router.post('/class-reps', assignClassRep);
-router.delete('/class-reps/:id', removeClassRep);
+// Class reps are assigned authority (timetable overrides for a department and
+// level), so assigning them is full-admin only.
+router.get('/class-reps', requireFullAdmin, listClassReps);
+router.post('/class-reps', requireFullAdmin, assignClassRep);
+router.delete('/class-reps/:id', requireFullAdmin, removeClassRep);
 
 // News
 router.get('/news', adminGetAllNews);
@@ -63,15 +69,16 @@ router.put('/news/:id', upload.single('image'), verifyFileSignature, adminUpdate
 router.delete('/news/:id', adminDeleteNews);
 
 // Whitelist
-router.get('/whitelist', getWhitelist);
-router.post('/whitelist/upload', uploadAny.single('csv'), uploadAny.handleUploadError, uploadWhitelist);
-router.delete('/whitelist', clearWhitelist);
+router.get('/whitelist', requireFullAdmin, getWhitelist);
+router.post('/whitelist/upload', requireFullAdmin, uploadAny.single('csv'), uploadAny.handleUploadError, uploadWhitelist);
+router.delete('/whitelist', requireFullAdmin, clearWhitelist);
 
 // PRE-LAUNCH: wipe all test content (posts, stories, messages, groups, etc.)
 // while keeping users, settings, academic calendar, timetable, and news.
 // Requires an explicit confirmation phrase in the body so it can't fire by
-// accident. Destructive and irreversible.
-router.post('/reset-launch-data', async (req, res) => {
+// accident. Destructive and irreversible. Full admin only on top of that: the
+// phrase guards against accidents, requireFullAdmin guards against who.
+router.post('/reset-launch-data', requireFullAdmin, async (req, res) => {
   try {
     if (req.body?.confirm !== 'WIPE ABUKONN TEST DATA') {
       return res.status(400).json({
