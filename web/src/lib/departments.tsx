@@ -30,6 +30,18 @@ export const DEPARTMENTS = Array.from(new Set(DEPARTMENT_GROUPS.flatMap((g) => g
 // where a clean A–Z list reads better than faculty groupings.
 export const DEPARTMENTS_ALPHABETICAL = [...DEPARTMENTS].sort((a, b) => a.localeCompare(b));
 
+// The faculty a department belongs to, or '' when it can't be determined.
+// Profiles store a department, not a faculty, so this is how a faculty default
+// is derived. Matching ignores case and surrounding spaces. The catch-all
+// 'Other' group is treated as unknown: it isn't a real faculty, and defaulting a
+// filter to it would hide nearly everything.
+export function facultyOf(department?: string | null): string {
+  const d = (department || '').trim().toLowerCase();
+  if (!d) return '';
+  const group = DEPARTMENT_GROUPS.find((g) => g.departments.some((x) => x.toLowerCase() === d));
+  return group && group.faculty !== 'Other' ? group.faculty : '';
+}
+
 export const LEVELS = ['100 Level', '200 Level', '300 Level', '400 Level', '500 Level', 'Postgraduate'] as const;
 
 /**

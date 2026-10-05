@@ -1,4 +1,5 @@
 const Library = require('../models/Library');
+const { canUploadLibrary } = require('../middleware/requireLibraryUploader');
 const cloudinary = require('cloudinary').v2;
 
 cloudinary.config({
@@ -94,4 +95,16 @@ async function adminList(req, res) {
   }
 }
 
-module.exports = { browse, getMaterial, upload, deleteMaterial, adminList };
+// Lets a client decide whether to show its upload button. Uses the same check
+// the upload gate enforces; hiding the button is a convenience, the endpoint is
+// what actually refuses.
+async function permissions(req, res) {
+  try {
+    res.json({ can_upload: await canUploadLibrary(req.user.id) });
+  } catch (err) {
+    console.error('library permissions:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+module.exports = { browse, getMaterial, upload, deleteMaterial, adminList, permissions };

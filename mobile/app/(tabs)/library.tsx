@@ -12,7 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../../src/lib/api';
 import { colors, radius, shadow } from '../../src/theme';
 import { useTabScrollToTop } from '../../src/lib/useScrollToTop';
-import { DEPARTMENTS, DEPARTMENT_GROUPS, LEVELS } from '../../src/lib/departments';
+import { DEPARTMENTS, DEPARTMENT_GROUPS, LEVELS, facultyOf } from '../../src/lib/departments';
 import { useAuth } from '../../src/context/AuthContext';
 
 interface Material {
@@ -26,6 +26,7 @@ interface Material {
   level: string | null;
   file_url: string;
   file_name: string | null;
+  uploader_name?: string | null;
   download_count: number;
   created_at: string;
 }
@@ -67,7 +68,10 @@ export default function Library() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [type, setType] = useState('all');
-  const [faculty, setFaculty] = useState('');
+  // Faculty defaults like level does, derived from the profile's department
+  // (profiles don't store a faculty). No department, or one that maps to no
+  // faculty, gives '' = all faculties, never an empty list.
+  const [faculty, setFaculty] = useState(() => facultyOf(user?.department));
   const [department, setDepartment] = useState('');
   // Defaults to the viewer's own level so the first screenful is material for
   // the year they're actually in, instead of everything ever uploaded. The
@@ -121,7 +125,9 @@ export default function Library() {
     if (levelSeededRef.current || !user) return;
     levelSeededRef.current = true;
     const seeded = initialLevel(user.level);
+    const seededFaculty = facultyOf(user.department);
     if (seeded) setLevel(seeded); // the filter effect below re-loads from page 1
+    if (seededFaculty) setFaculty(seededFaculty);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
@@ -289,6 +295,17 @@ export default function Library() {
             <View style={s.center}>
               <Text style={s.muted}>Nothing found</Text>
               <Text style={s.mutedSmall}>Try a different filter or search term</Text>
+              {(faculty || department || level || type !== 'all' || search) ? (
+                <TouchableOpacity
+                  style={s.showAllBtn}
+                  onPress={() => {
+                    // The filter effects above reload when these change.
+                    setFaculty(''); setDepartment(''); setLevel(''); setType('all'); setSearch('');
+                  }}
+                >
+                  <Text style={s.showAllText}>Show all materials</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           }
           renderItem={({ item }) => (
@@ -307,6 +324,7 @@ export default function Library() {
                     {item.level ? ` · ${item.level}` : ''}
                     {item.download_count ? ` · ${item.download_count} downloads` : ''}
                   </Text>
+                  {item.uploader_name ? <Text style={s.meta}>Uploaded by {item.uploader_name}</Text> : null}
                 </View>
               </TouchableOpacity>
               <View style={s.cardActions}>
@@ -428,6 +446,8 @@ const make_s = (colors: Palette) => StyleSheet.create({
   chipTextOn: { fontSize: 13, color: '#fff', fontWeight: '700' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 6 },
   footerLoad: { paddingVertical: 20, alignItems: 'center' },
+  showAllBtn: { marginTop: 14, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999, borderWidth: 1, borderColor: colors.brand },
+  showAllText: { color: colors.brand, fontWeight: '700', fontSize: 13 },
   muted: { color: colors.muted, fontSize: 15, fontWeight: '600' },
   mutedSmall: { color: colors.muted, fontSize: 13 },
   card: {

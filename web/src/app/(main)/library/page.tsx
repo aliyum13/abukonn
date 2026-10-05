@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { Button, Card, CardContent, Skeleton } from '@/components/ui';
 import { cn } from '@/lib/utils';
-import { DEPARTMENT_GROUPS, LEVELS } from '@/lib/departments';
+import { DEPARTMENT_GROUPS, LEVELS, facultyOf } from '@/lib/departments';
+import { LibraryUploadForm } from '@/components/library/LibraryUploadForm';
 import { usePageRefresh } from '@/lib/refresh';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
@@ -67,8 +68,16 @@ export default function LibraryPage() {
   const [page, setPage] = useState(1);
 
   const [typeFilter, setTypeFilter] = useState('all');
-  const [faculty, setFaculty] = useState('');
+  // Faculty defaults the same way level does, derived from the profile's
+  // department (profiles don't store a faculty). A user with no department, or
+  // one that maps to no faculty, gets '' = All Faculties, never an empty list.
+  const [faculty, setFaculty] = useState(() => facultyOf(user?.department));
   const [department, setDepartment] = useState('');
+  // Whether to offer the upload button. Asked of the server (the same check the
+  // upload endpoint enforces); the endpoint is what actually refuses, hiding the
+  // button is only a convenience.
+  const [canUpload, setCanUpload] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
   // Defaults to the viewer's own level so the first screenful is material for
   // the year they're actually in, instead of everything ever uploaded. Every
   // filter still browses freely -- this only seeds the initial value.
@@ -92,9 +101,20 @@ export default function LibraryPage() {
     if (levelSeededRef.current || !user) return;
     levelSeededRef.current = true;
     const seeded = initialLevel(user);
-    if (seeded) { setLevel(seeded); setPage(1); }
+    const seededFaculty = facultyOf(user.department);
+    if (seeded) setLevel(seeded);
+    if (seededFaculty) setFaculty(seededFaculty);
+    if (seeded || seededFaculty) setPage(1);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${API_URL}/api/library/permissions`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => (r.ok ? r.json() : { can_upload: false }))
+      .then(d => setCanUpload(!!d.can_upload))
+      .catch(() => setCanUpload(false));
+  }, [token]);
 
   const fetchMaterials = useCallback(async () => {
     if (!token) return;
@@ -141,9 +161,24 @@ export default function LibraryPage() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-6">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-display-sm font-bold text-ink">ABU Library 📚</h1>
-        <p className="mt-1 text-body-sm text-ink-muted">Past questions, lecture notes and study materials</p>
+      <div className="mb-6 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-display-sm font-bold text-ink">ABU Library 📚</h1>
+          <p className="mt-1 text-body-sm text-ink-muted">Past questions, lecture notes and study materials</p>
+        </div>
+        {canUpload && (
+          <button
+            type="button"
+            onClick={() => setUploadOpen(true)}
+            aria-label="Upload material"
+            title="Upload material"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white shadow-md transition hover:bg-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:ring-offset-2"
+          >
+            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Quick access: Academic Calendar + Timetable + CGPA Calculator */}
@@ -292,6 +327,19 @@ export default function LibraryPage() {
           <p className="text-4xl mb-3">📂</p>
           <p className="text-body-sm font-semibold text-ink">No materials found</p>
           <p className="text-caption text-ink-muted mt-1">Try adjusting your filters</p>
+          {(faculty || department || level || typeFilter !== 'all' || search) && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-4"
+              onClick={() => {
+                setFaculty(''); setDepartment(''); setLevel(''); setTypeFilter('all');
+                setSearch(''); setSearchInput(''); setPage(1);
+              }}
+            >
+              Show all materials
+            </Button>
+          )}
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
@@ -319,6 +367,7 @@ export default function LibraryPage() {
                 </div>
 
                 {m.description && <p className="text-caption text-ink-muted line-clamp-2">{m.description}</p>}
+                {m.uploader_name && <p className="text-[11px] text-ink-muted">Uploaded by {m.uploader_name}</p>}
 
                 <div className="flex items-center justify-between mt-auto pt-1 border-t border-border">
                   <div className="flex items-center gap-3 text-[11px] text-ink-muted">
@@ -340,6 +389,24 @@ export default function LibraryPage() {
               </CardContent>
             </Card>
           ))}
+        </div>
+      )}
+
+      {/* Upload (Library Contributors and admins) */}
+      {uploadOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setUploadOpen(false)}>
+          <div
+            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl dark:border dark:border-[#222] dark:bg-[#111]"
+            onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-label="Upload material"
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-ink">Upload material</h2>
+              <button type="button" onClick={() => setUploadOpen(false)} aria-label="Close" className="rounded-full p-1.5 text-ink-muted hover:bg-surface-muted hover:text-ink">✕</button>
+            </div>
+            <LibraryUploadForm token={token} onUploaded={() => { setPage(1); fetchMaterials(); }} />
+          </div>
         </div>
       )}
 
