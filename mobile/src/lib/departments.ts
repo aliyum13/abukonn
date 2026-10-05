@@ -22,6 +22,18 @@ export const DEPARTMENT_GROUPS: { faculty: string; departments: string[] }[] = [
   { faculty: 'Other', departments: ['Software Engineering', 'Information Technology', 'Electrical Engineering', 'Medicine & Surgery', 'Political Science', 'Nursing Science'] },
 ];
 
+// The faculty a department belongs to, or '' when it can't be determined.
+// Profiles store a department, not a faculty, so this is how a faculty default
+// is derived. Matching ignores case and surrounding spaces. The catch-all
+// 'Other' group is treated as unknown: it isn't a real faculty, and defaulting a
+// filter to it would hide nearly everything. Mirrors web's facultyOf.
+export function facultyOf(department?: string | null): string {
+  const d = (department || '').trim().toLowerCase();
+  if (!d) return '';
+  const group = DEPARTMENT_GROUPS.find(g => g.departments.some(x => x.toLowerCase() === d));
+  return group && group.faculty !== 'Other' ? group.faculty : '';
+}
+
 export const DEPARTMENTS: string[] = [
   "Accounting",
   "Actuarial Science",
