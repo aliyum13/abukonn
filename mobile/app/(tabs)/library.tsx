@@ -14,6 +14,7 @@ import { colors, radius, shadow } from '../../src/theme';
 import { useTabScrollToTop } from '../../src/lib/useScrollToTop';
 import { DEPARTMENTS, DEPARTMENT_GROUPS, LEVELS, facultyOf } from '../../src/lib/departments';
 import { useAuth } from '../../src/context/AuthContext';
+import { LibraryUploadSheet } from '../../src/components/LibraryUploadSheet';
 
 interface Material {
   id: number;
@@ -92,6 +93,11 @@ export default function Library() {
   // since changed themselves (including deliberately clearing it).
   const levelSeededRef = useRef(!!user);
   const [filterOpen, setFilterOpen] = useState(false);
+  // Whether to offer the upload button. Asked of the server (the same check the
+  // upload endpoint enforces); the endpoint is what actually refuses, hiding the
+  // button is only a convenience.
+  const [canUpload, setCanUpload] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -134,6 +140,13 @@ export default function Library() {
     if (seededFaculty) setFaculty(seededFaculty);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  useEffect(() => {
+    if (!user) { setCanUpload(false); return; }
+    apiFetch<{ can_upload: boolean }>('/api/library/permissions')
+      .then(d => setCanUpload(!!d.can_upload))
+      .catch(() => setCanUpload(false));
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Filter/search changes reset to page 1.
   useEffect(() => { load(type, search, faculty, department, level, 1); }, [type, faculty, department, level]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -220,7 +233,14 @@ export default function Library() {
   // instead of only the materials list scrolling under a pinned header.
   const libraryHeader = (
     <View>
-      <View style={s.header}><Text style={s.title}>Library</Text></View>
+      <View style={s.header}>
+        <Text style={s.title}>Library</Text>
+        {canUpload ? (
+          <TouchableOpacity style={s.addBtn} onPress={() => setUploadOpen(true)} accessibilityLabel="Upload material" hitSlop={6}>
+            <Ionicons name="add" size={26} color="#fff" />
+          </TouchableOpacity>
+        ) : null}
+      </View>
 
       <View style={s.quickRow}>
         <TouchableOpacity style={s.quickCard} onPress={() => router.push('/academic-calendar')}>
@@ -374,6 +394,17 @@ export default function Library() {
         />
       )}
 
+      {/* Upload (Library Contributors and admins) */}
+      <LibraryUploadSheet
+        visible={uploadOpen}
+        onClose={() => setUploadOpen(false)}
+        onUploaded={() => {
+          setUploadOpen(false);
+          load(type, search, faculty, department, level, 1);
+          Alert.alert('Material uploaded', "It's in the Library now. If you don't see it, clear your filters.");
+        }}
+      />
+
       {/* Department / Level filter */}
       <Modal visible={filterOpen} animationType="slide" transparent onRequestClose={() => setFilterOpen(false)}>
         <View style={s.fBackdrop}>
@@ -435,7 +466,8 @@ export default function Library() {
 
 const make_s = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, backgroundColor: colors.surface },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, backgroundColor: colors.surface },
+  addBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center', ...shadow.card },
   title: { fontSize: 20, fontWeight: '800', color: colors.text },
   quickRow: { paddingHorizontal: 16, gap: 10, marginBottom: 12 },
   quickCard: {
