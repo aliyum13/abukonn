@@ -1,5 +1,6 @@
 const Library = require('../models/Library');
-const { canUploadLibrary } = require('../middleware/requireLibraryUploader');
+const { canUploadLibrary, deleteCapabilities, mayDelete } = require('../lib/libraryAccess');
+const { deleteLibraryAsset } = require('../lib/libraryAsset');
 const cloudinary = require('cloudinary').v2;
 
 cloudinary.config({
@@ -12,6 +13,11 @@ async function browse(req, res) {
   try {
     const { type, faculty, department, level, course_code, search, page } = req.query;
     const result = await Library.getMaterials({ type, faculty, department, level, course_code, search, page: parseInt(page) || 1 });
+    // Per-viewer delete permission, computed by the same rule the DELETE
+    // endpoint enforces, so a client shows a delete control exactly when the
+    // server would accept it.
+    const caps = await deleteCapabilities(req.user.id);
+    result.materials = result.materials.map(m => ({ ...m, can_delete: mayDelete(caps, m, req.user.id) }));
     res.json(result);
   } catch (err) {
     console.error('browse library:', err.message);
@@ -75,10 +81,35 @@ async function upload(req, res) {
   }
 }
 
+// Delete rule: a full admin may delete any material; a Library Contributor may
+// delete only materials they uploaded; nobody else may delete. Roles are read
+// fresh on every request, so a revoked contributor is refused immediately, even
+// for their own uploads.
+//
+// Order matters: someone with no delete rights at all is refused (403) before
+// the material is looked up, so the status can't be used to probe which ids
+// exist. After that, a missing material is 404 and a rule failure is 403.
 async function deleteMaterial(req, res) {
   try {
-    await Library.deleteMaterial(req.params.id);
+    const userId = req.user.id;
+    const caps = await deleteCapabilities(userId);
+    if (!caps.all && !caps.own) {
+      return res.status(403).json({ message: 'Forbidden. You do not have permission to delete library materials.' });
+    }
+
+    const id = parseInt(req.params.id, 10);
+    const material = Number.isInteger(id) ? await Library.getMaterialById(id) : null;
+    if (!material) return res.status(404).json({ message: 'Material not found' });
+
+    if (!mayDelete(caps, material, userId)) {
+      return res.status(403).json({ message: 'Forbidden. You can only delete materials you uploaded.' });
+    }
+
+    await Library.deleteMaterial(id);
     res.json({ message: 'Deleted' });
+    // After the response, so storage cleanup can never delay or fail the delete.
+    // The row is already gone; this only stops the file being orphaned.
+    deleteLibraryAsset(material.file_url);
   } catch (err) {
     console.error('deleteMaterial:', err.message);
     res.status(500).json({ message: 'Server error' });

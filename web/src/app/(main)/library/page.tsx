@@ -38,6 +38,9 @@ interface Material {
   course_code: string | null; course_title: string | null;
   file_url: string; file_name: string | null; file_size: number | null;
   download_count: number; created_at: string; uploader_name: string | null;
+  // Computed by the server for THIS viewer with the same rule the DELETE
+  // endpoint enforces (own upload for a contributor, anything for a full admin).
+  can_delete?: boolean;
 }
 
 const OFFICE_VIEWER_EXTENSIONS = new Set(['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx']);
@@ -78,6 +81,12 @@ export default function LibraryPage() {
   // button is only a convenience.
   const [canUpload, setCanUpload] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(null);
+  const showNotice = (text: string, error = false) => {
+    setNotice({ text, error });
+    setTimeout(() => setNotice(null), 4000);
+  };
   // Defaults to the viewer's own level so the first screenful is material for
   // the year they're actually in, instead of everything ever uploaded. Every
   // filter still browses freely -- this only seeds the initial value.
@@ -150,6 +159,28 @@ export default function LibraryPage() {
     window.open(material.file_url, '_blank');
   };
 
+  const handleDelete = async (m: Material) => {
+    if (!confirm(`Delete "${m.title}"? This cannot be undone.`)) return;
+    setDeletingId(m.id);
+    try {
+      const res = await fetch(`${API_URL}/api/library/${m.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Delete failed');
+      setMaterials(prev => prev.filter(x => x.id !== m.id));
+      setTotal(t => Math.max(0, t - 1));
+      // Deleting the last item on a later page would otherwise leave an empty page.
+      if (materials.length === 1 && page > 1) setPage(p => p - 1);
+      showNotice('Material deleted');
+    } catch (err) {
+      showNotice(err instanceof Error ? err.message : 'Delete failed', true);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setSearch(searchInput);
@@ -180,6 +211,14 @@ export default function LibraryPage() {
           </button>
         )}
       </div>
+
+      {notice && (
+        <div className={cn('mb-4 rounded-xl border px-4 py-3 text-body-sm', notice.error
+          ? 'border-red-200 bg-red-50 text-red-600 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400'
+          : 'border-brand-200 bg-brand-50 text-brand-700 dark:border-brand-900 dark:bg-brand-950/30 dark:text-brand-400')}>
+          {notice.text}
+        </div>
+      )}
 
       {/* Quick access: Academic Calendar + Timetable + CGPA Calculator */}
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
@@ -384,6 +423,18 @@ export default function LibraryPage() {
                       View
                     </Button>
                     <Button size="sm" onClick={() => handleDownload(m)}>Download</Button>
+                    {m.can_delete && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        loading={deletingId === m.id}
+                        disabled={deletingId === m.id}
+                        onClick={() => handleDelete(m)}
+                        className="border-red-200 text-red-600 hover:bg-red-50"
+                      >
+                        Delete
+                      </Button>
+                    )}
                   </div>
                 </div>
               </CardContent>

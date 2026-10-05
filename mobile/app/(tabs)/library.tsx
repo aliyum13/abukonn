@@ -27,6 +27,9 @@ interface Material {
   file_url: string;
   file_name: string | null;
   uploader_name?: string | null;
+  // Computed by the server for THIS viewer, with the same rule the DELETE
+  // endpoint enforces (own upload for a contributor, anything for a full admin).
+  can_delete?: boolean;
   download_count: number;
   created_at: string;
 }
@@ -92,6 +95,7 @@ export default function Library() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const PAGE_LIMIT = 20; // must match backend Library.getMaterials limit
 
   // Loads a page. page 1 replaces the list; higher pages append (infinite
@@ -183,6 +187,31 @@ export default function Library() {
     } catch {
       Alert.alert('Cannot download', 'This file could not be downloaded.');
     }
+  };
+
+  // Two buttons on purpose: Android alerts show at most three, and a delete
+  // confirm needs only Cancel / Delete. The server re-checks the rule, so a stale
+  // can_delete (e.g. a role revoked since the list loaded) just returns an error.
+  const confirmDelete = (m: Material) => {
+    Alert.alert('Delete material', `Delete "${m.title}"? This cannot be undone.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setDeletingId(m.id);
+          try {
+            await apiFetch(`/api/library/${m.id}`, { method: 'DELETE' });
+            setMaterials(prev => prev.filter(x => x.id !== m.id));
+            setTotal(t => Math.max(0, t - 1));
+          } catch (err) {
+            Alert.alert('Could not delete', err instanceof Error ? err.message : 'Please try again.');
+          } finally {
+            setDeletingId(null);
+          }
+        },
+      },
+    ]);
   };
 
   // Header content (page title, quick-action tiles, search bar, filter chips)
@@ -334,6 +363,11 @@ export default function Library() {
                 <TouchableOpacity onPress={() => downloadFile(item)} hitSlop={8}>
                   <Text style={s.actionDownload}>Download</Text>
                 </TouchableOpacity>
+                {item.can_delete ? (
+                  <TouchableOpacity onPress={() => confirmDelete(item)} hitSlop={8} disabled={deletingId === item.id}>
+                    <Text style={s.actionDelete}>{deletingId === item.id ? 'Deleting…' : 'Delete'}</Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
             </View>
           )}
@@ -464,6 +498,7 @@ const make_s = (colors: Palette) => StyleSheet.create({
   },
   actionView: { color: colors.brand, fontWeight: '700', fontSize: 13, paddingVertical: 6 },
   actionDownload: { color: colors.brand, fontWeight: '700', fontSize: 13, paddingVertical: 6 },
+  actionDelete: { color: '#dc2626', fontWeight: '700', fontSize: 13, paddingVertical: 6 },
   icon: { fontSize: 26 },
   cardTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
   course: { fontSize: 13, color: colors.brand, fontWeight: '600', marginTop: 2 },

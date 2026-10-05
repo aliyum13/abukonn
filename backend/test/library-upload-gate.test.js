@@ -22,7 +22,6 @@ const USERS = {
 const contributors = new Set();
 const inserts = []; // library_materials INSERT params
 const cloudinaryUploads = [];
-const otherStatements = [];
 
 const fakePool = {
   async query(sql, params = []) {
@@ -42,10 +41,6 @@ const fakePool = {
       inserts.push(params);
       const [title, description, type, faculty, department, level, course_code, course_title, file_url, file_name, file_size, file_type, uploaded_by] = params;
       return { rows: [{ id: 50, title, type, file_url, file_name, file_size, file_type, uploaded_by }] };
-    }
-    if (/^DELETE FROM abukonn\.library_materials/.test(s)) {
-      otherStatements.push(s);
-      return { rows: [] };
     }
     throw new Error(`Unexpected query in test: ${s}`);
   },
@@ -90,7 +85,6 @@ test.beforeEach(() => {
   contributors.clear();
   inserts.length = 0;
   cloudinaryUploads.length = 0;
-  otherStatements.length = 0;
 });
 
 const tokenFor = id => jwt.sign({ id }, process.env.JWT_SECRET);
@@ -177,12 +171,4 @@ test('/permissions needs auth and reports exactly what the gate enforces', async
     assert.equal(r.status, 200);
     assert.deepEqual(r.json, { can_upload: can }, `user ${id}`);
   }
-});
-
-test('deletion is unchanged: still adminAuth only (so a contributor cannot delete)', async () => {
-  contributors.add(2);
-  const del = async id => (await fetch(`${base}/admin/50`, { method: 'DELETE', headers: { Authorization: `Bearer ${tokenFor(id)}` } })).status;
-  assert.equal(await del(2), 403); // contributor, not is_admin
-  assert.equal(await del(1), 200);
-  assert.equal(await del(4), 200); // an editor still can today (pre-existing, not changed here)
 });
