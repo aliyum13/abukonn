@@ -18,7 +18,7 @@ const MAX_UPLOAD_TIMEOUT_MS = 900000;        // 15min ceiling, so nothing hangs 
 // Deadline for uploading `bytes`. Callers that don't know the size pass the
 // tier cap, so an unknown-size file is treated as the largest it's allowed
 // to be rather than defaulting to the (far too short) floor.
-function uploadTimeoutFor(bytes: number): number {
+export function uploadTimeoutFor(bytes: number): number {
   const needed = Math.ceil(bytes / MIN_UPLOAD_BYTES_PER_SEC) * 1000;
   return Math.min(MAX_UPLOAD_TIMEOUT_MS, Math.max(MIN_UPLOAD_TIMEOUT_MS, needed));
 }
