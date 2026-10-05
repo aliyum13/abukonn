@@ -38,7 +38,9 @@ export default function AdminLibraryPage() {
     if(!confirm('Delete this material?')) return;
     setDeletingId(id);
     try {
-      await fetch(`${API_URL}/api/library/admin/${id}`,{method:'DELETE',headers:{Authorization:`Bearer ${token}`}});
+      const res = await fetch(`${API_URL}/api/library/admin/${id}`,{method:'DELETE',headers:{Authorization:`Bearer ${token}`}});
+      const data = await res.json().catch(()=>({}));
+      if(!res.ok){ showToast(data.message||'Delete failed',true); return; }
       showToast('Deleted');
       fetchMaterials();
     } finally { setDeletingId(null); }

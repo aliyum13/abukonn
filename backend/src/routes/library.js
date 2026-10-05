@@ -19,8 +19,12 @@ router.get('/admin/all', adminAuth, adminList);
 const uploadChain = [auth, requireLibraryUploader, uploadAny.single('file'), uploadAny.handleUploadError, upload];
 router.post('/upload', ...uploadChain);
 router.post('/admin/upload', ...uploadChain);
-// Deletion is unchanged here: still adminAuth, and not ownership-scoped.
-router.delete('/admin/:id', adminAuth, deleteMaterial);
+// Delete: one handler, one rule (full admin: any material; Library Contributor:
+// only their own). /:id is the path contributors can reach; /admin/:id is kept
+// for the admin panel but is now full-admin only (it used to accept any
+// is_admin, so editors could delete any material).
+router.delete('/admin/:id', adminAuth, adminAuth.requireFullAdmin, deleteMaterial);
+router.delete('/:id', auth, deleteMaterial);
 router.get('/:id', auth, getMaterial);
 
 module.exports = router;
