@@ -3,6 +3,8 @@ export type { ButtonProps, ButtonVariant, ButtonSize } from './Button';
 
 export { Input } from './Input';
 export type { InputProps } from './Input';
+export { Textarea } from './Textarea';
+export type { TextareaProps } from './Textarea';
 
 export { Avatar } from './Avatar';
 export type { AvatarProps, AvatarSize } from './Avatar';
