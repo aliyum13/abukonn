@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { optimizedImage } from '@/lib/image';
-import { Avatar, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Input, Skeleton } from '@/components/ui';
+import { Avatar, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Input, Skeleton, Textarea } from '@/components/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -223,21 +223,15 @@ export default function AdminNewsPage() {
                 required
               />
 
-              <div>
-                <label className="mb-1.5 block text-label text-ink-secondary">Content</label>
-                <textarea
-                  value={form.content}
-                  onChange={(e) => setForm({ ...form, content: e.target.value })}
-                  placeholder="Write your article..."
-                  rows={8}
-                  required
-                  className={cn(
-                    'w-full resize-none rounded-xl border border-border bg-white px-4 py-3',
-                    'text-body-sm text-ink placeholder:text-ink-muted',
-                    'focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20'
-                  )}
-                />
-              </div>
+              <Textarea
+                label="Content"
+                value={form.content}
+                onChange={(e) => setForm({ ...form, content: e.target.value })}
+                placeholder="Write your article..."
+                rows={8}
+                required
+                className="resize-none"
+              />
 
               {/* Image upload */}
               <div>
