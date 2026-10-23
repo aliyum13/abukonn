@@ -1,7 +1,7 @@
 const express = require('express');
 const auth = require('../middleware/auth');
 const adminAuth = require('../middleware/adminAuth');
-const uploadAny = require('../middleware/uploadAny');
+const uploadLibrary = require('../middleware/uploadLibrary');
 const requireLibraryUploader = require('../middleware/requireLibraryUploader');
 const { browse, getMaterial, upload, deleteMaterial, adminList, permissions } = require('../controllers/libraryController');
 
@@ -16,7 +16,7 @@ router.get('/admin/all', adminAuth, adminList);
 // Contributors. It uses `auth`, not adminAuth, because a contributor who isn't
 // an admin could never get past adminAuth. /admin/upload is the old path, kept
 // as an alias (same chain) so an already-open admin page keeps working.
-const uploadChain = [auth, requireLibraryUploader, uploadAny.single('file'), uploadAny.handleUploadError, upload];
+const uploadChain = [auth, requireLibraryUploader, uploadLibrary.single('file'), uploadLibrary.handleUploadError, upload];
 router.post('/upload', ...uploadChain);
 router.post('/admin/upload', ...uploadChain);
 // Delete: one handler, one rule (full admin: any material; Library Contributor:
