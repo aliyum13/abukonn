@@ -1138,8 +1138,12 @@ export function MessagesView() {
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
     setSending(true);
 
+    // Replying to your own message labels the strip "You", but in a group the
+    // quote is read by everyone else, for whom "You" points at themselves --
+    // so a group quote carries your real name. (A DM keeps "You"; see PR notes.)
+    const quotedSender = activeGroupId && capturedReply?.senderName === 'You' ? (user?.full_name ?? 'You') : capturedReply?.senderName;
     const outgoingContent = capturedReply
-      ? JSON.stringify({ type: 'message_reply', quoted_sender: capturedReply.senderName, quoted_text: capturedReply.preview, reply: capturedText })
+      ? JSON.stringify({ type: 'message_reply', quoted_sender: quotedSender, quoted_text: capturedReply.preview, reply: capturedText })
       : capturedText;
 
     try {
