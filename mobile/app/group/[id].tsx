@@ -11,7 +11,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { apiFetch } from '../../src/lib/api';
 import { uploadImage } from '../../src/lib/upload';
 import { useAuth } from '../../src/context/AuthContext';
-import { plainText, editableText, withEditedText } from '../../src/lib/messagePreview';
+import { friendlyPreview, plainText, editableText, withEditedText } from '../../src/lib/messagePreview';
 import { MessageBody } from '../../src/components/MessageBody';
 import { MessageActionSheet, type MessageAction } from '../../src/components/MessageActionSheet';
 import { colors } from '../../src/theme';
@@ -38,6 +38,11 @@ export default function GroupChat() {
   const [memberCount, setMemberCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
+  // The message being replied to. `senderName` is what gets quoted in the sent
+  // message, so for your own message it is your real name, not "You": everyone
+  // else in the group reads that quote, and "You" would point at themselves.
+  // `own` only changes the label on the strip above the input.
+  const [replyTo, setReplyTo] = useState<{ id: number; senderName: string; preview: string; own: boolean } | null>(null);
   const [sendingImage, setSendingImage] = useState(false);
   // Which message's long-press menu is open. Was Alert.alert, which silently
   // dropped everything past the third option on Android -- see
@@ -125,18 +130,32 @@ export default function GroupChat() {
   const send = async () => {
     const body = text.trim();
     if (!body) return;
+    // Same message_reply envelope as chat/[id].tsx and web, so a reply renders
+    // identically everywhere (MessageBody) with no server-side support needed.
+    const captured = replyTo;
+    const outgoing = captured
+      ? JSON.stringify({ type: 'message_reply', quoted_sender: captured.senderName, quoted_text: captured.preview, reply: body })
+      : body;
     setText('');
+    setReplyTo(null);
     try {
       // NOTE: send returns { message } (singular), unlike the list's { messages }.
       const res = await apiFetch<{ message: GroupMsg }>(`/api/groups/${id}/messages`, {
         method: 'POST',
-        body: JSON.stringify({ content: body }),
+        body: JSON.stringify({ content: outgoing }),
       });
       setMessages(prev => [...prev, res.message]);
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
     } catch {
       setText(body); // put it back
+      setReplyTo(captured);
     }
+  };
+
+  const startReply = (m: GroupMsg) => {
+    const own = m.sender_id === user?.id;
+    const preview = m.content ? friendlyPreview(m.content) : (m.image_url ? '📷 Photo' : '');
+    setReplyTo({ id: m.id, senderName: own ? (user?.full_name || 'You') : m.sender_name, preview, own });
   };
 
   const deleteMessage = (m: GroupMsg) => {
@@ -200,6 +219,7 @@ export default function GroupChat() {
   const messageActions = (m: GroupMsg): MessageAction[] => {
     const mine = m.sender_id === user?.id;
     const list: MessageAction[] = [
+      { label: 'Reply', icon: 'arrow-undo-outline', onPress: () => startReply(m) },
       { label: 'Forward', icon: 'arrow-redo-outline', onPress: () => setForwardMsg(m) },
     ];
     if (m.content) list.push({ label: 'Copy', icon: 'copy-outline', onPress: () => Clipboard.setString(plainText(m.content)) });
@@ -352,6 +372,18 @@ export default function GroupChat() {
           />
         )}
 
+        {replyTo ? (
+          <View style={s.replyPreview}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.replyPreviewSender} numberOfLines={1}>Replying to {replyTo.own ? 'You' : replyTo.senderName}</Text>
+              <Text style={s.replyPreviewText} numberOfLines={1}>{replyTo.preview}</Text>
+            </View>
+            <TouchableOpacity onPress={() => setReplyTo(null)} hitSlop={10}>
+              <Ionicons name="close" size={20} color={colors.muted} />
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         <View style={s.bar}>
           <TouchableOpacity onPress={sendImage} disabled={sendingImage} hitSlop={8}>
             {sendingImage
@@ -488,6 +520,9 @@ const make_s = (colors: Palette) => StyleSheet.create({
   loadOlderBtn: { alignItems: 'center', justifyContent: 'center', paddingVertical: 12, marginBottom: 4 },
   loadOlderText: { fontSize: 13, fontWeight: '700', color: colors.brand },
   msgImage: { width: 200, height: 200, borderRadius: 10, marginBottom: 4 },
+  replyPreview: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface },
+  replyPreviewSender: { fontSize: 12, fontWeight: '700', color: colors.brand },
+  replyPreviewText: { fontSize: 13, color: colors.muted },
   bar: {
     flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12,
     borderTopWidth: 1, borderTopColor: colors.border,
