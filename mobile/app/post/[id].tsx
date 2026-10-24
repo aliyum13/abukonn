@@ -443,7 +443,9 @@ export default function SinglePost() {
   // false on every reload and let repeat taps create duplicate rows.
   const repost = async () => {
     if (!post) return;
-    const was = post.is_reposted;
+    // is_reposted is optional on Post (absent on older responses), and bump()
+    // takes a boolean; absent means "not reposted".
+    const was = !!post.is_reposted;
     const bump = (p: Post, liked: boolean, dir: number): Post =>
       p.is_repost && p.original_repost_count !== undefined
         ? { ...p, is_reposted: liked, original_repost_count: Math.max(0, p.original_repost_count + dir) }
