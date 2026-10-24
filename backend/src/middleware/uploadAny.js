@@ -26,25 +26,30 @@ const allowedMimes = [
 // reported consistently everywhere) worked fine.
 const allowedExtensions = ['.csv', '.txt', '.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx'];
 
+// Default cap for the admin CSV routes (timetable, academic calendar,
+// whitelist): they're parsed in memory and never leave the server. The library
+// is NOT governed by this -- its files go to Cloudinary, which caps them lower;
+// see uploadLibrary.js and lib/libraryLimits.js.
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
 
-const uploadAny = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_FILE_SIZE },
-  fileFilter: (_req, file, cb) => {
-    if (allowedMimes.includes(file.mimetype)) {
-      return cb(null, true);
-    }
-    const ext = path.extname(file.originalname || '').toLowerCase();
-    if ((!file.mimetype || file.mimetype === 'application/octet-stream') && allowedExtensions.includes(ext)) {
-      return cb(null, true);
-    }
-    const err = new Error('Unsupported file type. Allowed: CSV, PDF, Word, PowerPoint, Excel.');
-    err.code = 'UNSUPPORTED_FILE_TYPE';
-    cb(err, false);
-  },
-});
+function fileFilter(_req, file, cb) {
+  if (allowedMimes.includes(file.mimetype)) {
+    return cb(null, true);
+  }
+  const ext = path.extname(file.originalname || '').toLowerCase();
+  if ((!file.mimetype || file.mimetype === 'application/octet-stream') && allowedExtensions.includes(ext)) {
+    return cb(null, true);
+  }
+  const err = new Error('Unsupported file type. Allowed: CSV, PDF, Word, PowerPoint, Excel.');
+  err.code = 'UNSUPPORTED_FILE_TYPE';
+  cb(err, false);
+}
 
+// Builds a multer uploader with its own size cap and its own "too large" wording,
+// plus the matching error handler. The cap and the message have to travel
+// together: the handler used to read one module-level constant, so a second cap
+// would have reported the first one's number.
+//
 // Multer (and our own fileFilter above) report problems by calling next(err)
 // rather than sending a response -- that error skips straight past the route
 // handler to the first error-handling middleware in the chain. Without one,
@@ -52,17 +57,39 @@ const uploadAny = multer({
 // { message } JSON shape the frontend expects, so every rejection (wrong
 // type or too large) showed up as an unhelpful generic failure instead of
 // the real reason.
-function handleUploadError(err, _req, res, next) {
-  if (!err) return next();
-  if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
-    return res.status(400).json({ message: `File exceeds the ${MAX_FILE_SIZE / (1024 * 1024)}MB limit` });
-  }
-  if (err.code === 'UNSUPPORTED_FILE_TYPE') {
-    return res.status(400).json({ message: err.message });
-  }
-  return res.status(400).json({ message: err.message || 'Upload failed' });
+//
+// maxFileSize is inclusive: a file of exactly that many bytes is accepted.
+// Busboy (multer's parser) treats its `fileSize` limit as exclusive -- a file
+// whose size EQUALS the limit is flagged as truncated and refused -- so the
+// limit handed to multer is one byte higher. Without it, a "10MB" cap would
+// refuse a file of exactly 10,485,760 bytes, which is Cloudinary's own stated
+// maximum, i.e. stricter than the thing the cap exists to match.
+function createUploader({ maxFileSize, tooLargeMessage }) {
+  const uploader = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: maxFileSize + 1 },
+    fileFilter,
+  });
+
+  uploader.handleUploadError = function handleUploadError(err, _req, res, next) {
+    if (!err) return next();
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ message: tooLargeMessage });
+    }
+    if (err.code === 'UNSUPPORTED_FILE_TYPE') {
+      return res.status(400).json({ message: err.message });
+    }
+    return res.status(400).json({ message: err.message || 'Upload failed' });
+  };
+
+  return uploader;
 }
 
+const uploadAny = createUploader({
+  maxFileSize: MAX_FILE_SIZE,
+  tooLargeMessage: `File exceeds the ${MAX_FILE_SIZE / (1024 * 1024)}MB limit`,
+});
+
 module.exports = uploadAny;
-module.exports.handleUploadError = handleUploadError;
 module.exports.MAX_FILE_SIZE = MAX_FILE_SIZE;
+module.exports.createUploader = createUploader;

@@ -1,6 +1,7 @@
 const Library = require('../models/Library');
 const { canUploadLibrary, deleteCapabilities, mayDelete } = require('../lib/libraryAccess');
 const { deleteLibraryAsset } = require('../lib/libraryAsset');
+const { libraryUploadFailure } = require('../lib/libraryLimits');
 const cloudinary = require('cloudinary').v2;
 
 cloudinary.config({
@@ -77,7 +78,10 @@ async function upload(req, res) {
     res.json({ material });
   } catch (err) {
     console.error('upload library:', err.message);
-    res.status(500).json({ message: 'Server error: ' + err.message });
+    // Maps Cloudinary's own "File size too large" refusal to the same friendly
+    // 400 the size limit in uploadLibrary.js returns; any other failure stays a 500.
+    const failure = libraryUploadFailure(err);
+    res.status(failure.status).json({ message: failure.message });
   }
 }
 

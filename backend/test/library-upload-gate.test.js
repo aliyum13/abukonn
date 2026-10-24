@@ -144,11 +144,14 @@ test('the role is read fresh: revoking contributor takes effect on the next uplo
   assert.equal((await upload('/upload', { token: tokenFor(2) })).status, 403);
 });
 
-test('the shared path keeps the upload limits and clean errors (25MB, accepted types)', async () => {
+test('the shared path keeps the upload limits and clean errors (10MB, accepted types)', async () => {
   contributors.add(2);
-  let r = await upload('/upload', { token: tokenFor(2), bytes: 26 * 1024 * 1024 });
+  // Library files are stored on Cloudinary, which refuses anything over 10MB, so
+  // the cap is 10MB (it was 25MB, which let files in between fail at the last step).
+  // The exact boundary and the Cloudinary-error mapping are in library-upload-limit.test.js.
+  let r = await upload('/upload', { token: tokenFor(2), bytes: 11 * 1024 * 1024 });
   assert.equal(r.status, 400);
-  assert.equal(r.json.message, 'File exceeds the 25MB limit');
+  assert.equal(r.json.message, "Files over 10MB can't be uploaded yet");
 
   r = await upload('/upload', { token: tokenFor(2), name: 'setup.exe', type: 'application/x-msdownload' });
   assert.equal(r.status, 400);
@@ -157,8 +160,8 @@ test('the shared path keeps the upload limits and clean errors (25MB, accepted t
   // Office doc with a missing MIME type is accepted via the extension fallback.
   r = await upload('/upload', { token: tokenFor(2), name: 'notes.docx', type: '' });
   assert.equal(r.status, 200);
-  // A 13MB file is under the 25MB cap.
-  r = await upload('/upload', { token: tokenFor(2), bytes: 13 * 1024 * 1024 });
+  // A 9MB file is under the 10MB cap.
+  r = await upload('/upload', { token: tokenFor(2), bytes: 9 * 1024 * 1024 });
   assert.equal(r.status, 200);
 });
 

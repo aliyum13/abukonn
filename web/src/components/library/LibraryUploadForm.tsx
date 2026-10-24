@@ -6,10 +6,12 @@ import { DepartmentOptions, LEVELS, DEPARTMENT_GROUPS } from '@/lib/departments'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
-// Must match backend/src/middleware/uploadAny.js's MAX_FILE_SIZE exactly --
+// Must match backend/src/lib/libraryLimits.js's LIBRARY_MAX_FILE_SIZE exactly --
 // otherwise this check either blocks files the server would accept, or lets
-// through files the server rejects.
-const MAX_FILE_SIZE = 25 * 1024 * 1024;
+// through files the server rejects. It is 10MB because library files are stored
+// on Cloudinary, whose account cap on a single file is 10MB; the server used to
+// allow 25MB, so files in between passed every check and failed at the end.
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const TYPES = ['past_question', 'lecture_note', 'textbook', 'other'];
 const TYPE_LABELS: Record<string, string> = {
   past_question: 'Past Question', lecture_note: 'Lecture Note', textbook: 'Textbook', other: 'Other',
@@ -38,7 +40,8 @@ export function LibraryUploadForm({ token, onUploaded }: { token: string | null;
 
   const handleUpload = async () => {
     if (!title || !type || !file) { setMessage({ text: 'Title, type and file are required', error: true }); return; }
-    if (file.size > MAX_FILE_SIZE) { setMessage({ text: `File exceeds the ${MAX_FILE_SIZE / (1024 * 1024)}MB limit`, error: true }); return; }
+    // Same wording as the server's rejection, so the message is identical whichever side catches it.
+    if (file.size > MAX_FILE_SIZE) { setMessage({ text: `Files over ${MAX_FILE_SIZE / (1024 * 1024)}MB can't be uploaded yet`, error: true }); return; }
     setUploading(true);
     setMessage(null);
     try {
@@ -107,7 +110,7 @@ export function LibraryUploadForm({ token, onUploaded }: { token: string | null;
         <div><label className="mb-1.5 block text-label text-ink-secondary">Course Title</label><input value={courseTitle} onChange={e => setCourseTitle(e.target.value)} placeholder="e.g. Data Structures" className={inputCls} /></div>
         <div className="sm:col-span-2"><label className="mb-1.5 block text-label text-ink-secondary">Description</label><textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Brief description of the material..." rows={2} className={`${inputCls} resize-none`} /></div>
         <div className="sm:col-span-2">
-          <label className="mb-1.5 block text-label text-ink-secondary">File * (max 25MB)</label>
+          <label className="mb-1.5 block text-label text-ink-secondary">File * (max 10MB)</label>
           <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx" onChange={e => setFile(e.target.files?.[0] || null)} className="hidden" />
           {file ? (
             <div className="flex items-center gap-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3">
