@@ -3,7 +3,7 @@ const User = require('../models/User');
 const Notification = require('../models/Notification');
 const { extractMentionedUsernames } = require('../utils/mentions');
 const { sendPushToUsers } = require('../lib/push');
-const { plainMessagePreview } = require('../lib/messagePreview');
+const { plainMessagePreview, ownMessageText } = require('../lib/messagePreview');
 
 async function createGroup(req, res) {
   try {
@@ -98,7 +98,8 @@ async function sendGroupMessage(req, res) {
     // Now every active member (except the sender) gets a push. Mentioned
     // members are excluded here because the mention branch below already
     // notifies them, avoiding a double push.
-    const mentioned = extractMentionedUsernames(content || '');
+    // Mentions come from what the sender typed, not the quote a reply carries.
+    const mentioned = extractMentionedUsernames(ownMessageText(content));
     Promise.all([Group.getGroupMembers(groupId), Group.getGroupById(groupId)])
       .then(([members, group]) => {
         const mentionedSet = new Set(mentioned);
