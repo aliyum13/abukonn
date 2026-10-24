@@ -362,8 +362,14 @@ const FORYOU = {
   SEEN_DEMOTE: 0.25,        // multiplier for posts you've already viewed — strong
                             //   demote (not hide) so refresh surfaces fresh content
                             //   without ever emptying the feed.
-  CANDIDATE_MAX_AGE_HOURS: 168, // only consider posts from the last 7 days, so the
-                                //   feed is a bounded, relevant campus window.
+  CANDIDATE_MAX_AGE_HOURS: 336, // only consider posts from the last 14 days, so the
+                                //   feed is a bounded, relevant campus window. Was 168
+                                //   (7 days); widened because a caught-up user ran out of
+                                //   feed too quickly. NOTE the score has no age decay
+                                //   after the 6h freshness window, so this only changes
+                                //   WHICH posts are candidates, not how any one scores:
+                                //   a post ranks the same on day 13 as on day 3 until it
+                                //   drops out of the window entirely.
   REFRESH_JITTER_MAGNITUDE: 2,      // small tie-break jitter added to ranking_score so a
                                      //   caught-up user (nothing new since last visit)
                                      //   doesn't see an identical order on every refresh.
@@ -386,7 +392,7 @@ const FORYOU = {
 // with zero engagement, then fade to engagement-based ranking. Followed authors
 // and (capped) trending are added on top. Your own very recent posts float to
 // the top. Already-seen posts are demoted (not hidden) so refresh brings newer
-// content. Candidate pool is campus-wide but bounded to the last 7 days.
+// content. Candidate pool is campus-wide but bounded to the last 14 days.
 // Returns { posts, exhausted } -- exhausted=true when there are no more UNSEEN
 // posts left (client shows "you're all caught up").
 //
@@ -890,6 +896,7 @@ async function toggleEventRSVP(postId, userId) {
 }
 
 module.exports = {
+  FORYOU,
   CREATE_POSTS_TABLE,
   createPostsTable,
   createPostLikesTable,
