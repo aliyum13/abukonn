@@ -1,7 +1,7 @@
 const Support = require('../models/Support');
-const { Resend } = require('resend');
+const { createMailer } = require('../lib/mailer');
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = createMailer();
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'abukonnsupport@gmail.com';
 
 const CATEGORIES = ['Bug Report', 'Feature Request', 'Account Issue', 'Content Report', 'Other'];
