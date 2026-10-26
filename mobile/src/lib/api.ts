@@ -1,8 +1,11 @@
 import Constants from 'expo-constants';
 import { getToken } from './storage';
 
-// The live ABUkonn backend — the same one the web app talks to.
+// The live ABUkonn backend — the same one the web app talks to. For local
+// development EXPO_PUBLIC_API_URL (mobile/.env.local) points the app at a local
+// backend instead; unset, as in every EAS build, behaviour is unchanged.
 export const API_URL: string =
+  process.env.EXPO_PUBLIC_API_URL ||
   (Constants.expoConfig?.extra as { apiUrl?: string } | undefined)?.apiUrl ||
   'https://abukonn-production.up.railway.app';
 
