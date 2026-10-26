@@ -19,29 +19,6 @@ const followRoutes = require('./routes/follows');
 const { saveMessage } = require('./controllers/messageController');
 const { markConversationRead, getConversationById } = require('./models/Message');
 const { isMember: isGroupMember } = require('./models/Group');
-const { createUsersTable } = require('./models/User');
-const { createPostsTable, createPostLikesTable, createPostMediaTable } = require('./models/Post');
-const { createCommentsTable } = require('./models/Comment');
-const { createNewsTable } = require('./models/News');
-const { createMessagesTables } = require('./models/Message');
-const { createWhitelistTable } = require('./models/Whitelist');
-const { createFollowsTable } = require('./models/Follow');
-const { createNotificationsTable } = require('./models/Notification');
-const { createGroupTables } = require('./models/Group');
-const { createRepliesTable } = require('./models/Reply');
-const { createStoriesTable, createStoryViewsTable, createStoryReactionsTable, createStoryRepliesTable } = require('./models/Story');
-const { createConnectTables } = require('./models/Connect');
-const { createHashtagTables } = require('./models/Hashtag');
-const { createUserSettingsTable } = require('./models/UserSettings');
-const { createHighlightsTable } = require('./models/Highlight');
-const { createProfileViewsTable } = require('./models/ProfileView');
-const { createPaymentsTable } = require('./models/Payment');
-const { createPostViewsTable } = require('./models/PostView');
-const { createChannelTables } = require('./models/Channel');
-const { createPasswordResetsTable } = require('./models/PasswordReset');
-const { createTimetableTable } = require('./models/Timetable');
-const { createSupportTable } = require('./models/Support');
-const { createLibraryTable } = require('./models/Library');
 const notificationRoutes = require('./routes/notifications');
 const adminRoutes = require('./routes/admin');
 const groupRoutes = require('./routes/groups');
@@ -49,7 +26,8 @@ const storyRoutes = require('./routes/stories');
 const hashtagRoutes = require('./routes/hashtags');
 const settingsRoutes = require('./routes/settings');
 const highlightRoutes = require('./routes/highlights');
-const { createReportBlockTables } = require('./models/ReportBlock');
+
+const { initDatabase } = require('./lib/initDatabase');
 
 const app = express();
 
@@ -334,42 +312,7 @@ Sentry.setupExpressErrorHandler(app);
 
 const PORT = process.env.PORT || 3000;
 
-createUsersTable()
-  .then(() => createPostsTable())
-  .then(() => createCommentsTable())
-  .then(() => createNewsTable())
-  .then(() => createMessagesTables())
-  .then(() => createWhitelistTable())
-  .then(() => createFollowsTable())
-  .then(() => createPostLikesTable())
-  .then(() => createPostMediaTable())
-  .then(() => createNotificationsTable())
-  .then(() => createGroupTables())
-  .then(() => createRepliesTable())
-  .then(() => createStoriesTable())
-  .then(() => createStoryViewsTable())
-  .then(() => require('./models/Story').createStoryMutesTable())
-  .then(() => require('./models/Story').createStoryAudienceTables())
-  .then(() => require('./lib/push').createPushTokensTable())
-  .then(() => createStoryReactionsTable())
-  .then(() => createStoryRepliesTable())
-  .then(() => createConnectTables())
-  .then(() => createHashtagTables())
-  .then(() => createUserSettingsTable())
-  .then(() => createHighlightsTable())
-  .then(() => createProfileViewsTable())
-  .then(() => createPaymentsTable())
-  .then(() => createPostViewsTable())
-  .then(() => createChannelTables())
-  .then(() => createPasswordResetsTable())
-  .then(() => createTimetableTable())
-  .then(() => require('./models/ClassRep').createClassRepsTable())
-  .then(() => require('./models/TimetableOverride').createTimetableOverridesTable())
-  .then(() => createSupportTable())
-  .then(() => createLibraryTable())
-  .then(() => require('./models/UserRole').createUserRolesTable())
-  .then(() => createReportBlockTables())
-  .then(() => require('./models/AcademicCalendar').createAcademicCalendarTable())
+initDatabase()
   .then(() => {
     server.timeout = 120000;
     server.keepAliveTimeout = 120000;

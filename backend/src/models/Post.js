@@ -52,18 +52,6 @@ async function createPostsTable() {
   await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS original_author_name TEXT`);
   await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS post_subtype VARCHAR(20) DEFAULT 'post'`);
   await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS discussion_title TEXT`);
-  // Stored byte size of the uploaded media, as reported by Cloudinary. Used
-  // only by the clients' optimizedVideo(), to skip the f_auto,q_auto
-  // transform on videos above the Cloudinary plan's video TRANSFORM limit
-  // (300MB on Small PAYG) -- requesting one there errors instead of playing.
-  // NULL for everything uploaded before this column existed, which is safe:
-  // the caps then were 50MB free / 150MB Pro, all well under the limit.
-  //
-  // INTEGER, not BIGINT: node-postgres returns int8 as a STRING (to avoid
-  // precision loss), which would hand the clients a string where their types
-  // promise a number. int4 tops out at ~2GB, far above the 400MB ceiling, and
-  // matches messages.file_size.
-  await pool.query(`ALTER TABLE abukonn.post_media ADD COLUMN IF NOT EXISTS bytes INTEGER`);
   await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS poll_duration_hours INTEGER`);
   await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS poll_ends_at TIMESTAMP WITH TIME ZONE`);
   await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS event_title VARCHAR(200)`);
@@ -136,6 +124,20 @@ async function createPostLikesTable() {
 async function createPostMediaTable() {
   await pool.query(CREATE_POST_MEDIA_TABLE);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_post_media_post ON abukonn.post_media(post_id, position)`);
+  // (Lives here, not in createPostsTable: post_media is created by this
+  // function, and altering it earlier fails on an empty database.)
+  // Stored byte size of the uploaded media, as reported by Cloudinary. Used
+  // only by the clients' optimizedVideo(), to skip the f_auto,q_auto
+  // transform on videos above the Cloudinary plan's video TRANSFORM limit
+  // (300MB on Small PAYG) -- requesting one there errors instead of playing.
+  // NULL for everything uploaded before this column existed, which is safe:
+  // the caps then were 50MB free / 150MB Pro, all well under the limit.
+  //
+  // INTEGER, not BIGINT: node-postgres returns int8 as a STRING (to avoid
+  // precision loss), which would hand the clients a string where their types
+  // promise a number. int4 tops out at ~2GB, far above the 400MB ceiling, and
+  // matches messages.file_size.
+  await pool.query(`ALTER TABLE abukonn.post_media ADD COLUMN IF NOT EXISTS bytes INTEGER`);
   console.log('Post media table ready');
 }
 
