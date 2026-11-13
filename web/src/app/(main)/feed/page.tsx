@@ -2959,28 +2959,10 @@ export default function FeedPage() {
   const removeSuggestion = (userId: number) =>
     setSuggestions((prev) => prev.filter((s) => s.id !== userId));
 
-  if (authLoading || !user) {
-    return (
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <div className="grid gap-6 lg:grid-cols-12">
-          <div className="hidden lg:col-span-3 lg:block"><PostSkeleton /></div>
-          <div className="lg:col-span-6 space-y-4">
-            <PostSkeleton />
-            <PostSkeleton />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-
-  // ONE post card, used by BOTH the For You and Following tabs.
-  //
-  // These were previously two separate JSX blocks. The Following copy had
-  // drifted badly: no comment box, no repost, no polls, no RSVP, no link
-  // previews — and its like button called a handler that updated the For You
-  // array, so it did nothing visible. Sharing one card means the two can never
-  // drift apart again.
+  // These two hooks MUST stay above the early return below. They used to sit after it,
+  // so on a hard reload (auth still loading -> early return -> fewer hooks, then auth
+  // resolves -> more hooks) React threw "Rendered more hooks than during the previous
+  // render" (minified error #310) and the page showed "This page couldn't load".
   // ── "All caught up" divider (derived, no extra state) ───────────────────
   // The For You list as actually rendered (category filter applied), so the
   // divider index below lines up with what the user sees.
@@ -3003,6 +2985,29 @@ export default function FeedPage() {
     while (boundary > 0 && visibleForYouPosts[boundary - 1].already_seen) boundary--;
     return boundary < visibleForYouPosts.length ? boundary : -1;
   }, [feedCaughtUp, feedTab, visibleForYouPosts]);
+
+  if (authLoading || !user) {
+    return (
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <div className="grid gap-6 lg:grid-cols-12">
+          <div className="hidden lg:col-span-3 lg:block"><PostSkeleton /></div>
+          <div className="lg:col-span-6 space-y-4">
+            <PostSkeleton />
+            <PostSkeleton />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+
+  // ONE post card, used by BOTH the For You and Following tabs.
+  //
+  // These were previously two separate JSX blocks. The Following copy had
+  // drifted badly: no comment box, no repost, no polls, no RSVP, no link
+  // previews — and its like button called a handler that updated the For You
+  // array, so it did nothing visible. Sharing one card means the two can never
+  // drift apart again.
 
   const renderPostCard = (post: Post) => {
                 const isExpanded = expandedPosts.has(post.id);
