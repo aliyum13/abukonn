@@ -356,6 +356,15 @@ const FORYOU = {
                             //   ride this; capped below so they don't dominate.
   ENGAGEMENT_CAP: 200,      // engagement contribution is capped here so one viral
                             //   post can't tower infinitely over fresh content.
+  ENGAGEMENT_HALF_LIFE_HOURS: 120, // engagement fades with post age: the raw engagement
+                            //   score is multiplied by 0.5^(age_h / this) BEFORE the cap
+                            //   (120h: halves every 5 days; 0 turns decay off). With no
+                            //   candidate age window, undecayed engagement let every
+                            //   old popular post (cap 200) outrank brand-new content
+                            //   (freshness floor 120) indefinitely. Because the decay is
+                            //   applied before the cap, a genuinely viral old post
+                            //   (raw engagement in the thousands) still reaches the
+                            //   cap and can surface; an ordinary old one fades out.
   OWN_POST_BOOST: 100000,   // your own very recent post floats to the very top so
                             //   you always immediately see what you just posted.
   OWN_POST_WINDOW_HOURS: 2, //   ...but only for its first 2h (then it ranks normally).
@@ -509,7 +518,11 @@ async function getForYouFeed(currentUserId, limit = 50, offset = 0, sessionStart
                         THEN $6::float + (CASE WHEN created_at > NOW() - ($5 || ' hours')::interval THEN $7::float ELSE 0 END)
                         ELSE 0 END)
                 -- capped engagement so trending mixes in but can't bury fresh
-                + LEAST($9::float, $8::float * engagement_score)
+                + LEAST($9::float, $8::float * engagement_score
+                    -- age decay on engagement ($17 = half-life hours, 0 = off)
+                    * (CASE WHEN $17::float > 0
+                            THEN power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (NOW() - created_at)) / 3600.0) / $17::float)
+                            ELSE 1 END))
                 -- your own very recent post floats to the very top
                 + (CASE WHEN user_id = $1 AND created_at > NOW() - ($10 || ' hours')::interval THEN $11::float ELSE 0 END)
               )
@@ -536,6 +549,7 @@ async function getForYouFeed(currentUserId, limit = 50, offset = 0, sessionStart
       FORYOU.SEEN_DEMOTE, FORYOU.CANDIDATE_POOL_SIZE,
       FORYOU.REFRESH_JITTER_MAGNITUDE, FORYOU.REFRESH_JITTER_BUCKET_SECONDS,
       sessionStart,
+      FORYOU.ENGAGEMENT_HALF_LIFE_HOURS,
     ]
   );
   const posts = result.rows;

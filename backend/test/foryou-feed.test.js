@@ -84,13 +84,14 @@ test('SCENARIO: the newest post is 30+ days old -- the feed still has posts', as
 
 test('SCENARIO: one recent post the viewer has already seen -- still a full feed, seen demoted not hidden', async () => {
   // Production's shape: a single post in the last 14 days, the rest much older.
-  const recent = await addPost(AUTHOR, 2, { content: 'the only recent post' });
+  const recent = await addPost(AUTHOR, 2, { content: 'the only recent post', likes: 20 });
+  const twin = await addPost(OTHER, 2, { content: 'same age and engagement, unseen', likes: 20 });
   for (const d of [20, 33, 47, 90]) await addPost(AUTHOR, d, { likes: 1 });
   await run(`INSERT INTO abukonn.post_views (viewer_id, post_id, viewed_at) VALUES ($1, $2, now() - interval '1 hour')`, [ME, recent]);
   const { posts } = await Post.getForYouFeed(ME, 50, 0, Date.now());
-  assert.equal(posts.length, 5);
+  assert.equal(posts.length, 6);
   assert.equal(posts.find(p => p.id === recent).already_seen, true);
-  assert.equal(posts[posts.length - 1].id, recent, 'the seen post sinks below the unseen ones');
+  assert.ok(posts.findIndex(p => p.id === twin) < posts.findIndex(p => p.id === recent), 'the seen post ranks below its unseen twin');
 });
 
 test('a database with no posts at all returns an empty page (and says caught up)', async () => {
@@ -127,7 +128,63 @@ test('every ranking knob still arrives in the slot the SQL reads, with the pool 
     FORYOU.SEEN_DEMOTE, FORYOU.CANDIDATE_POOL_SIZE,
     FORYOU.REFRESH_JITTER_MAGNITUDE, FORYOU.REFRESH_JITTER_BUCKET_SECONDS,
     1700000000000,
+    FORYOU.ENGAGEMENT_HALF_LIFE_HOURS, // $17
   ]);
+});
+
+// ── engagement fades with age (so "no window" does not mean "old posts win") ──
+
+// 120 ordinary-but-popular posts, 15..59 days old, raw engagement 200 each (= the cap, undecayed).
+const addPopularOldPosts = () => run(
+  `INSERT INTO abukonn.posts (user_id, content, likes_count, created_at)
+   SELECT $1, 'old popular ' || g, 100, now() - ((15 + g % 45) || ' days')::interval FROM generate_series(1, 120) g`, [OTHER]);
+const rankOf = (posts, id) => posts.findIndex(p => p.id === id) + 1;
+const withHalfLife = async (hours, fn) => {
+  const original = FORYOU.ENGAGEMENT_HALF_LIFE_HOURS;
+  FORYOU.ENGAGEMENT_HALF_LIFE_HOURS = hours;
+  try { return await fn(); } finally { FORYOU.ENGAGEMENT_HALF_LIFE_HOURS = original; }
+};
+const hoursOld = async (hours, content) => (await run(
+  `INSERT INTO abukonn.posts (user_id, content, created_at) VALUES ($1, $2, now() - ($3 || ' hours')::interval) RETURNING id`,
+  [AUTHOR, content, String(hours)])).rows[0].id;
+
+test('DECAY: a 4-hour-old zero-engagement post is not buried by 120 old popular ones (it was rank ~81 before the change)', async () => {
+  await addPopularOldPosts();
+  const fresh4h = await hoursOld(4, 'four hours old');
+  const { posts } = await feed(ME, 200);
+  assert.ok(rankOf(posts, fresh4h) <= 81, `rank ${rankOf(posts, fresh4h)}`);
+  assert.equal(rankOf(posts, fresh4h), 1); // old engagement has faded below its freshness floor (40)
+  // Control: decay off reproduces the problem this fixes.
+  const off = await withHalfLife(0, () => feed(ME, 200));
+  assert.ok(rankOf(off.posts, fresh4h) > 120, `without decay it sits behind all 120 (rank ${rankOf(off.posts, fresh4h)})`);
+});
+
+test('DECAY: a 30-minute-old zero-engagement post stays at the very top', async () => {
+  await addPopularOldPosts();
+  const fresh = await hoursOld(0.5, 'thirty minutes old');
+  const { posts } = await feed(ME, 200);
+  assert.equal(rankOf(posts, fresh), 1);
+});
+
+test('DECAY: a post older than 14 days still surfaces when its engagement is high, an ordinary one does not', async () => {
+  await addPopularOldPosts();
+  const fresh4h = await hoursOld(4, 'four hours old');
+  const viral = (await run(`INSERT INTO abukonn.posts (user_id, content, likes_count, created_at)
+    VALUES ($1, 'viral 20 days ago', 2000, now() - interval '20 days') RETURNING id`, [OTHER])).rows[0].id; // raw engagement 4000
+  const { posts } = await feed(ME, 200);
+  assert.equal(rankOf(posts, viral), 1, 'raw 4000 x 0.5^(480/120) = 250, capped at 200: above even the fresh post');
+  assert.ok(rankOf(posts, viral) < rankOf(posts, fresh4h));
+  const ordinary = posts.filter(p => p.content.startsWith('old popular'));
+  assert.ok(ordinary.every(p => rankOf(posts, p.id) > rankOf(posts, fresh4h)), 'ordinary old posts fade below a 4h-old post');
+});
+
+test('DECAY: half-life 0 switches it off exactly (scores as before)', async () => {
+  const old = await addPost(AUTHOR, 60, { likes: 100 });          // engagement 200
+  const fresh = await hoursOld(4, 'four hours old');              // floor 40
+  const off = await withHalfLife(0, () => feed(ME, 50));
+  assert.deepEqual(off.posts.map(p => p.id), [old, fresh]);
+  const on = await feed(ME, 50);
+  assert.deepEqual(on.posts.map(p => p.id), [fresh, old]);
 });
 
 test('a brand-new zero-engagement post still outranks a 30-day-old moderately engaged one', async () => {
