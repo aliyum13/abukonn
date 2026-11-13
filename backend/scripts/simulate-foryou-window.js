@@ -1,9 +1,11 @@
 #!/usr/bin/env node
-// Simulates how the For You candidate window (FORYOU.CANDIDATE_MAX_AGE_HOURS)
+// Simulates how limiting the For You candidate pool by AGE (the old 168h/336h
+// windows, vs. none -- production now ranks the newest FORYOU.CANDIDATE_POOL_SIZE posts of any age)
 // changes the feed, WITHOUT a database: it ports ranking_score from
 // Post.getForYouFeed into plain JS and ranks a synthetic campus under two windows.
 //
-//   node scripts/simulate-foryou-window.js [--windows=168,336] [--posts-per-day=60] [--trials=300]
+//   node scripts/simulate-foryou-window.js [--windows=336,Infinity] [--horizon-days=60] [--posts-per-day=60] [--trials=300]
+//   (Infinity = no age window; --horizon-days is how far back the synthetic campus has posts)
 //
 // Read this first -- what this is and is not:
 //  * The FORMULA is real: constants come from the live FORYOU object, and the
@@ -26,10 +28,12 @@ const { FORYOU: F } = require('../src/models/Post');
 
 // ---- args ---------------------------------------------------------------
 const args = Object.fromEntries(process.argv.slice(2).map(a => a.replace(/^--/, '').split('=')));
-const WINDOWS = (args.windows || `168,${F.CANDIDATE_MAX_AGE_HOURS}`).split(',').map(Number);
+const WINDOWS = (args.windows || '336,Infinity').split(',').map(Number);
+const HORIZON_H = Number(args['horizon-days'] || 60) * 24;
+const windowLabel = w => (Number.isFinite(w) ? `${w}h` : 'none');
 const POSTS_PER_DAY = Number(args['posts-per-day'] || 60);
 const TRIALS = Number(args.trials || 300);
-const MAX_WINDOW = Math.max(...WINDOWS);
+const MAX_WINDOW = Math.min(Math.max(...WINDOWS), HORIZON_H);
 const PAGE = 50; // the feed's page size (getFeed default limit)
 
 // ---- seeded RNG so a run is reproducible --------------------------------
@@ -58,7 +62,7 @@ const ACCRUAL_TAU_H = 24; // engagement accrues as 1 - exp(-age/24h): most of it
 const VIEWERS = { 'daily user': 36, 'occasional user': 120 };
 const FOLLOW_SHARE = 0.15;
 
-const BANDS = [['<6h', 0, 6], ['6-24h', 6, 24], ['1-3d', 24, 72], ['3-7d', 72, 168], ['7-14d', 168, Infinity]];
+const BANDS = [['<6h', 0, 6], ['6-24h', 6, 24], ['1-3d', 24, 72], ['3-7d', 72, 168], ['7-14d', 168, 336], ['14-30d', 336, 720], ['30d+', 720, Infinity]];
 const bandOf = ageH => BANDS.find(([, lo, hi]) => ageH >= lo && ageH < hi)[0];
 
 function makePool(rnd, median) {
@@ -86,7 +90,7 @@ const median = a => { const s = [...a].sort((x, y) => x - y); return s[Math.floo
 const PROBES = [0.5, 2, 4].map(ageH => ({ ageH, engagement: 0, following: false, own: false, label: `${ageH}h` }));
 
 console.log(`For You candidate window simulation   (live constants; ${POSTS_PER_DAY} posts/day, ${TRIALS} trials, page=${PAGE})`);
-console.log(`Windows compared: ${WINDOWS.join('h vs ')}h.   Config now: CANDIDATE_MAX_AGE_HOURS=${F.CANDIDATE_MAX_AGE_HOURS}`);
+console.log(`Windows compared: ${WINDOWS.map(windowLabel).join(' vs ')}.   Production now: newest ${F.CANDIDATE_POOL_SIZE} posts of any age (no window). Synthetic history: ${HORIZON_H / 24} days.`);
 console.log(`Score = (fresh floor<=${F.FRESH_BOOST} for ${F.FRESH_WINDOW_HOURS}h + follow + engagement<=${F.ENGAGEMENT_CAP}) x ${F.SEEN_DEMOTE} if seen.  No age decay after ${F.FRESH_WINDOW_HOURS}h.\n`);
 
 console.log('DETERMINISTIC SCORECARD (same under any window; unseen, jitter excluded)');
@@ -97,10 +101,10 @@ const card = [
   ['brand-new, FOLLOWED author, 0 engagement (0h)', { ageH: 0, engagement: 0, following: true }],
   ['your own post (1h)', { ageH: 1, engagement: 0, own: true }],
   ['3-day-old, engagement 60', { ageH: 72, engagement: 60 }],
-  ['10-day-old, engagement 60  [only a 14d window sees it]', { ageH: 240, engagement: 60 }],
-  ['10-day-old, engagement 250 (capped at 200)  [14d only]', { ageH: 240, engagement: 250 }],
-  ['10-day-old, engagement 250, already seen  [14d only]', { ageH: 240, engagement: 250, seen: true }],
-  ['10-day-old, followed author, engagement 0  [14d only]', { ageH: 240, engagement: 0, following: true }],
+  ['10-day-old, engagement 60  [a 7-day window never sees it]', { ageH: 240, engagement: 60 }],
+  ['10-day-old, engagement 250 (capped at 200)  [needs a window of 10+ days]', { ageH: 240, engagement: 250 }],
+  ['10-day-old, engagement 250, already seen  [needs a window of 10+ days]', { ageH: 240, engagement: 250, seen: true }],
+  ['10-day-old, followed author, engagement 0  [needs a window of 10+ days]', { ageH: 240, engagement: 0, following: true }],
 ];
 for (const [label, p] of card) console.log(`  ${label.padEnd(58)} ${fmt(rankingScore(p, 0), 1).padStart(7)}`);
 const cap = F.ENGAGEMENT_CAP;
@@ -134,7 +138,7 @@ for (const [levelName, med] of Object.entries(ENGAGEMENT_LEVELS)) {
     console.log('   ' + hdr.join(' '));
     for (const w of WINDOWS) {
       const o = out[w], slots = TRIALS * PAGE;
-      console.log('   ' + [`${w}h`.padEnd(8), fmt(o.cand.reduce((a, b) => a + b, 0) / TRIALS).padStart(6), ...BANDS.map(([b]) => pct(o.comp[b] / slots).padStart(6))].join(' '));
+      console.log('   ' + [windowLabel(w).padEnd(8), fmt(o.cand.reduce((a, b) => a + b, 0) / TRIALS).padStart(6), ...BANDS.map(([b]) => pct(o.comp[b] / slots).padStart(6))].join(' '));
     }
     console.log('  A brand-new post with ZERO engagement and an unfollowed author -- where does it land?');
     for (const w of WINDOWS) {
@@ -143,13 +147,13 @@ for (const [levelName, med] of Object.entries(ENGAGEMENT_LEVELS)) {
         const r = o.probeRank[i];
         return `${p.label}: median #${median(r)}, top-10 ${pct(r.filter(x => x <= 10).length / TRIALS).trim()}, top-50 ${pct(r.filter(x => x <= PAGE).length / TRIALS).trim()}`;
       });
-      console.log(`   ${`${w}h`.padEnd(6)} ${cells.join('   |   ')}`);
+      console.log(`   ${windowLabel(w).padEnd(6)} ${cells.join('   |   ')}`);
     }
     console.log('  Posts that outscore that 0.5h-old zero-engagement post (the ones that sit above it):');
     for (const w of WINDOWS) {
       const o = out[w];
       const avg = a => a.reduce((x, y) => x + y, 0) / a.length;
-      console.log(`   ${`${w}h`.padEnd(6)} avg ${fmt(avg(o.outr), 1)} posts, of which ${fmt(avg(o.outrOld), 1)} are 7-14 days old;  avg ${fmt(avg(o.capped), 1)}/50 top slots are at the engagement cap`);
+      console.log(`   ${windowLabel(w).padEnd(6)} avg ${fmt(avg(o.outr), 1)} posts, of which ${fmt(avg(o.outrOld), 1)} are older than 7 days;  avg ${fmt(avg(o.capped), 1)}/50 top slots are at the engagement cap`);
     }
     console.log('');
   }

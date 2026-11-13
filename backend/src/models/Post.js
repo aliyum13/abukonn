@@ -62,11 +62,9 @@ async function createPostsTable() {
   // text was changed after posting, which the clients surface as an "edited"
   // marker. Only the text/caption is editable (not media) -- see updatePost.
   await pool.query(`ALTER TABLE abukonn.posts ADD COLUMN IF NOT EXISTS edited_at TIMESTAMP WITH TIME ZONE`);
-  // The feed queries (getForYouFeed and friends) bound their candidate pool to
-  // "posts from the last N hours" -- without an index on created_at, that
-  // WHERE has nothing to seek on and falls back to scanning the whole table,
-  // a cost that only grows as historical post volume grows even though the
-  // window itself stays fixed.
+  // getForYouFeed takes the newest N posts (ORDER BY created_at DESC LIMIT N)
+  // as its candidate pool -- without an index on created_at that would sort the
+  // whole table on every request, a cost that grows with all historical posts.
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_posts_created_at ON abukonn.posts(created_at)`);
   // Uniqueness guard: a user can only ever have ONE repost of a given
   // original. Before this, nothing stopped repeat POST /:id/repost calls --
@@ -364,14 +362,20 @@ const FORYOU = {
   SEEN_DEMOTE: 0.25,        // multiplier for posts you've already viewed — strong
                             //   demote (not hide) so refresh surfaces fresh content
                             //   without ever emptying the feed.
-  CANDIDATE_MAX_AGE_HOURS: 336, // only consider posts from the last 14 days, so the
-                                //   feed is a bounded, relevant campus window. Was 168
-                                //   (7 days); widened because a caught-up user ran out of
-                                //   feed too quickly. NOTE the score has no age decay
-                                //   after the 6h freshness window, so this only changes
-                                //   WHICH posts are candidates, not how any one scores:
-                                //   a post ranks the same on day 13 as on day 3 until it
-                                //   drops out of the window entirely.
+  CANDIDATE_POOL_SIZE: 2000, // how many of the NEWEST posts are ranked per request.
+                             //   There is deliberately NO age cutoff: a time window
+                             //   made the feed EMPTY whenever nothing had been posted
+                             //   recently (production had one post in the last 14 days,
+                             //   so a user who had seen/blocked it saw nothing). A count
+                             //   is the cost guard instead -- ranking work scales with
+                             //   it, not with how long the app has existed -- and it is
+                             //   large enough (about a month at 60 posts/day, all of
+                             //   history while the app is small) that it never bites a
+                             //   quiet campus. Blocked authors are excluded BEFORE the
+                             //   count, so they never use up slots. NOTE the score has
+                             //   no age decay after the 6h freshness window, so an old
+                             //   high-engagement post ranks the same on day 300 as on
+                             //   day 3; see the PR for the trade-off and a decay knob.
   REFRESH_JITTER_MAGNITUDE: 2,      // small tie-break jitter added to ranking_score so a
                                      //   caught-up user (nothing new since last visit)
                                      //   doesn't see an identical order on every refresh.
@@ -394,7 +398,8 @@ const FORYOU = {
 // with zero engagement, then fade to engagement-based ranking. Followed authors
 // and (capped) trending are added on top. Your own very recent posts float to
 // the top. Already-seen posts are demoted (not hidden) so refresh brings newer
-// content. Candidate pool is campus-wide but bounded to the last 14 days.
+// content. Candidate pool is campus-wide: the newest CANDIDATE_POOL_SIZE posts
+// of any age, so the feed is never empty while any visible post exists.
 // Returns { posts, exhausted } -- exhausted=true when there are no more UNSEEN
 // posts left (client shows "you're all caught up").
 //
@@ -483,7 +488,11 @@ async function getForYouFeed(currentUserId, limit = 50, offset = 0, sessionStart
       LEFT JOIN abukonn.posts orig ON p.is_repost = TRUE AND orig.id = p.original_post_id
       LEFT JOIN abukonn.users orig_u ON orig.user_id = orig_u.id
       WHERE p.user_id NOT IN (SELECT blocked_id FROM abukonn.blocks WHERE blocker_id = $1)
-        AND p.created_at > NOW() - ($13 || ' hours')::interval
+      -- No age filter (see FORYOU.CANDIDATE_POOL_SIZE). The count bounds the work;
+      -- idx_posts_created_at serves the ORDER BY. Blocks are filtered first so a
+      -- blocked author never takes a slot.
+      ORDER BY p.created_at DESC, p.id DESC
+      LIMIT $13::int
     ),
     scored AS (
       SELECT *,
@@ -524,7 +533,7 @@ async function getForYouFeed(currentUserId, limit = 50, offset = 0, sessionStart
       FORYOU.FOLLOW_BOOST, FORYOU.FOLLOW_FRESH_BONUS,
       FORYOU.ENGAGEMENT_WEIGHT, FORYOU.ENGAGEMENT_CAP,
       String(FORYOU.OWN_POST_WINDOW_HOURS), FORYOU.OWN_POST_BOOST,
-      FORYOU.SEEN_DEMOTE, String(FORYOU.CANDIDATE_MAX_AGE_HOURS),
+      FORYOU.SEEN_DEMOTE, FORYOU.CANDIDATE_POOL_SIZE,
       FORYOU.REFRESH_JITTER_MAGNITUDE, FORYOU.REFRESH_JITTER_BUCKET_SECONDS,
       sessionStart,
     ]
