@@ -1,11 +1,11 @@
 const bcrypt = require('bcryptjs');
 const { BCRYPT_ROUNDS } = require('../config/security');
 const jwt = require('jsonwebtoken');
-const { Resend } = require('resend');
+const { createMailer } = require('../lib/mailer');
 const User = require('../models/User');
 const PasswordReset = require('../models/PasswordReset');
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = createMailer();
 
 async function forgotPassword(req, res) {
   try {
