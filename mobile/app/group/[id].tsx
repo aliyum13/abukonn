@@ -15,6 +15,8 @@ import { friendlyPreview, plainText, editableText, withEditedText } from '../../
 import { MessageBody } from '../../src/components/MessageBody';
 import { MessageActionSheet, type MessageAction } from '../../src/components/MessageActionSheet';
 import { colors } from '../../src/theme';
+import { useKeyboardVerticalOffset } from '../../src/lib/useKeyboardVerticalOffset';
+import { ComposerBar } from '../../src/components/ComposerBar';
 
 interface GroupMsg {
   id: number;
@@ -33,6 +35,7 @@ export default function GroupChat() {
   const { id, name } = useLocalSearchParams<{ id: string; name: string }>();
   const router = useRouter();
   const { user } = useAuth();
+  const keyboardOffset = useKeyboardVerticalOffset();
 
   const [messages, setMessages] = useState<GroupMsg[]>([]);
   const [memberCount, setMemberCount] = useState(0);
@@ -304,7 +307,7 @@ export default function GroupChat() {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={90}
+        keyboardVerticalOffset={keyboardOffset}
       >
         {loading ? (
           <View style={s.center}><ActivityIndicator color={colors.brand} /></View>
@@ -384,7 +387,7 @@ export default function GroupChat() {
           </View>
         ) : null}
 
-        <View style={s.bar}>
+        <ComposerBar style={s.bar}>
           <TouchableOpacity onPress={sendImage} disabled={sendingImage} hitSlop={8}>
             {sendingImage
               ? <ActivityIndicator color={colors.brand} size="small" />
@@ -401,7 +404,7 @@ export default function GroupChat() {
           <TouchableOpacity onPress={send} disabled={!text.trim()}>
             <Text style={[s.send, !text.trim() ? { opacity: 0.4 } : null]}>Send</Text>
           </TouchableOpacity>
-        </View>
+        </ComposerBar>
       </KeyboardAvoidingView>
 
       {/* Long-press message menu */}
