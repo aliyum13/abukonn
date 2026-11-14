@@ -58,6 +58,29 @@ async function fetchWithRetry(input: RequestInfo | URL, init?: RequestInit, retr
   throw lastErr instanceof Error ? lastErr : new Error('Network error — check your connection');
 }
 
+// Shown when the feed (or Following) request fails. Deliberately NOT the 8-second
+// toast: a failed first load used to fall through to "No posts yet / Be the first to
+// share something", which reads as an empty community rather than a failed request.
+// This stays until a retry succeeds. `compact` is the strip shown above posts that
+// are already on screen when a refresh fails.
+function FeedLoadError({ message, onRetry, compact }: { message: string; onRetry: () => void; compact?: boolean }) {
+  if (compact) {
+    return (
+      <div role="alert" className="mx-4 my-3 flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-body-sm text-red-700">
+        <span>Couldn&apos;t refresh the feed. {message}</span>
+        <button type="button" onClick={onRetry} className="shrink-0 font-semibold underline">Try again</button>
+      </div>
+    );
+  }
+  return (
+    <div role="alert" className="px-4 py-16 text-center">
+      <p className="font-medium text-ink">Couldn&apos;t load posts</p>
+      <p className="mt-1 text-[14px] text-ink-muted">{message}</p>
+      <Button className="mt-4" onClick={onRetry}>Try again</Button>
+    </div>
+  );
+}
+
 const NAV_ITEMS = [
   { href: '/feed', label: 'Feed', icon: 'M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 01.778-.332 48.294 48.294 0 005.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z' },
   { href: '/news', label: 'News', icon: 'M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 01-2.25 2.25M16.5 7.5V18a2.25 2.25 0 002.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 002.25 2.25h13.5M6 7.5h3v3H6v-3z' },
@@ -1314,6 +1337,9 @@ export default function FeedPage() {
   };
 
   const [followingLoading, setFollowingLoading] = useState(false);
+  // Persistent (no auto-dismiss) failed-load messages; '' = no failure. See FeedLoadError.
+  const [feedLoadError, setFeedLoadError] = useState('');
+  const [followingLoadError, setFollowingLoadError] = useState('');
   const [unreadCount, setUnreadCount] = useState(0);
   const [newPost, setNewPost] = useState('');
   const composerMention = useMentionAutocomplete(token);
@@ -1899,9 +1925,15 @@ export default function FeedPage() {
           return;
         }
       }
-      const data = await res.json();
+      // A non-JSON body (a proxy's 502 page) must reach the error state below too.
+      const data = await res.json().catch(() => ({} as { posts?: Post[]; hasMore?: boolean; caughtUp?: boolean; message?: string }));
+      if (!res.ok && gen === loadGenRef.current) {
+        // Previously ignored: a 500 left posts = [] and the page said "No posts yet".
+        setFeedLoadError(data.message || `The server had a problem (error ${res.status}).`);
+      }
       if (res.ok && gen === loadGenRef.current) {
-        setPosts(data.posts);
+        setFeedLoadError('');
+        setPosts(data.posts ?? []);
         setFeedPage(1);
         setFeedHasMore(data.hasMore ?? (data.posts?.length ?? 0) > 0);
         setFeedCaughtUp(!!data.caughtUp);
@@ -1912,7 +1944,7 @@ export default function FeedPage() {
         setError(prev => (prev === 'Failed to load feed' || prev.includes('Network') ? '' : prev));
       }
     } catch {
-      if (gen === loadGenRef.current) setError('Failed to load feed');
+      if (gen === loadGenRef.current) setFeedLoadError('Check your connection and try again.');
     } finally {
       if (gen === loadGenRef.current) setLoading(false);
     }
@@ -1976,9 +2008,16 @@ export default function FeedPage() {
       const res = await fetch(`${API_URL}/api/posts/following`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await res.json();
-      if (res.ok) setFollowingPosts(data.posts);
-    } catch { /* silent */ } finally {
+      const data = await res.json().catch(() => ({} as { posts?: Post[]; message?: string }));
+      if (res.ok) {
+        setFollowingLoadError('');
+        setFollowingPosts(data.posts ?? []);
+      } else {
+        setFollowingLoadError(data.message || `The server had a problem (error ${res.status}).`);
+      }
+    } catch {
+      setFollowingLoadError('Check your connection and try again.');
+    } finally {
       setFollowingLoading(false);
     }
   };
@@ -3691,6 +3730,8 @@ export default function FeedPage() {
             <>
               {followingLoading ? (
                 <><PostSkeleton /><PostSkeleton /></>
+              ) : followingLoadError && followingPosts.length === 0 ? (
+                <FeedLoadError message={followingLoadError} onRetry={() => { setFollowingLoadError(''); fetchFollowingPosts(); }} />
               ) : followingPosts.length === 0 ? (
                 <div className="px-4 py-16 text-center">
                   <p className="font-medium text-ink">No posts from people you follow</p>
@@ -4299,12 +4340,17 @@ export default function FeedPage() {
           )}
 
           {/* Posts */}
+          {!loading && feedLoadError && posts.length > 0 && (
+            <FeedLoadError compact message={feedLoadError} onRetry={() => { setFeedLoadError(''); fetchPosts(); }} />
+          )}
           {loading ? (
             <>
               <PostSkeleton />
               <PostSkeleton />
               <PostSkeleton />
             </>
+          ) : feedLoadError && posts.length === 0 ? (
+            <FeedLoadError message={feedLoadError} onRetry={() => { setFeedLoadError(''); setLoading(true); fetchPosts(); }} />
           ) : visibleForYouPosts.length === 0 ? (
             <div className="px-4 py-16 text-center">
               <p className="font-medium text-ink">No posts yet</p>
