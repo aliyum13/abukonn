@@ -15,6 +15,8 @@ import { ShareSheet } from '../../src/components/ShareSheet';
 import { ReportModal, type ReportTarget } from '../../src/components/ReportModal';
 import { useAuth } from '../../src/context/AuthContext';
 import { colors } from '../../src/theme';
+import { useKeyboardVerticalOffset } from '../../src/lib/useKeyboardVerticalOffset';
+import { ComposerBar } from '../../src/components/ComposerBar';
 
 const CATEGORY_CHIP: Record<string, { bg: string; fg: string; label: string }> = {
   EXAMINATION:  { bg: 'rgba(239,68,68,0.12)',  fg: '#dc2626', label: 'Examination' },
@@ -259,7 +261,7 @@ const NewCommentBar = memo(function NewCommentBar({ onSubmit, replyingTo, onCanc
           </TouchableOpacity>
         </View>
       ) : null}
-      <View style={s.inputBar}>
+      <ComposerBar style={s.inputBar}>
         <TextInput
           ref={inputRef}
           style={s.input}
@@ -272,7 +274,7 @@ const NewCommentBar = memo(function NewCommentBar({ onSubmit, replyingTo, onCanc
         <TouchableOpacity style={s.sendBtn} onPress={handleSend} disabled={sending || !text.trim()}>
           {sending ? <ActivityIndicator color="#fff" size="small" /> : <Ionicons name="send" size={18} color="#fff" />}
         </TouchableOpacity>
-      </View>
+      </ComposerBar>
     </View>
   );
 });
@@ -282,6 +284,7 @@ export default function SinglePost() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
+  const keyboardOffset = useKeyboardVerticalOffset();
   const currentUserId = user?.id;
 
   const [post, setPost] = useState<Post | null>(null);
@@ -674,7 +677,7 @@ export default function SinglePost() {
       ) : !post ? (
         <View style={s.center}><Text style={s.muted}>Post not found</Text></View>
       ) : (
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={90}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={keyboardOffset}>
           <FlatList
             data={comments}
             keyExtractor={c => String(c.id)}

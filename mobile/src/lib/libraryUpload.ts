@@ -68,7 +68,7 @@ export class UploadCancelled extends Error {
 }
 
 // Uploads to the SAME endpoint the web form uses (POST /api/library/upload),
-// so the 25MB cap, accepted types, role gate and error messages are the
+// so the 10MB cap, accepted types, role gate and error messages are the
 // server's, shown verbatim. This is only the transport: fetch() can't report
 // upload progress, XMLHttpRequest can, hence XHR here instead of apiFetch.
 export async function uploadLibraryMaterial(

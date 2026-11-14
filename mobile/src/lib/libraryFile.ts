@@ -1,13 +1,16 @@
-// Library upload rules on the phone. The server is the authority (25MB cap,
-// accepted types, extension fallback for a missing MIME type: backend/src/
-// middleware/uploadAny.js, same as the web form), so these only exist to fail
-// fast and to hand the server a file name and MIME type it can work with.
+// Library upload rules on the phone. The server is the authority (10MB cap in
+// backend/src/lib/libraryLimits.js; accepted types and the extension fallback for a
+// missing MIME type in backend/src/middleware/uploadAny.js, same as the web form), so
+// these only exist to fail fast and to hand the server a file name and MIME type it
+// can work with.
 // No React Native imports here on purpose: it keeps this pure.
 
-// Must match backend/src/middleware/uploadAny.js's MAX_FILE_SIZE and web's
-// LibraryUploadForm.
-export const MAX_FILE_SIZE = 25 * 1024 * 1024;
-export const MAX_FILE_SIZE_MESSAGE = `File exceeds the ${MAX_FILE_SIZE / (1024 * 1024)}MB limit`;
+// Must match the backend's LIBRARY_MAX_FILE_SIZE and web's LibraryUploadForm. 10MB is
+// Cloudinary's account cap on a raw file; anything larger is refused after the whole
+// upload has been sent. The message is the server's own wording, so a file rejected
+// here and one rejected there read the same.
+export const MAX_FILE_SIZE = 10 * 1024 * 1024;
+export const MAX_FILE_SIZE_MESSAGE = `Files over ${MAX_FILE_SIZE / (1024 * 1024)}MB can't be uploaded yet`;
 
 // The same six document types the web form accepts, by extension.
 const MIME_BY_EXTENSION: Record<string, string> = {

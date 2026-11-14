@@ -2141,6 +2141,10 @@ export default function Feed() {
         <FlatList<FeedRow>
           key="posts-list"
           ref={listRef}
+          // The floating "+" is absolutely positioned over the list; without this the last
+          // post and the "That's everything for now" message scroll to the very bottom
+          // and sit underneath it.
+          contentContainerStyle={{ paddingBottom: FAB_CLEARANCE }}
           data={feedTab === 'following' ? followingPosts : forYouRows}
           keyExtractor={row => (isDivider(row) ? 'caught-up-divider' : String(row.id))}
           ListHeaderComponent={feedTab === 'for_you' ? forYouHeader : null}
@@ -2555,6 +2559,12 @@ export default function Feed() {
   );
 }
 
+// The floating compose ("+") button. FAB_CLEARANCE is how much room the post list keeps at its
+// bottom so the last item scrolls fully above the button (button height + its offset + a gap).
+const FAB_SIZE = 56;
+const FAB_BOTTOM = 24;
+const FAB_CLEARANCE = FAB_BOTTOM + FAB_SIZE + 16;
+
 const make_s = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   editedTag: { fontSize: 12, color: colors.textSecondary, marginTop: 2, fontStyle: 'italic' },
@@ -2695,8 +2705,8 @@ const make_s = (colors: Palette) => StyleSheet.create({
   modalCloseText: { color: colors.brand, fontSize: 16, fontWeight: '600' },
   menuBtn: { fontSize: 24, color: colors.text },
   fab: {
-    position: 'absolute', right: 18, bottom: 24,
-    width: 56, height: 56, borderRadius: 28, backgroundColor: colors.brand,
+    position: 'absolute', right: 18, bottom: FAB_BOTTOM,
+    width: FAB_SIZE, height: FAB_SIZE, borderRadius: FAB_SIZE / 2, backgroundColor: colors.brand,
     alignItems: 'center', justifyContent: 'center',
     shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.25, shadowRadius: 5, elevation: 6,
   },
