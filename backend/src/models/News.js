@@ -107,6 +107,45 @@ async function createNews({ title, content, category = 'general', imageUrl, crea
   return result.rows[0];
 }
 
+// What the edit/delete gate and the delete cleanup need: who wrote it and which cover it has.
+async function getNewsOwnership(id) {
+  const { rows } = await pool.query(
+    `SELECT id, created_by, image_url FROM abukonn.news WHERE id = $1`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+// Partial update: only the fields that are present change. category is not editable --
+// News has no user-facing categories (every article is 'general'), so the column is left
+// alone. Returns the updated row; null if the article does not exist; undefined if there
+// was nothing to change.
+async function updateNews(id, { title, content, imageUrl }) {
+  const sets = [];
+  const params = [];
+  // `$$` + length: a literal "$" then the placeholder number, e.g. title = $1.
+  if (title) { params.push(title); sets.push(`title = $${params.length}`); }
+  if (content) { params.push(content); sets.push(`content = $${params.length}`); }
+  if (imageUrl !== undefined) { params.push(imageUrl); sets.push(`image_url = $${params.length}`); }
+  if (!sets.length) return undefined;
+  params.push(id);
+  const { rows } = await pool.query(
+    `UPDATE abukonn.news SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`,
+    params
+  );
+  return rows[0] || null;
+}
+
+// Hard delete (news_likes cascade). Returns what was removed, including the cover URL so the
+// caller can clean the image up, or null if there was no such article.
+async function deleteNews(id) {
+  const { rows } = await pool.query(
+    `DELETE FROM abukonn.news WHERE id = $1 RETURNING id, title, image_url`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
 // Articles published after the user last opened News, not counting their own
 // (an author shouldn't see a badge for what they just posted). A NULL
 // last_seen_news_at -- or no such user -- means "never seen": everything counts.
@@ -147,6 +186,9 @@ module.exports = {
   getAllNews,
   getNewsById,
   createNews,
+  getNewsOwnership,
+  updateNews,
+  deleteNews,
   toggleLike,
   getUnreadCount,
   markSeen,

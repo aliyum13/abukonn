@@ -245,13 +245,10 @@ async function adminCreateNews(req, res) {
 
 async function adminUpdateNews(req, res) {
   try {
-    const newsId = parseInt(req.params.id, 10);
-    const { title, content, category } = req.body;
-
-    const validCategories = ['academic', 'sports', 'events', 'general'];
-    if (category && !validCategories.includes(category)) {
-      return res.status(400).json({ message: 'Invalid category' });
-    }
+    // requireNewsManage has already run (full admin, or the Media Team author), before the
+    // image upload middleware. category is not editable: News has no categories any more, so
+    // a category an older client still sends is ignored, not validated.
+    const { title, content } = req.body;
 
     let imageUrl = undefined;
     if (req.file) {
@@ -263,54 +260,19 @@ async function adminUpdateNews(req, res) {
       imageUrl = uploaded.secure_url;
     }
 
-    const setClauses = [];
-    const params = [];
-    let i = 1;
+    const article = await News.updateNews(req.newsArticle.id, { title, content, imageUrl });
+    if (article === undefined) return res.status(400).json({ message: 'No fields to update' });
+    if (article === null) return res.status(404).json({ message: 'Article not found' });
 
-    if (title) { setClauses.push(`title = $${i++}`); params.push(title); }
-    if (content) { setClauses.push(`content = $${i++}`); params.push(content); }
-    if (category) { setClauses.push(`category = $${i++}`); params.push(category); }
-    if (imageUrl !== undefined) { setClauses.push(`image_url = $${i++}`); params.push(imageUrl); }
-
-    if (!setClauses.length) {
-      return res.status(400).json({ message: 'No fields to update' });
-    }
-
-    params.push(newsId);
-    const result = await pool.query(
-      `UPDATE abukonn.news SET ${setClauses.join(', ')} WHERE id = $${i} RETURNING *`,
-      params
-    );
-
-    if (!result.rows[0]) {
-      return res.status(404).json({ message: 'Article not found' });
-    }
-
-    res.json({ message: 'Article updated', article: result.rows[0] });
+    res.json({ message: 'Article updated', article });
   } catch (err) {
     console.error('Admin update news error:', err.message);
     res.status(500).json({ message: 'Server error updating news' });
   }
 }
 
-async function adminDeleteNews(req, res) {
-  try {
-    const newsId = parseInt(req.params.id, 10);
-    const result = await pool.query(
-      'DELETE FROM abukonn.news WHERE id = $1 RETURNING id, title',
-      [newsId]
-    );
-
-    if (!result.rows[0]) {
-      return res.status(404).json({ message: 'Article not found' });
-    }
-
-    res.json({ message: `Article "${result.rows[0].title}" deleted` });
-  } catch (err) {
-    console.error('Admin delete news error:', err.message);
-    res.status(500).json({ message: 'Server error' });
-  }
-}
+// Deleting an article lives in newsController.deleteNewsHandler, shared with DELETE
+// /api/news/:id (it also removes the cover image from Cloudinary).
 
 // ─── Whitelist ────────────────────────────────────────────────────────────────
 
@@ -551,7 +513,6 @@ module.exports = {
   adminGetAllNews,
   adminCreateNews,
   adminUpdateNews,
-  adminDeleteNews,
   getWhitelist,
   uploadWhitelist,
   clearWhitelist,

@@ -4,6 +4,8 @@ const upload = require('../middleware/upload');
 const uploadAny = require('../middleware/uploadAny');
 const { verifyFileSignature } = require('../middleware/verifyFileSignature');
 const requireMediaTeam = require('../middleware/requireMediaTeam');
+const requireNewsManage = require('../middleware/requireNewsManage');
+const { deleteNewsHandler } = require('../controllers/newsController');
 const {
   getStats,
   getUsers,
@@ -22,7 +24,6 @@ const {
   adminGetAllNews,
   adminCreateNews,
   adminUpdateNews,
-  adminDeleteNews,
   getWhitelist,
   uploadWhitelist,
   clearWhitelist,
@@ -62,11 +63,12 @@ router.delete('/class-reps/:id', requireFullAdmin, removeClassRep);
 
 // News
 router.get('/news', adminGetAllNews);
-// Publishing is Media Team only (checked before the image upload runs).
-// Editing and deleting stay on adminAuth.
+// Publishing is Media Team only (checked before the image upload runs). Editing and deleting
+// need a full admin (any article) or the Media Team member who published it; is_admin alone
+// (editors, class coordinators) is no longer enough. Same gate as PUT/DELETE /api/news/:id.
 router.post('/news', requireMediaTeam, upload.single('image'), verifyFileSignature, adminCreateNews);
-router.put('/news/:id', upload.single('image'), verifyFileSignature, adminUpdateNews);
-router.delete('/news/:id', adminDeleteNews);
+router.put('/news/:id', requireNewsManage, upload.single('image'), verifyFileSignature, adminUpdateNews);
+router.delete('/news/:id', requireNewsManage, deleteNewsHandler);
 
 // Whitelist
 router.get('/whitelist', requireFullAdmin, getWhitelist);
