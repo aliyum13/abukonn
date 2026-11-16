@@ -211,3 +211,42 @@ test('unread-count and seen need auth, are not swallowed by /:id, and act on the
   assert.deepEqual(seen.json, { count: 0 });
   assert.deepEqual(userUpdates, [5]);
 });
+
+// ── GET /api/news/permissions: drives the mobile "New post" button ────────────
+
+test('permissions: a Media Team member gets can_publish true (admin or not)', async () => {
+  mediaTeam.add(1); // admin + media_team
+  mediaTeam.add(3); // media_team, not an admin
+  for (const id of [1, 3]) {
+    const r = await call('GET', '/news/permissions', { token: tokenFor(id) });
+    assert.equal(r.status, 200, `user ${id}`);
+    assert.deepEqual(r.json, { can_publish: true }, `user ${id}`);
+  }
+});
+
+test('permissions: an admin or editor WITHOUT the role, and an ordinary user, get false', async () => {
+  mediaTeam.add(3); // someone else holds it; it must not leak to the others
+  for (const id of [1, 4, 2, 5]) { // admin, editor, student, student
+    const r = await call('GET', '/news/permissions', { token: tokenFor(id) });
+    assert.equal(r.status, 200, `user ${id}`);
+    assert.deepEqual(r.json, { can_publish: false }, `user ${id}`);
+  }
+});
+
+test('permissions: logged out is 401, and the route is not swallowed by /:id', async () => {
+  assert.equal((await call('GET', '/news/permissions')).status, 401);
+  // With a token it answers as the permissions route (an article id of "permissions" would 404/500).
+  mediaTeam.add(2);
+  assert.deepEqual((await call('GET', '/news/permissions', { token: tokenFor(2) })).json, { can_publish: true });
+});
+
+test('permissions is exactly what publishing enforces, and is read fresh', async () => {
+  mediaTeam.add(3);
+  const p1 = await call('GET', '/news/permissions', { token: tokenFor(3) });
+  assert.equal(p1.json.can_publish, true);
+  assert.equal((await call('POST', '/news', { token: tokenFor(3), body: ARTICLE })).status, 201);
+  mediaTeam.delete(3); // revoked
+  const p2 = await call('GET', '/news/permissions', { token: tokenFor(3) });
+  assert.equal(p2.json.can_publish, false);
+  assert.equal((await call('POST', '/news', { token: tokenFor(3), body: ARTICLE })).status, 403);
+});

@@ -1,7 +1,7 @@
 const express = require('express');
 const auth = require('../middleware/auth');
 const requireMediaTeam = require('../middleware/requireMediaTeam');
-const { getNews, getNewsById, createNews, likeNewsHandler, getUnreadNewsCount, markNewsSeen } = require('../controllers/newsController');
+const { getNews, getNewsById, createNews, likeNewsHandler, getUnreadNewsCount, markNewsSeen, getNewsPermissions } = require('../controllers/newsController');
 
 const router = express.Router();
 
@@ -9,8 +9,9 @@ const router = express.Router();
 // same as before this change, but now decodes a token when one IS sent so
 // is_liked reflects the real caller instead of always coming back false.
 router.get('/', auth.optionalAuth, getNews);
-// Must stay above '/:id', or "unread-count" is parsed as an article id.
+// Must stay above '/:id', or "unread-count" / "permissions" are parsed as an article id.
 router.get('/unread-count', auth, getUnreadNewsCount);
+router.get('/permissions', auth, getNewsPermissions);
 router.post('/seen', auth, markNewsSeen);
 router.get('/:id', auth.optionalAuth, getNewsById);
 router.post('/', auth, requireMediaTeam, createNews);
