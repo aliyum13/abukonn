@@ -99,7 +99,8 @@ export async function apiFetch<T>(
 
   if (!res.ok) {
     const msg = (data as { message?: string } | null)?.message;
-    throw new Error(msg || `Request failed (${res.status})`);
+    // status lets a caller tell a refusal (403) from a failure without parsing the message.
+    throw Object.assign(new Error(msg || `Request failed (${res.status})`), { status: res.status });
   }
   return data as T;
 }
