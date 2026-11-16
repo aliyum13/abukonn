@@ -5,7 +5,7 @@ const uploadAny = require('../middleware/uploadAny');
 const { verifyFileSignature } = require('../middleware/verifyFileSignature');
 const requireMediaTeam = require('../middleware/requireMediaTeam');
 const requireNewsManage = require('../middleware/requireNewsManage');
-const { deleteNewsHandler } = require('../controllers/newsController');
+const { deleteNewsHandler } = require('../controllers/newsManageController');
 const {
   getStats,
   getUsers,

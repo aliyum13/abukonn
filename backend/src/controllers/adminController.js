@@ -271,7 +271,7 @@ async function adminUpdateNews(req, res) {
   }
 }
 
-// Deleting an article lives in newsController.deleteNewsHandler, shared with DELETE
+// Deleting an article lives in newsManageController.deleteNewsHandler, shared with DELETE
 // /api/news/:id (it also removes the cover image from Cloudinary).
 
 // ─── Whitelist ────────────────────────────────────────────────────────────────
