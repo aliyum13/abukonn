@@ -131,7 +131,7 @@ export default function Profile() {
         text: 'Log out', style: 'destructive',
         onPress: async () => { await signOut(); router.replace('/(auth)/login'); },
       },
-    ]);
+    ], { cancelable: true });
   };
 
   const header = (

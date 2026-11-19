@@ -130,7 +130,7 @@ export default function ClassRep() {
           } catch { if (active) loadOverrides(active); }
         },
       },
-    ]);
+    ], { cancelable: true });
   };
 
   if (loading) {

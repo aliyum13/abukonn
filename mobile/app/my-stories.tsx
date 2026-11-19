@@ -82,7 +82,7 @@ export default function MyStoriesScreen() {
           }
         },
       },
-    ]);
+    ], { cancelable: true });
   };
 
   return (
