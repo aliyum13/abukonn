@@ -9,6 +9,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../src/lib/api';
 import { useAuth } from '../src/context/AuthContext';
+import { useActionSheet } from '../src/components/ActionSheet';
 import { colors, radius } from '../src/theme';
 
 interface Member {
@@ -107,7 +108,7 @@ export default function GroupInfo() {
           }
         },
       },
-    ]);
+    ], { cancelable: true });
   };
 
   const [followers, setFollowers] = useState<{ id: number; full_name: string; profile_photo_url: string | null }[]>([]);
@@ -166,7 +167,7 @@ export default function GroupInfo() {
           } catch { load(); }
         },
       },
-    ]);
+    ], { cancelable: true });
   };
 
   const setMemberRole = async (userId: number, role: 'admin' | 'member') => {
@@ -179,14 +180,16 @@ export default function GroupInfo() {
     }
   };
 
+  // Was Alert.alert (3 buttons incl. Cancel; on Android no Back / outside-tap dismissal).
+  // See ActionSheet's header.
+  const { show: showMemberMenu, element: memberMenuSheet } = useActionSheet();
   const openMemberMenu = (m: Member) => {
     const isMemberAdmin = m.role === 'admin';
-    Alert.alert(m.full_name, undefined, [
+    showMemberMenu(m.full_name, [
       isMemberAdmin
-        ? { text: 'Demote to member', onPress: () => setMemberRole(m.id, 'member') }
-        : { text: 'Promote to admin', onPress: () => setMemberRole(m.id, 'admin') },
-      { text: 'Remove from group', style: 'destructive', onPress: () => removeMember(m.id, m.full_name) },
-      { text: 'Cancel', style: 'cancel' },
+        ? { label: 'Demote to member', icon: 'arrow-down-circle-outline', onPress: () => setMemberRole(m.id, 'member') }
+        : { label: 'Promote to admin', icon: 'shield-checkmark-outline', onPress: () => setMemberRole(m.id, 'admin') },
+      { label: 'Remove from group', icon: 'person-remove-outline', destructive: true, onPress: () => removeMember(m.id, m.full_name) },
     ]);
   };
 
@@ -204,7 +207,7 @@ export default function GroupInfo() {
           }
         },
       },
-    ]);
+    ], { cancelable: true });
   };
 
   return (
@@ -396,6 +399,7 @@ export default function GroupInfo() {
           </View>
         </View>
       </Modal>
+      {memberMenuSheet}
     </SafeAreaView>
   );
 }
