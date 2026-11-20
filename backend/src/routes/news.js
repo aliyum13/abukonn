@@ -16,5 +16,11 @@ router.post('/seen', auth, markNewsSeen);
 router.get('/:id', auth.optionalAuth, getNewsById);
 router.post('/', auth, requireMediaTeam, createNews);
 router.post('/:id/like', auth, likeNewsHandler);
+// Edit / delete: a full admin (any article) or the Media Team member who published it. The
+// gate runs before anything else, so a refused request never reaches the handler.
+const requireNewsManage = require('../middleware/requireNewsManage');
+const { updateNewsHandler, deleteNewsHandler } = require('../controllers/newsManageController');
+router.put('/:id', auth, requireNewsManage, updateNewsHandler);
+router.delete('/:id', auth, requireNewsManage, deleteNewsHandler);
 
 module.exports = router;

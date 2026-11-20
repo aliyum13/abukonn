@@ -66,6 +66,11 @@ const fakePool = {
       unreadCalls.push(params[0]);
       return { rows: [{ count: 3 }] };
     }
+    // requireNewsManage's lookup (the edit/delete gate). Admin 1 is a full admin, so who wrote
+    // the article does not matter here; ownership is covered in news-manage.test.js.
+    if (/^SELECT id, created_by, image_url FROM abukonn\.news WHERE id = \$1/.test(s)) {
+      return { rows: [{ id: params[0], created_by: 1, image_url: null }] };
+    }
     if (/^UPDATE abukonn\.news SET .* WHERE id = /.test(s)) {
       return { rows: [{ id: params[params.length - 1], title: 'edited' }] };
     }
