@@ -224,7 +224,7 @@ export default function Library() {
           }
         },
       },
-    ]);
+    ], { cancelable: true });
   };
 
   // Header content (page title, quick-action tiles, search bar, filter chips)

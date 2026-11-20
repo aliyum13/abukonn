@@ -437,7 +437,7 @@ export default function SinglePost() {
           }
         },
       },
-    ]);
+    ], { cancelable: true });
   };
 
   // Real toggle now (see feed.tsx's repost for the full root-cause writeup):
@@ -590,7 +590,7 @@ export default function SinglePost() {
           }
         },
       },
-    ]);
+    ], { cancelable: true });
   }, [id, load]);
 
   const handleSubmitNewComment = useCallback(async (text: string): Promise<boolean> => {

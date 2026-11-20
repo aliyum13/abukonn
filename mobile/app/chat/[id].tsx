@@ -12,7 +12,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { apiFetch } from '../../src/lib/api';
 import { uploadImage } from '../../src/lib/upload';
 import { MessageBody } from '../../src/components/MessageBody';
-import { MessageActionSheet, type MessageAction } from '../../src/components/MessageActionSheet';
+import { ActionSheet, type ActionSheetAction } from '../../src/components/ActionSheet';
 import { friendlyPreview, plainText, editableText, withEditedText } from '../../src/lib/messagePreview';
 import { getSocket } from '../../src/lib/socket';
 import type { Socket } from 'socket.io-client';
@@ -55,7 +55,7 @@ export default function Chat() {
   const [sendingImage, setSendingImage] = useState(false);
   // Which message's long-press menu is open. Was Alert.alert, which silently
   // dropped everything past the third option on Android -- see
-  // MessageActionSheet's header for the full explanation.
+  // ActionSheet's header for the full explanation.
   const [menuMsg, setMenuMsg] = useState<Msg | null>(null);
 
   // Edit sheet state. A Modal rather than Alert.prompt — prompt is iOS-only,
@@ -278,7 +278,7 @@ export default function Chat() {
           }
         },
       },
-    ]);
+    ], { cancelable: true });
   };
 
   const startEdit = (m: Msg) => {
@@ -320,9 +320,9 @@ export default function Chat() {
   // what changed is that nothing past the third entry is discarded any more,
   // so Edit and Delete are actually reachable on Android. Cancel is not in this
   // list -- the sheet renders its own, which cannot be truncated away.
-  const messageActions = (m: Msg): MessageAction[] => {
+  const messageActions = (m: Msg): ActionSheetAction[] => {
     const mine = m.sender_id === user?.id;
-    const list: MessageAction[] = [
+    const list: ActionSheetAction[] = [
       { label: 'Reply', icon: 'arrow-undo-outline', onPress: () => startReply(m) },
       { label: 'Forward', icon: 'arrow-redo-outline', onPress: () => setForwardMsg(m) },
     ];
@@ -532,7 +532,7 @@ export default function Chat() {
       </KeyboardAvoidingView>
 
       {/* Long-press message menu */}
-      <MessageActionSheet
+      <ActionSheet
         visible={menuMsg !== null}
         title="Message"
         actions={menuMsg ? messageActions(menuMsg) : []}

@@ -50,7 +50,7 @@ export default function CgpaCalculator() {
     Alert.alert('Remove semester?', 'This deletes all courses entered for it.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Remove', style: 'destructive', onPress: () => persist(semesters.filter(sem => sem.id !== id)) },
-    ]);
+    ], { cancelable: true });
   };
 
   const updateSemesterLabel = (id: string, label: string) => {
@@ -79,7 +79,7 @@ export default function CgpaCalculator() {
     Alert.alert('Reset everything?', 'This clears all semesters and courses. This cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Reset', style: 'destructive', onPress: () => persist([newSemester('Semester 1')]) },
-    ]);
+    ], { cancelable: true });
   };
 
   if (loading) {

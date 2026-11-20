@@ -14,6 +14,7 @@ import { useAuth } from '../../src/context/AuthContext';
 import { RoleBadge } from '../../src/components/RoleBadge';
 import { ReportModal } from '../../src/components/ReportModal';
 import { ImageLightbox } from '../../src/components/ImageLightbox';
+import { useActionSheet } from '../../src/components/ActionSheet';
 import { colors } from '../../src/theme';
 
 interface ProfileUser {
@@ -124,11 +125,13 @@ export default function UserProfile() {
     }
   };
 
+  // Was Alert.alert (3 buttons incl. Cancel; on Android no Back / outside-tap dismissal).
+  // See ActionSheet's header.
+  const { show: showProfileMenu, element: profileMenuSheet } = useActionSheet();
   const openProfileMenu = () => {
-    Alert.alert(user?.full_name ?? 'User', undefined, [
-      { text: 'Report user', onPress: () => setReportTarget({ type: 'user', id: Number(id), name: user?.full_name ?? '' }) },
-      { text: 'Block user', style: 'destructive', onPress: blockUser },
-      { text: 'Cancel', style: 'cancel' },
+    showProfileMenu(user?.full_name ?? 'User', [
+      { label: 'Report user', icon: 'alert-circle-outline', onPress: () => setReportTarget({ type: 'user', id: Number(id), name: user?.full_name ?? '' }) },
+      { label: 'Block user', icon: 'ban-outline', destructive: true, onPress: blockUser },
     ]);
   };
 
@@ -167,7 +170,7 @@ export default function UserProfile() {
           }
         },
       },
-    ]);
+    ], { cancelable: true });
   };
 
   const message = async () => {
@@ -372,6 +375,7 @@ export default function UserProfile() {
       />
       <ReportModal target={reportTarget} onClose={() => setReportTarget(null)} />
       <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
+      {profileMenuSheet}
     </SafeAreaView>
   );
 }

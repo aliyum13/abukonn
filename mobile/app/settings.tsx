@@ -290,11 +290,11 @@ export default function SettingsScreen() {
                     }
                   },
                 },
-              ],
+              ], { cancelable: true },
             );
           },
         },
-      ],
+      ], { cancelable: true },
     );
   };
 
@@ -319,7 +319,7 @@ export default function SettingsScreen() {
             }
           },
         },
-      ],
+      ], { cancelable: true },
     );
   };
 
@@ -327,7 +327,7 @@ export default function SettingsScreen() {
     Alert.alert('Log out', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Log out', style: 'destructive', onPress: async () => { await signOut(); router.replace('/(auth)/login'); } },
-    ]);
+    ], { cancelable: true });
   };
 
   return (

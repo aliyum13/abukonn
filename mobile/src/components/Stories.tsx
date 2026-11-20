@@ -242,7 +242,7 @@ function StoryViewer({
           }
         },
       },
-    ]);
+    ], { cancelable: true });
   };
 
   const goGroup = (dir: 1 | -1) => {

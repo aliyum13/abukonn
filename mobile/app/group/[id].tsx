@@ -13,7 +13,7 @@ import { uploadImage } from '../../src/lib/upload';
 import { useAuth } from '../../src/context/AuthContext';
 import { friendlyPreview, plainText, editableText, withEditedText } from '../../src/lib/messagePreview';
 import { MessageBody } from '../../src/components/MessageBody';
-import { MessageActionSheet, type MessageAction } from '../../src/components/MessageActionSheet';
+import { ActionSheet, type ActionSheetAction } from '../../src/components/ActionSheet';
 import { colors } from '../../src/theme';
 import { useKeyboardVerticalOffset } from '../../src/lib/useKeyboardVerticalOffset';
 import { ComposerBar } from '../../src/components/ComposerBar';
@@ -49,7 +49,7 @@ export default function GroupChat() {
   const [sendingImage, setSendingImage] = useState(false);
   // Which message's long-press menu is open. Was Alert.alert, which silently
   // dropped everything past the third option on Android -- see
-  // MessageActionSheet's header for the full explanation.
+  // ActionSheet's header for the full explanation.
   const [menuMsg, setMenuMsg] = useState<GroupMsg | null>(null);
 
   // Edit sheet state, same shape as chat/[id].tsx (Modal, not Alert.prompt —
@@ -181,7 +181,7 @@ export default function GroupChat() {
           }
         },
       },
-    ]);
+    ], { cancelable: true });
   };
 
   const startEdit = (m: GroupMsg) => {
@@ -219,9 +219,9 @@ export default function GroupChat() {
   // Same order as before; the difference is that Delete (previously the fourth
   // entry, and so discarded on Android) now actually renders. Cancel is not in
   // this list -- the sheet renders its own, which cannot be truncated away.
-  const messageActions = (m: GroupMsg): MessageAction[] => {
+  const messageActions = (m: GroupMsg): ActionSheetAction[] => {
     const mine = m.sender_id === user?.id;
-    const list: MessageAction[] = [
+    const list: ActionSheetAction[] = [
       { label: 'Reply', icon: 'arrow-undo-outline', onPress: () => startReply(m) },
       { label: 'Forward', icon: 'arrow-redo-outline', onPress: () => setForwardMsg(m) },
     ];
@@ -408,7 +408,7 @@ export default function GroupChat() {
       </KeyboardAvoidingView>
 
       {/* Long-press message menu */}
-      <MessageActionSheet
+      <ActionSheet
         visible={menuMsg !== null}
         title="Message"
         actions={menuMsg ? messageActions(menuMsg) : []}

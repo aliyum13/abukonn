@@ -12,6 +12,7 @@ import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { uploadMedia } from '../../src/lib/upload';
 import { MenuSheet } from '../../src/components/MenuSheet';
+import { useActionSheet } from '../../src/components/ActionSheet';
 import { useTabScrollToTop } from '../../src/lib/useScrollToTop';
 import { apiFetch, API_URL } from '../../src/lib/api';
 import { optimizedImage, optimizedAvatar } from '../../src/lib/image';
@@ -1253,7 +1254,7 @@ export default function Feed() {
           }
         },
       },
-    ]);
+    ], { cancelable: true });
   }, [load]);
 
   const reportPost = useCallback((post: Post) => {
@@ -1279,27 +1280,30 @@ export default function Feed() {
             }
           },
         },
-      ],
+      ], { cancelable: true },
     );
   }, []);
 
+  // Was Alert.alert. The other-user menu has four buttons (Report post / Report user / Block
+  // user / Cancel) and Android only renders three, so Cancel vanished -- and an Alert is not
+  // dismissable by Back or an outside tap there, leaving no way out without picking an action.
+  // See ActionSheet's header.
+  const { show: showPostMenu, element: postMenuSheet } = useActionSheet();
   const openPostMenu = useCallback((post: Post) => {
     const isOwn = user?.id === post.user_id;
     if (isOwn) {
-      Alert.alert('Post options', undefined, [
-        { text: 'Edit post', onPress: () => openEdit(post) },
-        { text: 'Delete post', style: 'destructive', onPress: () => deletePost(post) },
-        { text: 'Cancel', style: 'cancel' },
+      showPostMenu('Post options', [
+        { label: 'Edit post', icon: 'create-outline', onPress: () => openEdit(post) },
+        { label: 'Delete post', icon: 'trash-outline', destructive: true, onPress: () => deletePost(post) },
       ]);
     } else {
-      Alert.alert('Post options', undefined, [
-        { text: 'Report post', onPress: () => reportPost(post) },
-        { text: 'Report user', onPress: () => setReportTarget({ type: 'user', id: post.user_id, name: post.author_name }) },
-        { text: 'Block user', style: 'destructive', onPress: () => blockUser(post) },
-        { text: 'Cancel', style: 'cancel' },
+      showPostMenu('Post options', [
+        { label: 'Report post', icon: 'flag-outline', onPress: () => reportPost(post) },
+        { label: 'Report user', icon: 'alert-circle-outline', onPress: () => setReportTarget({ type: 'user', id: post.user_id, name: post.author_name }) },
+        { label: 'Block user', icon: 'ban-outline', destructive: true, onPress: () => blockUser(post) },
       ]);
     }
-  }, [user, deletePost, reportPost, blockUser, openEdit]);
+  }, [user, deletePost, reportPost, blockUser, openEdit, showPostMenu]);
 
 
   const openComments = useCallback(async (post: Post) => {
@@ -1503,7 +1507,7 @@ export default function Feed() {
           }
         },
       },
-    ]);
+    ], { cancelable: true });
   }, [commentsFor?.id, comments]);
 
   const handleStartEdit = useCallback((commentId: number) => setEditingCommentId(commentId), []);
@@ -2010,6 +2014,7 @@ export default function Feed() {
       </View>
 
       <MenuSheet visible={menuOpen} onClose={() => setMenuOpen(false)} />
+      {postMenuSheet}
       <ShareSheet post={sharePost} onClose={() => setSharePost(null)} />
       <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
       <ReportModal target={reportTarget} onClose={() => setReportTarget(null)} />
