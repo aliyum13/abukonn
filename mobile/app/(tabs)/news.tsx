@@ -14,6 +14,8 @@ import { ImageLightbox } from '../../src/components/ImageLightbox';
 import { colors, radius, shadow } from '../../src/theme';
 import { useTabScrollToTop } from '../../src/lib/useScrollToTop';
 import { markNewsSeen, setViewingNews } from '../../src/lib/newsUnread';
+import { fetchCanPublishNews } from '../../src/lib/newsPublish';
+import { NewsComposeSheet } from '../../src/components/NewsComposeSheet';
 
 interface Article {
   id: number;
@@ -122,6 +124,10 @@ export default function News() {
   const [refreshing, setRefreshing] = useState(false);
   const [open, setOpen] = useState<Article | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  // Whether to offer "New post". Asked of the server on every focus (the Media Team role can be
+  // granted or revoked at any time); POST /api/news is what actually enforces it.
+  const [canPublish, setCanPublish] = useState(false);
+  const [composeOpen, setComposeOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -150,6 +156,7 @@ export default function News() {
     setViewingNews(true);
     markNewsSeen();
     load();
+    fetchCanPublishNews().then(setCanPublish);
     return () => setViewingNews(false);
   }, [load]));
 
@@ -189,7 +196,15 @@ export default function News() {
 
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
-      <View style={s.header}><Text style={s.title}>News</Text></View>
+      <View style={s.header}>
+        <Text style={s.title}>News</Text>
+        {canPublish ? (
+          <TouchableOpacity style={s.newPostBtn} onPress={() => setComposeOpen(true)} hitSlop={8} accessibilityLabel="New post">
+            <Ionicons name="add" size={18} color="#fff" />
+            <Text style={s.newPostText}>New post</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
 
       {loading ? (
         <View style={s.center}><ActivityIndicator size="large" color={colors.brand} /></View>
@@ -249,13 +264,31 @@ export default function News() {
         </SafeAreaView>
       </Modal>
       <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
+      {canPublish ? (
+        <NewsComposeSheet
+          visible={composeOpen}
+          onClose={() => setComposeOpen(false)}
+          onPublished={() => {
+            setComposeOpen(false);
+            load().then(() => listRef.current?.scrollToOffset({ offset: 0, animated: true }));
+          }}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
 
 const make_s = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, backgroundColor: colors.surface },
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, backgroundColor: colors.surface,
+  },
+  newPostBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.brand,
+    borderRadius: 16, paddingVertical: 6, paddingLeft: 8, paddingRight: 12,
+  },
+  newPostText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   title: { fontSize: 20, fontWeight: '800', color: colors.text },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   muted: { color: colors.muted, fontSize: 15 },

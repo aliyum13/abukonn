@@ -124,7 +124,10 @@ async function uploadToCloudinary(buffer, mimetype) {
   });
 }
 
-const ALLOWED_UPLOAD_FOLDERS = new Set(['abukonn/stories', 'abukonn/posts', 'abukonn/messages', 'abukonn/files', 'abukonn/groups']);
+// abukonn/news: cover images for News articles, matching where the admin panel's multipart
+// upload (adminCreateNews) already puts them. Like the other folders, any signed-in user can
+// obtain a signature for it; publishing is what requires the Media Team role.
+const ALLOWED_UPLOAD_FOLDERS = new Set(['abukonn/stories', 'abukonn/posts', 'abukonn/messages', 'abukonn/files', 'abukonn/groups', 'abukonn/news']);
 
 async function getUploadSignature(req, res) {
   try {

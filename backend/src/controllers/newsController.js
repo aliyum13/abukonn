@@ -1,5 +1,6 @@
 const News = require('../models/News');
 const { announceNews } = require('../lib/newsPublish');
+const { hasRole, ROLE_TYPES } = require('../models/UserRole');
 
 async function getNews(req, res) {
   try {
@@ -74,6 +75,20 @@ async function createNews(req, res) {
   }
 }
 
+// Lets a client decide whether to show its "New post" control. This is the SAME
+// check requireMediaTeam applies to POST /api/news (and /api/admin/news), read
+// fresh from user_roles on every call: a full admin who does not hold media_team
+// is told false, because the publish endpoints would refuse them. It only drives
+// the UI; the publish endpoints remain the real gate.
+async function getNewsPermissions(req, res) {
+  try {
+    res.json({ can_publish: await hasRole(req.user.id, ROLE_TYPES.MEDIA_TEAM) });
+  } catch (err) {
+    console.error('News permissions error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
 // Badge count: articles published since this user last opened News.
 async function getUnreadNewsCount(req, res) {
   try {
@@ -95,4 +110,4 @@ async function markNewsSeen(req, res) {
   }
 }
 
-module.exports = { getNews, getNewsById, createNews, likeNewsHandler, getUnreadNewsCount, markNewsSeen };
+module.exports = { getNews, getNewsById, createNews, likeNewsHandler, getUnreadNewsCount, markNewsSeen, getNewsPermissions };
